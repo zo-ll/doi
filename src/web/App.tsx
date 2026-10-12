@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { getJSON, type AppConfig, type Harnesses, type Load, type ProjectSummary } from "./api.ts";
+import { getJSON, type AppConfig, type Harnesses, type Load, type ProjectSummary, type ProviderStatus } from "./api.ts";
 import { Canvas } from "./components/Canvas.tsx";
 import { ChatPanel, type Selection } from "./components/ChatPanel.tsx";
 import { Sidebar, type Active } from "./components/Sidebar.tsx";
@@ -23,6 +23,7 @@ export function App() {
   const [projects, retryProjects] = useLoad<ProjectSummary[]>("/api/projects");
   const [config] = useLoad<AppConfig>("/api/config");
   const [harnesses] = useLoad<Harnesses>("/api/harnesses");
+  const [providers] = useLoad<ProviderStatus[]>("/api/providers");
   const [active, setActive] = useState<Active | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
 
@@ -46,6 +47,10 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const generate = config.state === "ready" ? config.data.models.generate : null;
+  const generateStatus =
+    generate && providers.state === "ready" ? (providers.data.find((p) => p.id === generate.provider) ?? null) : null;
+
   const projectName =
     active && projects.state === "ready" ? (projects.data.find((p) => p.id === active.project)?.name ?? active.project) : null;
 
@@ -62,7 +67,8 @@ export function App() {
       <ChatPanel
         target={active}
         selection={selection}
-        model={config.state === "ready" ? config.data.models.generate.model : null}
+        model={generate?.model ?? null}
+        modelStatus={generateStatus}
         onClearSelection={() => setSelection(null)}
       />
       <Canvas active={active} selection={selection} onSelect={setSelection} />

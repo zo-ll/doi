@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 
-export type ProviderId = "anthropic" | "openai" | "google" | "openrouter" | "ollama";
+/** API providers, and CLI backends that use a subscription through the official CLI. */
+export type ProviderId = "anthropic" | "openai" | "opencode-go" | "google" | "openrouter" | "ollama" | "claude-code" | "codex";
 export type HarnessId = "claude-code" | "codex" | "opencode" | "gemini-cli" | "aider";
 export type ModelTask = "generate" | "edit" | "extract";
 
@@ -22,7 +23,29 @@ export interface Config {
   harness: { default: HarnessId };
 }
 
-const PROVIDERS: readonly ProviderId[] = ["anthropic", "openai", "google", "openrouter", "ollama"];
+export const PROVIDERS: readonly ProviderId[] = [
+  "anthropic",
+  "openai",
+  "opencode-go",
+  "google",
+  "openrouter",
+  "ollama",
+  "claude-code",
+  "codex",
+];
+/** Default API key variables. config.toml can name another one per provider (api_key_env). */
+export const DEFAULT_KEY_ENV: Partial<Record<ProviderId, string>> = {
+  anthropic: "ANTHROPIC_API_KEY",
+  openai: "OPENAI_API_KEY",
+  "opencode-go": "OPENCODE_API_KEY",
+  google: "GOOGLE_GENERATIVE_AI_API_KEY",
+  openrouter: "OPENROUTER_API_KEY",
+};
+
+export function keyEnvFor(id: ProviderId, config: Pick<Config, "providers">): string | undefined {
+  return config.providers[id]?.api_key_env ?? DEFAULT_KEY_ENV[id];
+}
+
 const HARNESSES: readonly HarnessId[] = ["claude-code", "codex", "opencode", "gemini-cli", "aider"];
 
 /** Parses "anthropic:claude-opus-5-5". The model part may contain ":" (Ollama tags). */

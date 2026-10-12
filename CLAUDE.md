@@ -121,3 +121,6 @@ For more information, read the Bun API docs in `node_modules/bun-types/docs/**.m
 - Design iframes use `sandbox="allow-scripts"` without same-origin access. They talk to the app only through `postMessage`.
 - Vendor SDKs are used only inside `src/providers/*`. Agent CLIs are called only inside `src/harnesses/*`.
 - Harness CLI flags change between releases. Check the CLI docs before changing `src/harnesses/registry.ts`.
+- Credentials: API keys come only from environment variables named in `config.toml` (`api_key_env`). Subscriptions go only through the official CLIs (`claude -p`, `codex exec`).
+- Never read, copy or store OAuth tokens or credential files of other apps (Claude Code, Codex, pi, OpenCode). Anthropic's terms forbid other apps to use Claude subscription credentials: https://code.claude.com/docs/en/legal-and-compliance
+- Status checks may ask a CLI for its login state, but must not return account details or secrets to the UI.
