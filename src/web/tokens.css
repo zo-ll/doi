@@ -53,9 +53,10 @@
   --composer-max-h: 240px;
   --zoom-label-w: 44px;
   --canvas-grid: 16px;
-  --canvas-bottom-pad: 96px;
   --outline-w: 2px;
   --pin-size: 20px;
+  --menu-w: 240px;
+  --menu-w-wide: 480px;
   --ring-w: 3px;
 
   /* Motion */

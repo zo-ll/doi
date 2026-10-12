@@ -1,7 +1,8 @@
 // Injected into each design iframe. The iframe is sandboxed without same-origin access,
 // so this script talks to the app only through postMessage.
 //
-// Frame → app: doi:ready, doi:select { oid }, doi:clear, doi:rects { selected, hover, pins }.
+// Frame → app: doi:ready, doi:select { oid }, doi:clear, doi:rects { selected, hover, pins },
+// doi:wheel { deltaY, x, y } (a pinch or Ctrl/⌘ + wheel), doi:key { key, down, shift, mod }.
 // App → frame: doi:track { oid, pins } names the selected element (or null) and the elements
 // with open comments.
 // Rects are in the coordinates of this frame's viewport.
@@ -83,10 +84,29 @@
     schedule();
   });
 
-  // The iframe has the keyboard focus after a click, so the app does not see this key.
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") send({ type: "doi:clear" });
-  });
+  // The iframe has the keyboard focus after a click, so the app does not see these keys.
+  // Canvas keys go to the app too, except while the user types in a field of the page.
+  const CANVAS_KEYS = new Set([" ", "=", "+", "-", "0", "!", "1", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
+  const typing = (t) => t instanceof Element && (t.closest("input, textarea, select, [contenteditable]") !== null);
+  const onKey = (event, down) => {
+    if (down && event.key === "Escape") send({ type: "doi:clear" });
+    if (!CANVAS_KEYS.has(event.key) || typing(event.target)) return;
+    if (event.key === " ") event.preventDefault(); // no page scroll while the canvas pans
+    send({ type: "doi:key", key: event.key, down, shift: event.shiftKey, mod: event.ctrlKey || event.metaKey });
+  };
+  document.addEventListener("keydown", (event) => onKey(event, true));
+  document.addEventListener("keyup", (event) => onKey(event, false));
+
+  // A pinch on a trackpad comes as a wheel event with ctrlKey. It zooms the canvas, not the page.
+  addEventListener(
+    "wheel",
+    (event) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      send({ type: "doi:wheel", deltaY: event.deltaY, x: event.clientX, y: event.clientY });
+    },
+    { passive: false },
+  );
 
   window.addEventListener("message", (event) => {
     if (event.source !== parent) return;

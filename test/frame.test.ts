@@ -44,6 +44,21 @@ describe("frame messages", () => {
     expect(m?.type === "doi:rects" && Object.getPrototypeOf(m.pins)).toBeNull();
   });
 
+  test("wheel and key messages pass only with good values and canvas keys", () => {
+    expect(parseFrameMessage({ type: "doi:wheel", deltaY: -3, x: 10, y: 20 })).toEqual({ type: "doi:wheel", deltaY: -3, x: 10, y: 20 });
+    expect(parseFrameMessage({ type: "doi:wheel", deltaY: "1", x: 10, y: 20 })).toBeNull();
+    expect(parseFrameMessage({ type: "doi:wheel", deltaY: Infinity, x: 10, y: 20 })).toBeNull();
+    expect(parseFrameMessage({ type: "doi:key", key: "=", down: true, shift: false, mod: true })).toEqual({
+      type: "doi:key",
+      key: "=",
+      down: true,
+      shift: false,
+      mod: true,
+    });
+    expect(parseFrameMessage({ type: "doi:key", key: " ", down: "yes" })).toEqual({ type: "doi:key", key: " ", down: false, shift: false, mod: false });
+    for (const key of ["a", "Enter", "Tab", 1]) expect(parseFrameMessage({ type: "doi:key", key, down: true })).toBeNull();
+  });
+
   test("other data is not a frame message", () => {
     for (const data of [null, "doi:select", 1, {}, { type: "doi:other" }, { type: "webpackOk" }]) {
       expect(parseFrameMessage(data)).toBeNull();

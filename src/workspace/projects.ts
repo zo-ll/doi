@@ -2,7 +2,9 @@ import { mkdir, rename } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { chatFile, renameInChat } from "./chat.ts";
+import { renameLayout, updateProjectMeta } from "./layout.ts";
 import { assertName, designDir } from "./paths.ts";
+import { projectDir, projectFile } from "./project-file.ts";
 
 /** A workspace error with the HTTP status that fits it. */
 export class WorkspaceError extends Error {
@@ -28,8 +30,7 @@ function checkTitle(title: unknown): string {
   return t;
 }
 
-export const projectDir = (workspace: string, project: string) => join(workspace, "projects", project);
-export const projectFile = (workspace: string, project: string) => join(projectDir(workspace, project), "project.json");
+export { projectDir, projectFile };
 
 const STARTER_HTML = `<!doctype html>
 <html lang="en">
@@ -50,16 +51,6 @@ export function slugify(title: string): string {
   return title.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
 }
 
-async function readProjectJson(workspace: string, project: string): Promise<Record<string, unknown>> {
-  const file = Bun.file(projectFile(workspace, project));
-  if (!(await file.exists())) return {};
-  try {
-    return (await file.json()) as Record<string, unknown>;
-  } catch {
-    return {}; // a hand-edited file with bad JSON gets replaced by a good one
-  }
-}
-
 /** Creates a project with its first design, "home". Returns the paths to commit. */
 export async function createProject(workspace: string, title: unknown, id?: unknown): Promise<{ id: string; paths: string[] }> {
   const name = checkTitle(title);
@@ -76,8 +67,7 @@ export async function renameProject(workspace: string, project: unknown, title: 
   const id = checkName("project", project);
   const name = checkTitle(title);
   if (!existsSync(projectDir(workspace, id))) throw new WorkspaceError(404, `No project "${id}".`);
-  const meta = await readProjectJson(workspace, id);
-  await Bun.write(projectFile(workspace, id), JSON.stringify({ ...meta, name }, null, 2) + "\n");
+  await updateProjectMeta(workspace, id, (meta) => ({ ...meta, name }));
   return { paths: [projectFile(workspace, id)] };
 }
 
@@ -110,5 +100,6 @@ export async function renameDesign(workspace: string, project: unknown, from: un
   await rename(src, dst);
 
   await renameInChat(workspace, p, a, b);
-  return { paths: [src, dst, chatFile(workspace, p)] };
+  await renameLayout(workspace, p, a, b);
+  return { paths: [src, dst, chatFile(workspace, p), projectFile(workspace, p)] };
 }

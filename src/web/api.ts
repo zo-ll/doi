@@ -37,7 +37,7 @@ export function chatUrl(project: string, design: string): string {
 }
 
 /** Sends JSON. Returns the parsed answer, or throws with the server's error message. */
-export async function sendJSON<T>(method: "POST" | "PATCH" | "DELETE", url: string, body?: unknown): Promise<T> {
+export async function sendJSON<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", url: string, body?: unknown): Promise<T> {
   const res = await fetch(url, {
     method,
     ...(body === undefined ? {} : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),

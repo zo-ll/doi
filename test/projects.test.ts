@@ -84,7 +84,7 @@ describe("projects API", () => {
     expect((await readChat(deps.workspace, "shop", "start")).map((e) => e.turn)).toEqual(["t1"]);
     expect((await readChat(deps.workspace, "shop", "about")).map((e) => e.turn)).toEqual(["t2"]);
     expect(commits.at(-1)).toEqual({
-      paths: ["projects/shop/designs/home", "projects/shop/designs/start", "projects/shop/chat.jsonl"],
+      paths: ["projects/shop/designs/home", "projects/shop/designs/start", "projects/shop/chat.jsonl", "projects/shop/project.json"],
       message: "Rename design home to start",
     });
 
