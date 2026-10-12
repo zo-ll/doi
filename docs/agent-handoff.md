@@ -56,7 +56,8 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 
 | Path | Contents |
 |---|---|
-| `src/server/index.ts` | `Bun.serve` routes: UI, `/api/*`, design files with the bridge script injected |
+| `src/server/index.ts`, `src/server/app.ts` | `index.ts` loads the config and calls `startServer(config, { port?, development? })` (`app.ts`): workspace, git, watcher and `Bun.serve` on 127.0.0.1 with all routes; `port: 0` in tests. Returns `{ server, stop }` |
+| `src/server/security.ts` | `checkRequest()` runs before every route (through `guardRoutes()`) and in `fetch`: the Host must be `127.0.0.1:<port>` or `localhost:<port>` (DNS rebinding); a request that changes data must have no `Origin` or the app's own, and a body must be `application/json` (no cross-site or sandboxed-page requests). `PAGE_CSP` and `nosniff` on every design, variant and version file |
 | `src/config.ts` | `config.toml` loading, provider ids, `keyEnvFor()` |
 | `src/workspace/paths.ts` | Safe design paths, `listProjects()`, sample workspace |
 | `src/frame/bridge.js` | Script in each design iframe. Sends `doi:ready`, `doi:select` (Shift-click = parent), `doi:clear` (Escape), and `doi:rects` (selected and hover boxes, on each animation frame while one is shown, only when they changed). Gets `doi:track { oid }` |
@@ -106,7 +107,7 @@ Done and closed: #1 CI, #13 app shell, #74 credentials and status, #60 Claude Co
 
 M1 is complete. The user chose to start M2 before the M1 gate (one real design), so the gate is still open.
 
-M2 done: #14 data-oid post-processing, #15 selection, #16 comments, #17 targeted edits, #18 canvas, #19 variants, #20 version history.
+M2 is complete: #14 data-oid post-processing, #15 selection, #16 comments, #17 targeted edits, #18 canvas, #19 variants, #20 version history, #41 sandbox hardening.
 
 Open only for a manual run with a real key (the user must set the key; do not read pi's credentials):
 - #2 Anthropic: `ANTHROPIC_API_KEY=... bun scripts/try-provider.ts anthropic:claude-haiku-5-5`
@@ -115,7 +116,7 @@ Open only for a manual run with a real key (the user must set the key; do not re
 
 Next, in this order (M2):
 
-1. #41 sandbox hardening (the last M2 issue).
+1. M3 (design systems): look at the M3 milestone issues on GitHub. Ask the user before M3 starts; the M1 gate (one real design) is still open.
 2. Still open for the user: the M1 gate (one real design) and #2, #3, #72 (real API keys).
 
 After M1: M2 (precision), M3 (design systems), M4 (handoff), M5 (breadth). #75 (Sign in with ChatGPT) waits for a client ID from OpenAI.
@@ -131,6 +132,7 @@ After M1: M2 (precision), M3 (design systems), M4 (handoff), M5 (breadth). #75 (
 - The chat panel is keyed by the design in `App.tsx`. A design switch unmounts it and aborts its run, so no message of the old design can reach the new one.
 - A stopped CLI-backend turn can leave changed files, but it is stored with `files: []` and is not in the history.
 - Answers show Markdown as plain text.
+- Design pages: `PAGE_CSP` allows the page's own files from the doi server, inline scripts and styles, Google Fonts (`fonts.googleapis.com`, `fonts.gstatic.com`), and `data:`/`blob:` images and media. `connect-src`, `frame-src`, `worker-src`, `object-src`, `form-action` and `base-uri` are `'none'`: a page cannot fetch, not even from the doi server. A design that needs another font host or images from the web is blocked; extend `PAGE_CSP` on purpose, not with a wildcard. Checked in Chromium with a hostile page (fetch to the API, fetch and image from other sites, a form post: all blocked).
 - Version history: git does not know the model, so each turn and each variant pick appends `{"role":"commit", turn, design, sha}` to `chat.jsonl` after its commit (`readChat` skips it). This line is written after the commit, so `chat.jsonl` stays changed until the next commit takes it along. Commits from before this change show no model. A design that was renamed shows its history from the rename on. A restore is a new commit "Restore <sha7>: <message>", never a reset.
 - Variants: one open set per design. While it is open, a turn or a new set on the design gets 409 (the composer says why). A pick replaces the design's page files (comments stay). All variants stay in the history through the "Variants: …" commit. A model name for a variant must not start with "-" (it goes to a CLI as an argument). Variants take no images and no comments yet. A design rename moves its variants.
 - Canvas: the world element holds the frames at real size; the camera is its CSS transform. Wheel pans, Ctrl/⌘ + wheel or a pinch zooms at the pointer; drag on the background, middle button or Space + drag pans; `=`/`-`/`0`/Shift+1/arrows. Over a frame, a plain wheel scrolls the page; the bridge forwards only a pinch (`doi:wheel`) and the canvas keys (`doi:key`). A layout change makes no commit; the next commit of `project.json` (a rename) takes it along. The camera itself is not stored; a design opens fitted.
