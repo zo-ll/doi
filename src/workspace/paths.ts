@@ -28,6 +28,8 @@ export interface ProjectSummary {
   id: string;
   name: string;
   designs: string[];
+  /** The selected design system, or null. */
+  designSystem: string | null;
 }
 
 async function subdirs(dir: string): Promise<string[]> {
@@ -45,8 +47,13 @@ export async function listProjects(workspace: string): Promise<ProjectSummary[]>
   for (const id of await subdirs(join(workspace, "projects"))) {
     const meta = Bun.file(join(workspace, "projects", id, "project.json"));
     let name = id;
+    let designSystem: string | null = null;
     try {
-      if (await meta.exists()) name = String((await meta.json()).name ?? id);
+      if (await meta.exists()) {
+        const data = await meta.json();
+        name = String(data.name ?? id);
+        if (typeof data.designSystem === "string" && NAME.test(data.designSystem)) designSystem = data.designSystem;
+      }
     } catch {
       // A hand-edited project.json with bad JSON must not hide the other projects.
     }
@@ -54,7 +61,7 @@ export async function listProjects(workspace: string): Promise<ProjectSummary[]>
     for (const design of await subdirs(join(workspace, "projects", id, "designs"))) {
       if (await Bun.file(join(designDir(workspace, id, design), "index.html")).exists()) designs.push(design);
     }
-    projects.push({ id, name, designs });
+    projects.push({ id, name, designs, designSystem });
   }
   return projects;
 }

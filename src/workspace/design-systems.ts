@@ -159,3 +159,71 @@ export async function activeDesignSystem(workspace: string, project: string): Pr
   const name = await projectDesignSystemName(workspace, project);
   return name ? loadDesignSystem(workspace, name) : null;
 }
+
+/** One custom property of tokens.css. */
+export interface Token {
+  name: string;
+  /** As written. */
+  value: string;
+  /** With var(--x) references to other tokens replaced, for the preview. */
+  resolved: string;
+  group: "color" | "type" | "space" | "radius" | "shadow" | "other";
+}
+
+const COLOR_VALUE = /^(#[0-9a-f]{3,8}|rgba?\(|hsla?\(|oklch\(|oklab\(|color-mix\(|transparent$|currentcolor$|white$|black$)/i;
+
+/** The custom properties of tokens.css, in order. Comments are ignored; the first value of a name wins. */
+export function parseTokens(css: string): Token[] {
+  const text = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const raw = new Map<string, string>();
+  for (const m of text.matchAll(/(--[A-Za-z0-9_-]+)\s*:\s*([^;{}]+?)\s*(?=;|})/g)) {
+    if (!raw.has(m[1]!)) raw.set(m[1]!, m[2]!.trim());
+  }
+  const resolve = (value: string, depth = 0): string =>
+    depth > 8
+      ? value
+      : value.replace(/var\(\s*(--[A-Za-z0-9_-]+)\s*(?:,\s*([^)]*))?\)/g, (all, name: string, fallback?: string) => {
+          const v = raw.get(name) ?? fallback?.trim();
+          return v === undefined ? all : resolve(v, depth + 1);
+        });
+  return [...raw].map(([name, value]) => {
+    const resolved = resolve(value);
+    const n = name.toLowerCase();
+    const group: Token["group"] = /shadow/.test(n)
+      ? "shadow"
+      : /radius|rounded/.test(n)
+        ? "radius"
+        : /color|^--(bg|fg|surface|text-color|border|accent|primary|secondary|danger|success|warning)/.test(n) || COLOR_VALUE.test(resolved)
+          ? "color"
+          : /font|text|leading|line-height|weight|tracking|letter/.test(n)
+            ? "type"
+            : /space|spacing|gap|gutter|size-|^--s-/.test(n)
+              ? "space"
+              : "other";
+    return { name, value, resolved, group };
+  });
+}
+
+/** A full page for the components, with the design system's stylesheets. */
+export function previewPage(ds: DesignSystem): string {
+  const links = [
+    ...(ds.tokens !== null ? [designSystemUrl(ds.name, "tokens.css")] : []),
+    ...(ds.componentStyles !== null ? [designSystemUrl(ds.name, "components.css")] : []),
+  ].map((href) => `  <link rel="stylesheet" href="${href}">`);
+  // The <style> blocks are already in components.css; the markup alone goes in the body.
+  const body = (ds.components ?? "").replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "").trim();
+  return [
+    "<!doctype html>",
+    '<html lang="en">',
+    "<head>",
+    '  <meta charset="utf-8">',
+    ...links,
+    "  <style>body { margin: 0; padding: 24px; display: grid; gap: 24px; align-content: start; font-family: var(--font-sans, system-ui, sans-serif); }</style>",
+    "</head>",
+    "<body>",
+    body || "<p>This design system has no components.html.</p>",
+    "</body>",
+    "</html>",
+    "",
+  ].join("\n");
+}

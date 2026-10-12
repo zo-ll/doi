@@ -5,12 +5,12 @@ import { getProvider } from "../providers/registry.ts";
 import { providerStatus } from "../providers/status.ts";
 import { designDir, ensureWorkspace, fileIn, listProjects } from "../workspace/paths.ts";
 import { variantDir } from "../workspace/variants.ts";
-import { designSystemDir, listDesignSystems, loadDesignSystem } from "../workspace/design-systems.ts";
+import { designSystemDir, listDesignSystems, loadDesignSystem, previewPage } from "../workspace/design-systems.ts";
 import { designEvents, watchDesigns } from "../workspace/watch.ts";
 import { commitPaths, commitTurn, designFileAt, designVersion, ensureRepo, isSha } from "../workspace/git.ts";
 import { uploadFile } from "../workspace/uploads.ts";
 import { deleteCommentRoute, getComments, patchComment, postComment } from "./comments.ts";
-import { importFromRepo, importFromScreenshots } from "./design-systems.ts";
+import { getDesignSystem, importFromRepo, importFromScreenshots, putProjectDesignSystem } from "./design-systems.ts";
 import { getHistory, restoreVersion } from "./history.ts";
 import { getLayout, putLayout } from "./layout.ts";
 import { createVariantHandlers } from "./variants.ts";
@@ -147,6 +147,19 @@ export async function startServer(config: Config, options: { port?: number; deve
   function serveDesignSystem(url: URL): Promise<Response> | Response {
     const [, , name, ...rest] = url.pathname.split("/");
     if (!name) return new Response("Not found", { status: 404 });
+    // The components on one page with the design system's stylesheets, for the UI.
+    if (rest.join("/") === "preview.html") {
+      return (async () => {
+        let ds;
+        try {
+          ds = await loadDesignSystem(config.workspace, name);
+        } catch {
+          return new Response("Bad request", { status: 400 });
+        }
+        if (!ds) return new Response("Not found", { status: 404 });
+        return new Response(previewPage(ds), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", ...PAGE_HEADERS } });
+      })();
+    }
     // Without a components.css file, the <style> blocks of components.html are the components' CSS.
     if (rest.join("/") === "components.css") {
       return (async () => {
@@ -177,13 +190,15 @@ export async function startServer(config: Config, options: { port?: number; deve
       "/": index,
       "/api/health": () => Response.json({ ok: true }),
       "/api/config": () =>
-        Response.json({ models: config.models, harness: config.harness, workspace: config.workspace }),
+        Response.json({ models: config.models, harness: config.harness, workspace: config.workspace, editorUrl: config.editorUrl }),
       "/api/harnesses": async () => Response.json(await detectHarnesses()),
       "/api/providers": async () => Response.json(await providerStatus(config)),
       "/api/events": (req, srv) => designEvents(watcher, req, srv),
       "/api/design-systems": async () => Response.json(await listDesignSystems(config.workspace)),
       "/api/design-systems/import": { POST: (req, srv) => importFromRepo(importDeps, req, srv) },
       "/api/design-systems/import-screenshots": { POST: (req, srv) => importFromScreenshots(importDeps, req, srv) },
+      "/api/design-systems/:name": (req) => getDesignSystem(config.workspace, req.params.name),
+      "/api/projects/:project/design-system": { PUT: (req) => putProjectDesignSystem(importDeps, req, req.params) },
       "/api/projects": {
         GET: async () => Response.json(await listProjects(config.workspace)),
         POST: (req) => postProject(projectDeps, req),

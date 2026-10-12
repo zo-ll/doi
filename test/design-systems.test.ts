@@ -9,8 +9,11 @@ import {
   formatDesignSystem,
   listDesignSystems,
   loadDesignSystem,
+  parseTokens,
+  previewPage,
   stylesOf,
 } from "../src/workspace/design-systems.ts";
+import { getDesignSystem, putProjectDesignSystem } from "../src/server/design-systems.ts";
 import { projectFile } from "../src/workspace/project-file.ts";
 
 let ws: string;
@@ -124,4 +127,80 @@ test("component styles come from components.css, or else from the <style> blocks
   const text = formatDesignSystem((await loadDesignSystem(ws, "brand"))!);
   expect(text).toContain('<link rel="stylesheet" href="/ds/brand/tokens.css">\n<link rel="stylesheet" href="/ds/brand/components.css">');
   expect(text).toContain("do not style them again in styles.css");
+});
+
+describe("design system view", () => {
+  test("tokens are grouped, and var() references are resolved for the preview", () => {
+    const tokens = parseTokens(`
+      /* --commented: 1px; */
+      :root {
+        --color-primary: #6b21a8;
+        --accent: var(--color-primary);
+        --surface: rgb(255 255 255);
+        --font-sans: Georgia, serif;
+        --text-lg: 18px;
+        --space-4: 16px;
+        --radius-md: 10px;
+        --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.1);
+        --z-modal: 50;
+        --missing: var(--nope, 4px);
+        --color-primary: #000;
+      }
+      @media (prefers-color-scheme: dark) { :root { --surface: #111; } }`);
+    expect(tokens.map((t) => [t.name, t.group, t.resolved])).toEqual([
+      ["--color-primary", "color", "#6b21a8"],
+      ["--accent", "color", "#6b21a8"],
+      ["--surface", "color", "rgb(255 255 255)"],
+      ["--font-sans", "type", "Georgia, serif"],
+      ["--text-lg", "type", "18px"],
+      ["--space-4", "space", "16px"],
+      ["--radius-md", "radius", "10px"],
+      ["--shadow-sm", "shadow", "0 1px 2px rgb(0 0 0 / 0.1)"],
+      ["--z-modal", "other", "50"],
+      ["--missing", "other", "4px"],
+    ]);
+    expect(tokens[1]!.value).toBe("var(--color-primary)");
+    // A loop does not hang.
+    expect(parseTokens(":root { --a: var(--b); --b: var(--a); }")).toHaveLength(2);
+  });
+
+  test("the preview page links the stylesheets and shows the markup without <style>", async () => {
+    await Bun.write(join(designSystemDir(ws, "brand"), "components.html"), '<button class="b">Go</button>\n<style>.b{}</style>');
+    const html = previewPage((await loadDesignSystem(ws, "brand"))!);
+    expect(html).toContain('<link rel="stylesheet" href="/ds/brand/tokens.css">');
+    expect(html).toContain('<link rel="stylesheet" href="/ds/brand/components.css">');
+    expect(html).toContain('<body>\n<button class="b">Go</button>\n</body>');
+    expect(html).not.toContain(".b{}");
+    expect(previewPage((await loadDesignSystem(ws, "plain"))!)).toContain("This design system has no components.html.");
+  });
+
+  test("GET gives tokens, files and rules; PUT selects a design system for a project and commits", async () => {
+    const view = await (await getDesignSystem(ws, "brand")).json();
+    expect(view).toMatchObject({
+      name: "brand",
+      dir: designSystemDir(ws, "brand"),
+      files: ["components.html", "fonts/Brand-Regular.woff2", "rules.md", "screenshots/home.png", "tokens.css"],
+      fonts: ["Brand-Regular.woff2"],
+      rules: "- One primary button per screen.\n",
+      hasComponents: true,
+    });
+    expect(view.tokens.map((t: { name: string }) => t.name)).toEqual(["--color-primary", "--space-2"]);
+    expect((await getDesignSystem(ws, "nope")).status).toBe(404);
+    expect((await getDesignSystem(ws, "../x")).status).toBe(400);
+
+    await Bun.write(projectFile(ws, "p"), JSON.stringify({ name: "P", designSystem: null }));
+    const commits: string[] = [];
+    const deps = { config: { workspace: ws } as any, commit: async (_: string[], m: string) => (commits.push(m), "c") };
+    const put = (body: unknown, project = "p") =>
+      putProjectDesignSystem(deps, new Request("http://x/", { method: "PUT", body: JSON.stringify(body) }), { project });
+    expect(await (await put({ name: "brand" })).json()).toEqual({ name: "brand", commit: "c" });
+    expect((await activeDesignSystem(ws, "p"))?.name).toBe("brand");
+    expect((await Bun.file(projectFile(ws, "p")).json()).name).toBe("P");
+    expect(await (await put({ name: null })).json()).toEqual({ name: null, commit: "c" });
+    expect(await activeDesignSystem(ws, "p")).toBeNull();
+    expect(commits).toEqual(["Use design system brand", "Use no design system"]);
+    expect((await put({ name: "nope" })).status).toBe(404);
+    expect((await put({ name: "Bad Name" })).status).toBe(400);
+    expect((await put({ name: "brand" }, "none")).status).toBe(404);
+  });
 });
