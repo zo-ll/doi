@@ -6,10 +6,10 @@ import { join, relative } from "node:path";
 import { parseConfig, type Config } from "../src/config.ts";
 import { formatSources, scanRepo, SCAN_LIMITS } from "../src/generation/repo-scan.ts";
 import type { GenerateRequest, Provider, ProviderCapabilities } from "../src/providers/types.ts";
-import { importFromRepo, type ImportStreamEvent } from "../src/server/design-systems.ts";
+import { importFromRepo, importFromScreenshots, type ImportStreamEvent } from "../src/server/design-systems.ts";
 import { DesignLocks } from "../src/server/locks.ts";
 
-const caps: ProviderCapabilities = { vision: true, toolUse: true, promptCache: "explicit", maxContextTokens: 200_000, editsFiles: false };
+let caps: ProviderCapabilities;
 
 let repo: string;
 let config: Config;
@@ -49,6 +49,7 @@ beforeEach(async () => {
   await mkdir(join(config.workspace, "design-systems"), { recursive: true });
   calls = [];
   commits = [];
+  caps = { vision: true, toolUse: true, promptCache: "explicit", maxContextTokens: 200_000, editsFiles: false };
   locks = new DesignLocks();
   behave = async function* () {
     yield { type: "text", delta: "Found a rose brand color." };
@@ -180,6 +181,58 @@ describe("import from a repo", () => {
     }
     locks.tryLock("ds:rose");
     expect((await post({ name: "rose", repo })).status).toBe(409);
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe("import from screenshots", () => {
+  const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
+  const shot = (mediaType = "image/png", data = Buffer.from(png).toString("base64")) => ({ mediaType, data });
+  const send = (body: unknown) =>
+    importFromScreenshots(deps() as any, new Request("http://x/", { method: "POST", body: JSON.stringify(body) }));
+
+  test("sends the screenshots and notes to the extract model and keeps the screenshots", async () => {
+    const evs = await events(await send({ name: "shop", images: [shot(), shot("image/jpeg")], notes: "The brand font is Inter." }));
+    expect(evs.at(-1)).toEqual({
+      type: "imported",
+      name: "shop",
+      files: ["tokens.css", "components.css", "components.html", "rules.md", "screenshots/screenshot-1.png", "screenshots/screenshot-2.jpg"],
+      commit: "c".repeat(40),
+    });
+    const content = calls[0]!.messages[0]!.content;
+    expect(content.map((p) => p.type)).toEqual(["text", "image", "image"]);
+    expect((content[0] as { text: string }).text).toContain("these 2 screenshots of one product");
+    expect((content[0] as { text: string }).text).toEndWith("Notes from the user:\nThe brand font is Inter.");
+    expect(content[1]).toEqual({ type: "image", mediaType: "image/png", data: png });
+    const dir = join(config.workspace, "design-systems", "shop");
+    expect([...new Uint8Array(await Bun.file(join(dir, "screenshots", "screenshot-1.png")).arrayBuffer())]).toEqual([...png]);
+    expect(commits).toEqual([{ paths: ["design-systems/shop"], message: "Import design system shop from 2 screenshots" }]);
+  });
+
+  test("a failed result keeps no screenshots", async () => {
+    behave = async function* () {
+      yield { type: "done" };
+    };
+    const evs = await events(await send({ name: "shop", images: [shot()] }));
+    expect(evs.at(-1)).toMatchObject({ type: "error", kind: "result" });
+    expect(await readdir(join(config.workspace, "design-systems"))).toEqual([]);
+  });
+
+  test("no screenshots, bad screenshots, long notes and a model without vision are refused", async () => {
+    const cases: [unknown, string][] = [
+      [{ name: "shop", images: [] }, "Add at least one screenshot."],
+      [{ name: "shop" }, "Add at least one screenshot."],
+      [{ name: "shop", images: [shot("image/svg+xml")] }, "Images must be image/png, image/jpeg, image/webp, image/gif."],
+      [{ name: "shop", images: Array.from({ length: 6 }, () => shot()) }, "Send at most 5 images in one message."],
+      [{ name: "shop", images: [shot()], notes: "x".repeat(2001) }, "notes must be text of at most 2000 characters."],
+    ];
+    for (const [body, error] of cases) {
+      const res = await send(body);
+      expect([res.status, (await res.json()).error]).toEqual([400, error]);
+    }
+    caps = { ...caps, vision: false };
+    const res = await send({ name: "shop", images: [shot()] });
+    expect((await res.json()).error).toBe("anthropic:small cannot read images. Choose an extract model with vision in config.toml.");
     expect(calls).toHaveLength(0);
   });
 });

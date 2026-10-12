@@ -10,7 +10,7 @@ import { designEvents, watchDesigns } from "../workspace/watch.ts";
 import { commitPaths, commitTurn, designFileAt, designVersion, ensureRepo, isSha } from "../workspace/git.ts";
 import { uploadFile } from "../workspace/uploads.ts";
 import { deleteCommentRoute, getComments, patchComment, postComment } from "./comments.ts";
-import { importFromRepo } from "./design-systems.ts";
+import { importFromRepo, importFromScreenshots } from "./design-systems.ts";
 import { getHistory, restoreVersion } from "./history.ts";
 import { getLayout, putLayout } from "./layout.ts";
 import { createVariantHandlers } from "./variants.ts";
@@ -183,6 +183,7 @@ export async function startServer(config: Config, options: { port?: number; deve
       "/api/events": (req, srv) => designEvents(watcher, req, srv),
       "/api/design-systems": async () => Response.json(await listDesignSystems(config.workspace)),
       "/api/design-systems/import": { POST: (req, srv) => importFromRepo(importDeps, req, srv) },
+      "/api/design-systems/import-screenshots": { POST: (req, srv) => importFromScreenshots(importDeps, req, srv) },
       "/api/projects": {
         GET: async () => Response.json(await listProjects(config.workspace)),
         POST: (req) => postProject(projectDeps, req),

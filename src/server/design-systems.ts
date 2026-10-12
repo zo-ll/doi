@@ -8,6 +8,8 @@ import { EXTRACT_PROMPT } from "../generation/prompts.ts";
 import { formatSources, scanRepo } from "../generation/repo-scan.ts";
 import type { ContentPart, Provider } from "../providers/types.ts";
 import { designSystemDir, designSystemsDir } from "../workspace/design-systems.ts";
+import { IMAGE_TYPES } from "../workspace/image-limits.ts";
+import { parseImages } from "./image-body.ts";
 import type { DesignLocks } from "./locks.ts";
 
 export interface ImportDeps {
@@ -46,6 +48,8 @@ function streamExtraction(
   first: ImportStreamEvent | null,
   unlock: () => void,
   server?: Pick<Bun.Server<unknown>, "timeout">,
+  /** Files to keep with the result, for example the screenshots. Written after the model ran. */
+  keep: { path: string; data: Uint8Array }[] = [],
 ): Response {
   const workspace = deps.config.workspace;
   const ref = deps.config.models.extract;
@@ -76,7 +80,7 @@ function streamExtraction(
         for (const entry of await readdir(staging)) {
           if (!(IMPORT_FILES as readonly string[]).includes(entry)) await rm(join(staging, entry), { recursive: true, force: true });
         }
-        const files = IMPORT_FILES.filter((f) => existsSync(join(staging, f)));
+        const files: string[] = IMPORT_FILES.filter((f) => existsSync(join(staging, f)));
         if (!files.includes("tokens.css")) {
           send({ type: "error", kind: "result", message: "The model wrote no tokens.css, so no design system was made. Try again or choose another extract model." });
           return;
@@ -85,6 +89,10 @@ function streamExtraction(
         if (existsSync(target)) {
           send({ type: "error", kind: "result", message: `A design system "${name}" was made meanwhile. Nothing was changed.` });
           return;
+        }
+        for (const k of keep) {
+          await Bun.write(join(staging, k.path), k.data);
+          files.push(k.path);
         }
         await rename(staging, target);
         try {
@@ -183,6 +191,51 @@ export async function importFromRepo(deps: ImportDeps, req: Request, server?: Pi
     { type: "sources", files: scan.sources.map((s) => s.path), seen: scan.seen },
     unlock,
     server,
+  );
+}
+
+const MAX_NOTES = 2000;
+
+/**
+ * POST /api/design-systems/import-screenshots { name, images, notes? }: reads colors, type,
+ * spacing and components from screenshots with the extract model (it needs vision). The
+ * screenshots are kept in the design system's screenshots/ folder.
+ */
+export async function importFromScreenshots(deps: ImportDeps, req: Request, server?: Pick<Bun.Server<unknown>, "timeout">): Promise<Response> {
+  let body: Record<string, unknown>;
+  try {
+    body = (await req.json()) as Record<string, unknown>;
+    if (typeof body !== "object" || body === null || Array.isArray(body)) throw new Error();
+  } catch {
+    return fail("The body must be a JSON object.");
+  }
+  const { name, notes = "" } = body;
+  const images = parseImages(body.images);
+  if (typeof images === "string") return fail(images);
+  if (!images.length) return fail("Add at least one screenshot.");
+  if (typeof notes !== "string" || notes.length > MAX_NOTES) return fail(`notes must be text of at most ${MAX_NOTES} characters.`);
+  const provider = extractProvider(deps, true);
+  if (provider instanceof Response) return provider;
+  const unlock = claim(deps, name);
+  if (unlock instanceof Response) return unlock;
+
+  const text =
+    `Make a design system from these ${images.length === 1 ? "screenshot" : `${images.length} screenshots`} of one product. ` +
+    "Read colors, type, spacing, radius, shadows and the look of the components from them. " +
+    "A screenshot does not show exact values: choose the nearest round values, and say in tokens.css which ones you estimated." +
+    (notes.trim() ? `\n\nNotes from the user:\n${notes.trim()}` : "");
+  const keep = images.map((img, i) => ({ path: `screenshots/screenshot-${i + 1}.${IMAGE_TYPES[img.mediaType]}`, data: img.data }));
+  return streamExtraction(
+    deps,
+    req,
+    provider,
+    name as string,
+    [{ type: "text", text }, ...images.map((img) => ({ type: "image" as const, mediaType: img.mediaType, data: img.data }))],
+    `Import design system ${name} from ${images.length === 1 ? "a screenshot" : `${images.length} screenshots`}`,
+    null,
+    unlock,
+    server,
+    keep,
   );
 }
 
