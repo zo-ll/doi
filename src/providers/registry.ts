@@ -2,6 +2,7 @@ import type { Config, ProviderId } from "../config.ts";
 import type { Provider } from "./types.ts";
 import { createAnthropic } from "./anthropic.ts";
 import { createClaudeCode } from "./claude-code.ts";
+import { createCodex } from "./codex.ts";
 import { createOpenAI } from "./openai.ts";
 import { createOpenCodeGo } from "./opencode-go.ts";
 
@@ -10,7 +11,8 @@ const factories: Partial<Record<ProviderId, (config: Config) => Provider>> = {
   openai: createOpenAI,
   "opencode-go": (config) => createOpenCodeGo(config),
   "claude-code": (config) => createClaudeCode(config),
-  // #73 codex; M5: google, openrouter, ollama
+  codex: (config) => createCodex(config),
+  // M5: google, openrouter, ollama
 };
 
 export function isImplemented(id: ProviderId): boolean {
