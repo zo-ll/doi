@@ -18,11 +18,15 @@ export interface DesignWatcher {
 
 const NAME = /^[a-z0-9][a-z0-9-]*$/;
 
-/** "p/designs/d/styles.css" → { project: "p", design: "d" }. Other paths are not design files. */
+/**
+ * "p/designs/d/styles.css" → { project: "p", design: "d" }. Other paths are not design files.
+ * Hidden files (".comments.json") are not part of the page, so they do not reload it.
+ */
 export function designOf(relativePath: string): DesignChange | null {
   const parts = relativePath.split(/[\\/]/);
   const [project, designs, design] = parts;
   if (parts.length < 4 || designs !== "designs" || !NAME.test(project ?? "") || !NAME.test(design ?? "")) return null;
+  if (parts.slice(3).some((part) => part.startsWith("."))) return null;
   return { project: project!, design: design! };
 }
 

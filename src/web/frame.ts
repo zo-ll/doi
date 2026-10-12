@@ -12,10 +12,18 @@ export type FrameMessage =
   | { type: "doi:ready" }
   | { type: "doi:select"; oid: string }
   | { type: "doi:clear" }
-  | { type: "doi:rects"; selected: Rect | null; hover: { oid: string; rect: Rect } | null };
+  | {
+      type: "doi:rects";
+      selected: Rect | null;
+      hover: { oid: string; rect: Rect } | null;
+      /** Boxes of the elements with open comments that this frame shows. */
+      pins: Record<string, Rect>;
+    };
 
 /** The same form as the server accepts for a turn target. */
 const OID = /^[A-Za-z0-9_-]{1,100}$/;
+
+const MAX_PINS = 500;
 
 const isOid = (v: unknown): v is string => typeof v === "string" && OID.test(v);
 
@@ -46,12 +54,21 @@ export function parseFrameMessage(data: unknown): FrameMessage | null {
       const h = (typeof d.hover === "object" ? d.hover : null) as Record<string, unknown> | null;
       const r = h ? rect(h.rect) : null;
       const hover = h && isOid(h.oid) && r ? { oid: h.oid, rect: r } : null;
-      return { type: "doi:rects", selected, hover };
+      // Bad pins are left out one by one. An old bridge without pins sends none.
+      // No prototype: an element may have the id "__proto__".
+      const pins: Record<string, Rect> = Object.create(null);
+      if (typeof d.pins === "object" && d.pins !== null) {
+        for (const [oid, value] of Object.entries(d.pins).slice(0, MAX_PINS)) {
+          const pr = rect(value);
+          if (isOid(oid) && pr) pins[oid] = pr;
+        }
+      }
+      return { type: "doi:rects", selected, hover, pins };
     }
     default:
       return null;
   }
 }
 
-/** The message that tells a frame which element is selected. */
-export const trackMessage = (oid: string | null) => ({ type: "doi:track", oid }) as const;
+/** The message that tells a frame which element is selected and which elements have pins. */
+export const trackMessage = (oid: string | null, pins: string[] = []) => ({ type: "doi:track", oid, pins }) as const;

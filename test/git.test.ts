@@ -3,7 +3,7 @@ import { $ } from "bun";
 import { mkdir, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { commitMessage, commitPaths, commitTurn, ensureRepo } from "../src/workspace/git.ts";
+import { commitMessage, commitPaths, commitTurn, designVersion, ensureRepo } from "../src/workspace/git.ts";
 import { rename } from "node:fs/promises";
 import { designDir } from "../src/workspace/paths.ts";
 
@@ -107,5 +107,14 @@ describe("git history", () => {
     expect(commitMessage("  hello  \nworld")).toBe("hello");
     expect(commitMessage("   ")).toBe("Design change");
     expect(commitMessage("x".repeat(100))).toHaveLength(72);
+  });
+
+  test("designVersion is the last commit of the design folder, or null", async () => {
+    const ws = await workspace();
+    expect(await designVersion(ws, "p", "home")).toBeNull();
+    const home = await commitTurn(ws, "p", "home", "home");
+    await commitTurn(ws, "p", "about", "about");
+    // The later commit of "about" is not a version of "home".
+    expect(await designVersion(ws, "p", "home")).toBe(home);
   });
 });

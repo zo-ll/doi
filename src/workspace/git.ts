@@ -61,3 +61,14 @@ export function commitTurn(workspace: string, project: string, design: string, p
     prompt,
   );
 }
+
+/** The last commit that changed the design folder, or null when there is none yet. */
+export function designVersion(workspace: string, project: string, design: string): Promise<string | null> {
+  return serial(async () => {
+    try {
+      return (await git(workspace, ["log", "-1", "--format=%H", "--", designDir(workspace, project, design)])).trim() || null;
+    } catch {
+      return null; // a repo without commits
+    }
+  });
+}

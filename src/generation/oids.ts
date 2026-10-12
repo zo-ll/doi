@@ -228,3 +228,10 @@ export async function fixDesignOids(dir: string, before: DesignFile[], after: De
   for (const f of files) await Bun.write(join(dir, f.path), f.content);
   return files.map((f) => f.path);
 }
+
+/** The data-oids in the HTML files of a design. A comment on an id that is not here is detached. */
+export async function designOids(files: DesignFile[]): Promise<Set<string>> {
+  const html = files.filter((f) => f.content !== null && /\.html?$/i.test(f.path));
+  const nodes = (await Promise.all(html.map((f) => scan(f.path, f.content!)))).flat();
+  return new Set(nodes.flatMap((n) => (n.oid ? [n.oid] : [])));
+}

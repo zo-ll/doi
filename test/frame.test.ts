@@ -12,8 +12,10 @@ describe("frame messages", () => {
       type: "doi:rects",
       selected: r,
       hover: { oid: "a", rect: r },
+      pins: {},
     });
-    expect(parseFrameMessage({ type: "doi:rects", selected: null, hover: null })).toEqual({ type: "doi:rects", selected: null, hover: null });
+    expect(parseFrameMessage({ type: "doi:rects", selected: null, hover: null })).toEqual({ type: "doi:rects", selected: null, hover: null, pins: {} });
+    expect(parseFrameMessage({ type: "doi:rects", selected: null, hover: null, pins: { a: r, b: r } })).toMatchObject({ pins: { a: r, b: r } });
   });
 
   test("a select with an id the server would refuse is dropped", () => {
@@ -30,8 +32,16 @@ describe("frame messages", () => {
       type: "doi:rects",
       selected: r,
       hover: null,
+      pins: {},
     });
     expect(parseFrameMessage({ type: "doi:rects", selected: r, hover: { oid: "a", rect: { x: Infinity } } })).toMatchObject({ hover: null });
+    // A bad pin is left out; the good ones stay.
+    expect(parseFrameMessage({ type: "doi:rects", selected: r, hover: null, pins: { "bad id": r, a: { x: 1 }, b: r } })).toMatchObject({ pins: { b: r } });
+    expect(parseFrameMessage({ type: "doi:rects", selected: r, hover: null, pins: "x" })).toMatchObject({ pins: {} });
+    // structuredClone keeps "__proto__" as an own key, as postMessage does.
+    const m = parseFrameMessage(structuredClone({ type: "doi:rects", selected: null, hover: null, pins: JSON.parse(`{"__proto__": ${JSON.stringify(r)}}`) }));
+    expect(m?.type === "doi:rects" && Object.keys(m.pins)).toEqual(["__proto__"]);
+    expect(m?.type === "doi:rects" && Object.getPrototypeOf(m.pins)).toBeNull();
   });
 
   test("other data is not a frame message", () => {
@@ -41,7 +51,7 @@ describe("frame messages", () => {
   });
 
   test("track names the selected element or null", () => {
-    expect(trackMessage("a")).toEqual({ type: "doi:track", oid: "a" });
-    expect(trackMessage(null)).toEqual({ type: "doi:track", oid: null });
+    expect(trackMessage("a")).toEqual({ type: "doi:track", oid: "a", pins: [] });
+    expect(trackMessage(null, ["b", "c"])).toEqual({ type: "doi:track", oid: null, pins: ["b", "c"] });
   });
 });
