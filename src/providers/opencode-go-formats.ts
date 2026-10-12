@@ -33,14 +33,16 @@ const PREFIXES: [string, WireFormat][] = [
 ];
 
 export function wireFormat(model: string, overrides: Record<string, string> = {}): WireFormat {
-  const override = overrides[model];
-  if (override !== undefined) {
+  // Object.hasOwn: a model id such as "constructor" must not read Object.prototype.
+  if (Object.hasOwn(overrides, model)) {
+    const override = overrides[model]!;
     if (!WIRE_FORMATS.includes(override as WireFormat)) {
       throw new Error(`Unknown OpenCode Go format "${override}" for ${model}. Use chat, messages or responses.`);
     }
     return override as WireFormat;
   }
-  return KNOWN[model] ?? PREFIXES.find(([prefix]) => model.startsWith(prefix))?.[1] ?? "chat";
+  if (Object.hasOwn(KNOWN, model)) return KNOWN[model]!;
+  return PREFIXES.find(([prefix]) => model.startsWith(prefix))?.[1] ?? "chat";
 }
 
 /**

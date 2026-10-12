@@ -63,6 +63,13 @@ describe("wire formats", () => {
     expect(() => wireFormat("glm-5.3", { "glm-5.3": "grpc" })).toThrow('Unknown OpenCode Go format "grpc"');
   });
 
+  test("model ids that name Object.prototype properties are plain models", () => {
+    for (const id of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+      expect(wireFormat(id)).toBe("chat");
+      expect(wireFormat(id, {})).toBe("chat");
+    }
+  });
+
   test("vision", () => {
     expect(supportsVision("claude-haiku-5-5", "messages")).toBe(true);
     expect(supportsVision("glm-5.3", "chat")).toBe(false);
