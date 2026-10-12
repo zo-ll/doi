@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-10-12, after PR #83 (#6 edit applier). Tests: 97 pass. `bun check`: no errors.
+Last update: 2026-10-12, after PR #84 (#7 generation endpoint). Tests: 103 pass. `bun check`: no errors.
 
 ## 1. What doi is
 
@@ -75,6 +75,7 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 | `src/generation/prompts.ts`, `prompts/system-v0.md` | System prompt as a versioned file (`SYSTEM_PROMPT`). A new version is a new file |
 | `src/generation/context.ts` | `assembleContext()`: request order, history trimming, size check; `readDesignFiles()` |
 | `src/generation/apply.ts` | `applyChanges()` (all or none, rollback) and `runTurn()` (retry once, then full rewrite; skips `editsFiles` providers) |
+| `src/server/turns.ts` | `POST .../turns`: one turn per design (409 while one runs), SSE events, abort on disconnect. `target` set → `models.edit`, else `models.generate` |
 | `test/fixtures/prompts.md` | Five sample prompts, the acceptance checks and the last results |
 | `scripts/try-provider.ts` | Manual check of a provider with real credentials |
 
@@ -86,7 +87,7 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 
 ## 6. State and next steps
 
-Done and closed: #1 CI, #13 app shell, #74 credentials and status, #60 Claude Code backend, #73 Codex backend, #4 system prompt v0, #5 context assembler, #6 edit applier.
+Done and closed: #1 CI, #13 app shell, #74 credentials and status, #60 Claude Code backend, #73 Codex backend, #4 system prompt v0, #5 context assembler, #6 edit applier, #7 generation endpoint.
 
 Open only for a manual run with a real key (the user must set the key; do not read pi's credentials):
 - #2 Anthropic: `ANTHROPIC_API_KEY=... bun scripts/try-provider.ts anthropic:claude-haiku-5-5`
@@ -95,9 +96,8 @@ Open only for a manual run with a real key (the user must set the key; do not re
 
 Next, in this order (M1):
 
-1. **#7 Generation endpoint.** `POST /api/projects/:project/designs/:design/turns`. The chat panel already posts there and handles 404, abort and errors. Pass `cwd` for CLI backends. Wire it like this: `readDesignFiles()` → `assembleContext()` (with `capabilitiesFor()`) → `runTurn()`, and stream its `TurnEvent`s. Map `ContextTooLargeError` and `ApplyError` to clear messages.
-2. **#8 Chat history.** Also fix the task that was added from a review: keep messages for each design.
-3. **#10 Live reload**, **#11 Git history**, **#12 Projects**, **#9 Image input.**
+1. **#8 Chat history.** The endpoint streams SSE events: `text`, `edit`, `write`, `usage`, `retry`, `applied`, `done`, and `error` with `kind` (`context`, `apply`, `provider`). The chat panel must read this stream (it now ignores the body). Pass the history into `assembleContext()` in `src/server/turns.ts` (it sends `history: []` now). Also fix the task that was added from a review: keep messages for each design.
+2. **#10 Live reload**, **#11 Git history**, **#12 Projects**, **#9 Image input.**
 
 After M1: M2 (precision), M3 (design systems), M4 (handoff), M5 (breadth). #75 (Sign in with ChatGPT) waits for a client ID from OpenAI.
 
