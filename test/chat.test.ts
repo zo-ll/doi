@@ -41,7 +41,7 @@ describe("chat store", () => {
     const texts = historyMessages(entries).map((m) => `${m.role}: ${(m.content[0] as { text: string }).text}`);
     expect(texts).toEqual([
       "user: make a page",
-      "assistant: Made it.\n\n(Changed files: styles.css)",
+      "assistant: Made it.",
       'user: Target: data-oid="title". bigger',
       "assistant: Done.",
     ]);

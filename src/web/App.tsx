@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getJSON, type AppConfig, type Harnesses, type Load, type ProjectSummary, type ProviderStatus } from "./api.ts";
 import { Canvas } from "./components/Canvas.tsx";
 import { ChatPanel, type Selection } from "./components/ChatPanel.tsx";
@@ -26,11 +26,21 @@ export function App() {
   const [providers] = useLoad<ProviderStatus[]>("/api/providers");
   const [active, setActive] = useState<Active | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
-  // Bumped after a turn changed files; the canvas reloads its frames. #10 adds a file watcher.
+  // Bumped when the files of the open design change; the canvas reloads its frames.
   const [revision, setRevision] = useState(0);
-  const onChanged = useCallback(() => {
-    setRevision((n) => n + 1);
-    setSelection(null); // the old rect may not match the new layout
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  useEffect(() => {
+    // EventSource connects again by itself after an error.
+    const events = new EventSource("/api/events");
+    events.addEventListener("design-changed", (e) => {
+      const change = JSON.parse((e as MessageEvent<string>).data) as { project: string; design: string };
+      const a = activeRef.current;
+      if (a?.project !== change.project || a.design !== change.design) return;
+      setRevision((n) => n + 1);
+      setSelection(null); // the old rect may not match the new layout
+    });
+    return () => events.close();
   }, []);
 
   // Open the first design when the project list arrives. #12 adds "reopen the last design".
@@ -77,7 +87,6 @@ export function App() {
         model={generate?.model ?? null}
         modelStatus={generateStatus}
         onClearSelection={() => setSelection(null)}
-        onChanged={onChanged}
       />
       <Canvas active={active} revision={revision} selection={selection} onSelect={setSelection} />
     </div>

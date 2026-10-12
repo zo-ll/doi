@@ -5,10 +5,13 @@ import { SYSTEM_PROMPT } from "../generation/prompts.ts";
 import type { Provider } from "../providers/types.ts";
 import { appendChat, historyMessages, readChat } from "../workspace/chat.ts";
 import { designDir } from "../workspace/paths.ts";
+import type { DesignWatcher } from "../workspace/watch.ts";
 
 export interface TurnDeps {
   config: Config;
   getProvider: (id: ProviderId, config: Config) => Provider;
+  /** Holds the live reload of a design while a turn runs on it, so the turn reloads it once. */
+  watcher?: Pick<DesignWatcher, "hold" | "release">;
 }
 
 export interface TurnBody {
@@ -90,6 +93,7 @@ export function createTurnHandler(deps: TurnDeps) {
       return Response.json({ error: "A turn is already running for this design." }, { status: 409 });
     }
     running.add(key);
+    deps.watcher?.hold(params);
 
     const ref = body.target ? deps.config.models.edit : deps.config.models.generate;
     const abort = new AbortController();
@@ -172,6 +176,7 @@ export function createTurnHandler(deps: TurnDeps) {
             }).catch((e) => console.error("Could not write chat.jsonl:", e));
           }
           running.delete(key);
+          deps.watcher?.release(params);
           req.signal.removeEventListener("abort", onClientAbort);
           try {
             controller.close();
