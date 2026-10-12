@@ -1,0 +1,21 @@
+# Copy to config.toml. All keys are optional.
+
+workspace = "./workspace"
+port = 4317
+
+[providers.anthropic]
+api_key_env = "ANTHROPIC_API_KEY"
+
+[providers.openai]
+api_key_env = "OPENAI_API_KEY"
+
+[providers.ollama]
+base_url = "http://localhost:11434"
+
+[models]
+generate = "anthropic:claude-opus-5-5"   # full designs
+edit     = "anthropic:claude-sonnet-5-5" # small targeted edits
+extract  = "anthropic:claude-haiku-5-5"  # design system extraction
+
+[harness]
+default = "claude-code"
