@@ -493,16 +493,27 @@ button { font: inherit; color: inherit; }
   font-size: var(--text-sm);
 }
 
-.selection-box {
+/* The boxes of elements scrolled out of view stay inside the frame. */
+.frame-overlay { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+/* Lines are drawn on the inner edge, so an element that fills the frame keeps its outline.
+   The frame is scaled by --zoom; divide so the lines keep their screen size. */
+.hover-box {
+  --line: calc(var(--outline-w) / 2 / var(--zoom, 1));
   position: absolute;
-  outline: var(--outline-w) solid var(--accent);
-  outline-offset: 1px;
-  pointer-events: none;
+  outline: var(--line) solid var(--accent);
+  outline-offset: calc(-1 * var(--line));
+  opacity: 0.6;
+}
+.selection-box {
+  --line: calc(var(--outline-w) / var(--zoom, 1));
+  position: absolute;
+  outline: var(--line) solid var(--accent);
+  outline-offset: calc(-1 * var(--line));
 }
 .selection-tag {
   position: absolute;
   bottom: 100%;
-  left: calc(-1 * (var(--outline-w) + 1px));
+  left: 0;
   margin-bottom: var(--space-1);
   border-radius: var(--radius-xs);
   background: var(--accent);
@@ -514,6 +525,8 @@ button { font: inherit; color: inherit; }
   font-size: calc(var(--text-xs) / var(--zoom, 1));
   padding: calc(var(--space-0-5) / var(--zoom, 1)) calc(var(--space-1-5) / var(--zoom, 1));
 }
+/* No room above the box (the top of the page): the tag goes inside it. */
+.selection-box.tag-inside .selection-tag { bottom: auto; top: 0; left: 0; margin: 0; }
 
 .canvas-toolbar {
   position: absolute;

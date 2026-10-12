@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { designUrl } from "../api.ts";
+import { parseFrameMessage, trackMessage, type Rect } from "../frame.ts";
 import type { Active } from "./Sidebar.tsx";
 import type { Selection } from "./ChatPanel.tsx";
 import { Icon } from "./Icon.tsx";
@@ -13,8 +14,11 @@ const DEFAULT_ZOOM = 0.4;
 
 type FrameState = "loading" | "ready" | "error";
 
-function Frame({ id, src, label, width, height, zoom, selection, onSelect }: {
-  id: string;
+/** Screen pixels above a box for its tag. With less room, the tag goes inside the box. */
+const TAG_ROOM = 24;
+const boxStyle = (r: Rect) => ({ left: r.x, top: r.y, width: r.width, height: r.height });
+
+function Frame({ src, label, width, height, zoom, selection, onSelect, onClear }: {
   src: string;
   label: string;
   width: number;
@@ -22,9 +26,17 @@ function Frame({ id, src, label, width, height, zoom, selection, onSelect }: {
   zoom: number;
   selection: Selection | null;
   onSelect: (s: Selection) => void;
+  onClear: () => void;
 }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [state, setState] = useState<FrameState>("loading");
+  const [rects, setRects] = useState<{ selected: Rect | null; hover: { oid: string; rect: Rect } | null }>({
+    selected: null,
+    hover: null,
+  });
+  const oid = selection?.oid ?? null;
+  const oidRef = useRef(oid);
+  oidRef.current = oid;
 
   // An iframe cannot report an HTTP error, so check the page before showing it.
   useEffect(() => {
@@ -39,16 +51,25 @@ function Frame({ id, src, label, width, height, zoom, selection, onSelect }: {
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.source !== ref.current?.contentWindow) return;
-      const d = event.data;
-      if (d?.type !== "doi:select" || typeof d.oid !== "string" || !d.rect) return;
-      onSelect({ oid: d.oid, rect: d.rect, frame: id });
+      const m = parseFrameMessage(event.data);
+      if (m?.type === "doi:select") onSelect({ oid: m.oid });
+      else if (m?.type === "doi:clear") onClear();
+      else if (m?.type === "doi:rects") setRects({ selected: m.selected, hover: m.hover });
+      // A page that loaded again asks which element is selected.
+      else if (m?.type === "doi:ready") ref.current?.contentWindow?.postMessage(trackMessage(oidRef.current), "*");
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [id, onSelect]);
+  }, [onSelect, onClear]);
 
-  // The rect is in the coordinates of the frame that was clicked, so only that frame draws it.
-  const rect = selection?.frame === id ? selection.rect : null;
+  // Every frame of the design shows the selection, in its own layout.
+  useEffect(() => {
+    if (!oid) setRects((r) => ({ ...r, selected: null }));
+    ref.current?.contentWindow?.postMessage(trackMessage(oid), "*");
+  }, [oid]);
+
+  // A new page has no rects until its bridge reports them.
+  useEffect(() => setRects({ selected: null, hover: null }), [src]);
 
   return (
     <figure className="frame">
@@ -76,13 +97,17 @@ function Frame({ id, src, label, width, height, zoom, selection, onSelect }: {
               height={height}
               onLoad={() => setState((s) => (s === "error" ? s : "ready"))}
             />
-            {rect && (
-              <div className="selection-box" style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}>
-                <span className="selection-tag">
-                  {selection!.oid}
-                </span>
-              </div>
-            )}
+            <div className="frame-overlay">
+              {rects.hover && <div className="hover-box" style={boxStyle(rects.hover.rect)} />}
+              {oid && rects.selected && (
+                <div
+                  className={`selection-box${rects.selected.y < TAG_ROOM / zoom ? " tag-inside" : ""}`}
+                  style={boxStyle(rects.selected)}
+                >
+                  <span className="selection-tag">{oid}</span>
+                </div>
+              )}
+            </div>
           </div>
         )}
         {state === "loading" && <div className="frame-loading skeleton" aria-label="Loading design" />}
@@ -91,12 +116,13 @@ function Frame({ id, src, label, width, height, zoom, selection, onSelect }: {
   );
 }
 
-export function Canvas({ active, revision, selection, onSelect }: {
+export function Canvas({ active, revision, selection, onSelect, onClear }: {
   active: Active | null;
   /** Changes when the design files changed; the frames load again. */
   revision: number;
   selection: Selection | null;
   onSelect: (s: Selection) => void;
+  onClear: () => void;
 }) {
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const step = (dir: 1 | -1) => {
@@ -123,7 +149,7 @@ export function Canvas({ active, revision, selection, onSelect }: {
       <div className="canvas-scroll">
         <div className="canvas-frames">
           {FRAMES.map((f) => (
-            <Frame key={f.id} src={src} {...f} zoom={zoom} selection={selection} onSelect={onSelect} />
+            <Frame key={f.id} src={src} {...f} zoom={zoom} selection={selection} onSelect={onSelect} onClear={onClear} />
           ))}
         </div>
       </div>
