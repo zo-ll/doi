@@ -4,6 +4,7 @@ import { mkdtemp, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig, parseModelRef } from "../src/config.ts";
+import { SYSTEM_PROMPT } from "../src/generation/prompts.ts";
 import { getProvider } from "../src/providers/registry.ts";
 
 const args = process.argv.slice(2);
@@ -23,7 +24,7 @@ const files: Record<string, string> = {
 for (const [name, text] of Object.entries(files)) await Bun.write(join(cwd, name), text);
 
 const system = [
-  "You design web pages as plain HTML and CSS. Use the edit tool for changes to existing files and the write tool for new files. Put a data-oid attribute on each meaningful element.",
+  SYSTEM_PROMPT.text,
   Object.entries(files).map(([name, text]) => `--- ${name} ---\n${text}`).join("\n"),
 ];
 
