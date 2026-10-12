@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-10-12, after PR #85 (#8 chat history). Tests: 111 pass. The core loop works from end to end in the browser. `bun check`: no errors.
+Last update: 2026-10-12, after PR #86 (#10 live reload). Tests: 117 pass. The core loop works from end to end in the browser. `bun check`: no errors.
 
 ## 1. What doi is
 
@@ -77,6 +77,7 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 | `src/generation/apply.ts` | `applyChanges()` (all or none, rollback) and `runTurn()` (retry once, then full rewrite; skips `editsFiles` providers) |
 | `src/server/turns.ts` | `GET .../chat` and `POST .../turns`: one turn per design (409 while one runs), SSE events, abort on disconnect. `target` set → `models.edit`, else `models.generate` |
 | `src/workspace/chat.ts` | `projects/<project>/chat.jsonl`: one line per message, with `design`, `turn`, status, provider, model, usage, files, prompt version. `historyMessages()` keeps only completed turns |
+| `src/workspace/watch.ts` | `fs.watch` on `projects/`, 100 ms debounce per design, `hold`/`release` while a turn runs; `GET /api/events` streams `design-changed` |
 | `src/web/chat.ts` | Chat panel logic without React: SSE reader, stream event → answer, stored entries → messages |
 | `test/fixtures/prompts.md` | Five sample prompts, the acceptance checks and the last results |
 | `scripts/try-provider.ts` | Manual check of a provider with real credentials |
@@ -89,7 +90,7 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 
 ## 6. State and next steps
 
-Done and closed: #1 CI, #13 app shell, #74 credentials and status, #60 Claude Code backend, #73 Codex backend, #4 system prompt v0, #5 context assembler, #6 edit applier, #7 generation endpoint, #8 chat history.
+Done and closed: #1 CI, #13 app shell, #74 credentials and status, #60 Claude Code backend, #73 Codex backend, #4 system prompt v0, #5 context assembler, #6 edit applier, #7 generation endpoint, #8 chat history, #10 live reload.
 
 Open only for a manual run with a real key (the user must set the key; do not read pi's credentials):
 - #2 Anthropic: `ANTHROPIC_API_KEY=... bun scripts/try-provider.ts anthropic:claude-haiku-5-5`
@@ -98,8 +99,8 @@ Open only for a manual run with a real key (the user must set the key; do not re
 
 Next, in this order (M1):
 
-1. **#10 Live reload.** Now the canvas reloads only after a turn of its own (`revision` in `App.tsx`). #10 adds a file watcher for changes from outside.
-2. **#11 Git history**, **#12 Projects**, **#9 Image input.**
+1. **#11 Git history.** Commit after a completed turn: the assistant line in `src/server/turns.ts` has `status` and `files`.
+2. **#12 Projects**, **#9 Image input.**
 
 After M1: M2 (precision), M3 (design systems), M4 (handoff), M5 (breadth). #75 (Sign in with ChatGPT) waits for a client ID from OpenAI.
 

@@ -4,12 +4,14 @@ import { detectHarnesses } from "../harnesses/registry.ts";
 import { getProvider } from "../providers/registry.ts";
 import { providerStatus } from "../providers/status.ts";
 import { designFile, ensureWorkspace, listProjects } from "../workspace/paths.ts";
+import { designEvents, watchDesigns } from "../workspace/watch.ts";
 import { createTurnHandler, getChat } from "./turns.ts";
 
 const config = await loadConfig();
 await ensureWorkspace(config.workspace);
 
-const runTurnRequest = createTurnHandler({ config, getProvider });
+const watcher = watchDesigns(config.workspace);
+const runTurnRequest = createTurnHandler({ config, getProvider, watcher });
 
 const BRIDGE_TAG = `<script src="/__doi/bridge.js"></script>`;
 const bridge = Bun.file(new URL("../frame/bridge.js", import.meta.url).pathname);
@@ -48,6 +50,7 @@ const server = Bun.serve({
       Response.json({ models: config.models, harness: config.harness, workspace: config.workspace }),
     "/api/harnesses": async () => Response.json(await detectHarnesses()),
     "/api/providers": async () => Response.json(await providerStatus(config)),
+    "/api/events": (req, srv) => designEvents(watcher, req, srv),
     "/api/projects": async () => Response.json(await listProjects(config.workspace)),
     "/api/projects/:project/designs/:design/chat": (req) => getChat(config.workspace, req.params),
     "/api/projects/:project/designs/:design/turns": { POST: (req, srv) => runTurnRequest(req, req.params, srv) },

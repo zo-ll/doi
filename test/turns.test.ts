@@ -194,7 +194,7 @@ describe("POST turns", () => {
     const texts = calls[1]!.req.messages.map((m) => `${m.role}: ${(m.content[0] as { text: string }).text}`);
     expect(texts).toEqual([
       "user: Make it blue",
-      "assistant: Blue now.\n\n(Changed files: styles.css)",
+      "assistant: Blue now.",
       'user: Target: data-oid="title". Now bigger',
     ]);
 

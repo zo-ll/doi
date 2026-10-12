@@ -78,9 +78,10 @@ export function historyMessages(entries: ChatEntry[]): Message[] {
     }
     const user = users.get(e.turn);
     if (!user || e.status !== "done") continue;
-    const changed = e.files.length ? `\n\n(Changed files: ${e.files.join(", ")})` : "";
     out.push({ role: "user", content: [{ type: "text", text: userText(user.text, user.target) }] });
-    out.push({ role: "assistant", content: [{ type: "text", text: `${e.text.trim() || "Done."}${changed}` }] });
+    // Only the answer text: a note such as "(Changed files: …)" here was copied by the model
+    // into its next answers. The current files are in the context anyway.
+    out.push({ role: "assistant", content: [{ type: "text", text: e.text.trim() || "Done." }] });
   }
   return out;
 }

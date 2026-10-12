@@ -25,7 +25,7 @@ const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigat
  * The chat of one design. App mounts it with key = the design, so a design switch starts a
  * new panel: a run of the old design is aborted, and its messages cannot reach the new one.
  */
-export function ChatPanel({ target, selection, model, modelStatus, onClearSelection, onChanged }: {
+export function ChatPanel({ target, selection, model, modelStatus, onClearSelection }: {
   /** The open design; null disables the composer. */
   target: Active | null;
   selection: Selection | null;
@@ -33,8 +33,6 @@ export function ChatPanel({ target, selection, model, modelStatus, onClearSelect
   /** Status of the provider behind `model`; null while it loads. */
   modelStatus: ProviderStatus | null;
   onClearSelection: () => void;
-  /** Called after a turn changed design files, so the canvas can reload. */
-  onChanged: () => void;
 }) {
   const disabled = target === null;
   const [draft, setDraft] = useState("");
@@ -91,7 +89,6 @@ export function ChatPanel({ target, selection, model, modelStatus, onClearSelect
     const controller = new AbortController();
     abortRef.current = controller;
     setRunning(true);
-    let changed = false;
     try {
       const res = await fetch(turnUrl(target.project, target.design), {
         method: "POST",
@@ -108,7 +105,6 @@ export function ChatPanel({ target, selection, model, modelStatus, onClearSelect
       let ended = false;
       for await (const event of readEvents(res.body)) {
         if (event.type === "done" || event.type === "error") ended = true;
-        if (event.type === "applied" && event.files.length > 0) changed = true;
         updateAnswer(answerId, (a) => applyEvent(a, event));
       }
       if (!ended) {
@@ -120,7 +116,6 @@ export function ChatPanel({ target, selection, model, modelStatus, onClearSelect
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
       setRunning(false);
-      if (changed) onChanged();
     }
   };
 
