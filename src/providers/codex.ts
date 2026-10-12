@@ -93,6 +93,7 @@ export function createCodex(_config: Config, spawn: Spawn = bunSpawn): Provider 
       // Images go to a private temporary folder outside the design folder.
       const tmp = await mkdtemp(join(tmpdir(), "doi-codex-"));
       let proc: Proc;
+      let stdinText: string;
       try {
         const images: string[] = [];
         for (const [i, part] of (req.messages.at(-1)?.content ?? []).entries()) {
@@ -101,10 +102,8 @@ export function createCodex(_config: Config, spawn: Spawn = bunSpawn): Provider 
           await writeFile(path, part.data, { mode: 0o600 });
           images.push(path);
         }
-        const prompt = codexPrompt(req.system, req.messages);
+        stdinText = codexPrompt(req.system, req.messages); // before spawn: a bad request starts no process
         proc = spawn(["codex", ...codexArgs(req.model, req.cwd, images)], req.cwd);
-        proc.stdin.write(prompt);
-        proc.stdin.end();
       } catch (e) {
         await rm(tmp, { recursive: true, force: true });
         throw e;
@@ -114,6 +113,10 @@ export function createCodex(_config: Config, spawn: Spawn = bunSpawn): Provider 
       req.signal?.addEventListener("abort", onAbort, { once: true });
       const stderr = new Response(proc.stderr).text();
       try {
+        // Inside the main try: if the write fails, the finally still kills the process.
+        proc.stdin.write(stdinText);
+        proc.stdin.end();
+
         let done = false;
         for await (const line of lines(proc.stdout)) {
           let event: unknown;

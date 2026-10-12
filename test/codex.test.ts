@@ -182,6 +182,22 @@ describe("codex provider", () => {
     expect(seen.killed).toBe(true);
   });
 
+  test("a stdin write failure kills the process; a bad request starts none", async () => {
+    const cwd = await designDir();
+    const { spawn, seen } = fakeSpawn([turnCompleted]);
+    const failingStdin: Spawn = (cmd, dir) => {
+      const proc = spawn(cmd, dir);
+      return { ...proc, stdin: { write: () => { throw new Error("EPIPE"); }, end: () => {} } };
+    };
+    await expect(collect(createCodex(config, failingStdin).generate(req(cwd)))).rejects.toThrow("EPIPE");
+    expect(seen.killed).toBe(true);
+
+    const counted = fakeSpawn([]);
+    const bad = req(cwd, { messages: [{ role: "assistant", content: [{ type: "text", text: "hi" }] }] });
+    await expect(collect(createCodex(config, counted.spawn).generate(bad))).rejects.toThrow("last message");
+    expect(counted.seen.cmd).toEqual([]);
+  });
+
   test("the design folder is required, and the provider edits files itself", async () => {
     const { spawn } = fakeSpawn([]);
     await expect(collect(createCodex(config, spawn).generate(req("", { cwd: undefined })))).rejects.toThrow("design folder");
