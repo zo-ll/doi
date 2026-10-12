@@ -32,7 +32,8 @@
       type: "doi:rects",
       selected: rectOf(find(selectedOid)),
       hover: hovered && hoverOid !== selectedOid ? { oid: hoverOid, rect: rectOf(hovered) } : null,
-      pins: {},
+      // No prototype: an element may have the id "__proto__".
+      pins: Object.create(null),
     };
     for (const oid of pinOids) {
       const rect = rectOf(find(oid));

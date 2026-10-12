@@ -105,7 +105,8 @@ function Frame({ src, label, width, height, zoom, selection, pins, onSelect, onC
             />
             <div className="frame-overlay">
               {pins.map((p) => {
-                const r = rects.pins[p.oid];
+                // Own keys only: the first state is a plain object, and an id may be "__proto__".
+                const r = Object.hasOwn(rects.pins, p.oid) ? rects.pins[p.oid] : null;
                 if (!r) return null;
                 const label = p.numbers.join(", ");
                 return (
