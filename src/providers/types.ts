@@ -37,5 +37,7 @@ export type GenerateEvent =
 export interface Provider {
   id: ProviderId;
   capabilities: ProviderCapabilities;
+  /** Capabilities of one model, for providers whose models differ (OpenCode Go). */
+  forModel?(model: string): ProviderCapabilities;
   generate(req: GenerateRequest): AsyncIterable<GenerateEvent>;
 }
