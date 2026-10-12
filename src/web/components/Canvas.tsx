@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { designUrl } from "../api.ts";
+import type { Pin } from "../comments.ts";
 import { parseFrameMessage, trackMessage, type Rect } from "../frame.ts";
 import type { Active } from "./Sidebar.tsx";
 import type { Selection } from "./ChatPanel.tsx";
@@ -18,25 +19,30 @@ type FrameState = "loading" | "ready" | "error";
 const TAG_ROOM = 24;
 const boxStyle = (r: Rect) => ({ left: r.x, top: r.y, width: r.width, height: r.height });
 
-function Frame({ src, label, width, height, zoom, selection, onSelect, onClear }: {
+function Frame({ src, label, width, height, zoom, selection, pins, onSelect, onClear, onPin }: {
   src: string;
   label: string;
   width: number;
   height: number;
   zoom: number;
   selection: Selection | null;
+  pins: Pin[];
   onSelect: (s: Selection) => void;
   onClear: () => void;
+  onPin: (oid: string) => void;
 }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [state, setState] = useState<FrameState>("loading");
-  const [rects, setRects] = useState<{ selected: Rect | null; hover: { oid: string; rect: Rect } | null }>({
-    selected: null,
-    hover: null,
-  });
+  const [rects, setRects] = useState<{
+    selected: Rect | null;
+    hover: { oid: string; rect: Rect } | null;
+    pins: Record<string, Rect>;
+  }>({ selected: null, hover: null, pins: {} });
   const oid = selection?.oid ?? null;
-  const oidRef = useRef(oid);
-  oidRef.current = oid;
+  // One string, so the effect below runs only when the set of pinned elements changes.
+  const pinKey = pins.map((p) => p.oid).join(" ");
+  const track = useRef(trackMessage(null));
+  track.current = trackMessage(oid, pinKey ? pinKey.split(" ") : []);
 
   // An iframe cannot report an HTTP error, so check the page before showing it.
   useEffect(() => {
@@ -54,22 +60,22 @@ function Frame({ src, label, width, height, zoom, selection, onSelect, onClear }
       const m = parseFrameMessage(event.data);
       if (m?.type === "doi:select") onSelect({ oid: m.oid });
       else if (m?.type === "doi:clear") onClear();
-      else if (m?.type === "doi:rects") setRects({ selected: m.selected, hover: m.hover });
-      // A page that loaded again asks which element is selected.
-      else if (m?.type === "doi:ready") ref.current?.contentWindow?.postMessage(trackMessage(oidRef.current), "*");
+      else if (m?.type === "doi:rects") setRects({ selected: m.selected, hover: m.hover, pins: m.pins });
+      // A page that loaded again asks which element is selected and which have pins.
+      else if (m?.type === "doi:ready") ref.current?.contentWindow?.postMessage(track.current, "*");
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, [onSelect, onClear]);
 
-  // Every frame of the design shows the selection, in its own layout.
+  // Every frame of the design shows the selection and the pins, in its own layout.
   useEffect(() => {
     if (!oid) setRects((r) => ({ ...r, selected: null }));
-    ref.current?.contentWindow?.postMessage(trackMessage(oid), "*");
-  }, [oid]);
+    ref.current?.contentWindow?.postMessage(track.current, "*");
+  }, [oid, pinKey]);
 
   // A new page has no rects until its bridge reports them.
-  useEffect(() => setRects({ selected: null, hover: null }), [src]);
+  useEffect(() => setRects({ selected: null, hover: null, pins: {} }), [src]);
 
   return (
     <figure className="frame">
@@ -98,6 +104,24 @@ function Frame({ src, label, width, height, zoom, selection, onSelect, onClear }
               onLoad={() => setState((s) => (s === "error" ? s : "ready"))}
             />
             <div className="frame-overlay">
+              {pins.map((p) => {
+                // Own keys only: the first state is a plain object, and an id may be "__proto__".
+                const r = Object.hasOwn(rects.pins, p.oid) ? rects.pins[p.oid] : null;
+                if (!r) return null;
+                const label = p.numbers.join(", ");
+                return (
+                  <button
+                    key={p.oid}
+                    className="pin"
+                    style={{ left: r.x + r.width, top: r.y }}
+                    onClick={() => onPin(p.oid)}
+                    aria-label={`Comment ${label} on ${p.oid}`}
+                    title={`Comment ${label}`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
               {rects.hover && <div className="hover-box" style={boxStyle(rects.hover.rect)} />}
               {oid && rects.selected && (
                 <div
@@ -116,13 +140,16 @@ function Frame({ src, label, width, height, zoom, selection, onSelect, onClear }
   );
 }
 
-export function Canvas({ active, revision, selection, onSelect, onClear }: {
+export function Canvas({ active, revision, selection, pins, onSelect, onClear, onPin }: {
   active: Active | null;
   /** Changes when the design files changed; the frames load again. */
   revision: number;
   selection: Selection | null;
+  /** Elements with open comments. */
+  pins: Pin[];
   onSelect: (s: Selection) => void;
   onClear: () => void;
+  onPin: (oid: string) => void;
 }) {
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const step = (dir: 1 | -1) => {
@@ -149,7 +176,7 @@ export function Canvas({ active, revision, selection, onSelect, onClear }: {
       <div className="canvas-scroll">
         <div className="canvas-frames">
           {FRAMES.map((f) => (
-            <Frame key={f.id} src={src} {...f} zoom={zoom} selection={selection} onSelect={onSelect} onClear={onClear} />
+            <Frame key={f.id} src={src} {...f} zoom={zoom} selection={selection} pins={pins} onSelect={onSelect} onClear={onClear} onPin={onPin} />
           ))}
         </div>
       </div>

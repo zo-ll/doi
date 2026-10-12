@@ -559,3 +559,109 @@ button { font: inherit; color: inherit; }
   text-align: center;
 }
 .empty h2 { font-size: var(--text-lg); font-weight: var(--weight-semibold); color: var(--text); }
+
+/* ---------- Side panel tabs and comments ---------- */
+
+.side-panel {
+  grid-area: chat;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+}
+/* Inside the side panel, the chat fills the rest of it. */
+.side-panel > .chat { flex: 1; border-right: 0; }
+.side-panel > [hidden] { display: none; }
+.panel-tabs { display: flex; gap: var(--space-1); justify-content: flex-start; padding-left: var(--space-2); }
+.panel-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  height: var(--control-h);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.panel-tab:hover { color: var(--text); background: var(--surface-hover); }
+.panel-tab[aria-selected="true"] { color: var(--text); background: var(--surface-active); }
+.tab-count {
+  min-width: var(--icon-box-sm);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  color: var(--accent-soft-text);
+  font-size: var(--text-2xs);
+  letter-spacing: 0;
+  text-align: center;
+}
+
+.comments { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.comments-list {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4) var(--space-4);
+}
+.comments-skeleton { height: var(--skeleton-h); width: 60%; }
+.comments-count { font-size: var(--text-xs); }
+.comments-hint { padding: var(--space-2); font-size: var(--text-sm); }
+.comment {
+  display: grid;
+  gap: var(--space-1-5);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.comment.is-active { border-color: var(--accent); }
+.comment.is-done .comment-text { color: var(--text-tertiary); text-decoration: line-through; }
+.comment-head { display: flex; align-items: center; gap: var(--space-1-5); min-width: 0; }
+.comment-number,
+.pin {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  min-width: var(--pin-size);
+  height: var(--pin-size);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+}
+.comment.is-done .comment-number { background: var(--surface-active); color: var(--text-tertiary); }
+.comment-target { border: 0; cursor: pointer; font-family: var(--font-mono); font-size: var(--text-xs); }
+.comment-target:disabled { cursor: default; opacity: 0.6; }
+.comment-actions { margin-left: auto; display: flex; }
+.comment-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.badge-warning {
+  padding: 0 var(--space-1-5);
+  border-radius: var(--radius-full);
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+}
+
+/* Pins sit inside the top right corner of their element, so the frame edge never cuts
+   them, and keep their screen size. */
+.pin {
+  position: absolute;
+  border: 0;
+  cursor: pointer;
+  pointer-events: auto;
+  transform-origin: 0 0;
+  transform: scale(calc(1 / var(--zoom, 1))) translateX(-100%);
+  box-shadow: var(--shadow-float);
+}

@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getJSON, type AppConfig, type Harnesses, type Load, type ProjectSummary, type ProviderStatus } from "./api.ts";
 import { Canvas } from "./components/Canvas.tsx";
 import { ChatPanel, type Selection } from "./components/ChatPanel.tsx";
+import { CommentsPanel } from "./components/CommentsPanel.tsx";
+import { pinsOf, useComments } from "./comments.ts";
 import { Sidebar, type Active } from "./components/Sidebar.tsx";
 import { TopBar } from "./components/TopBar.tsx";
 
@@ -48,6 +50,7 @@ export function App() {
   const [active, setActive] = useState<Active | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
   const clearSelection = useCallback(() => setSelection(null), []);
+  const [tab, setTab] = useState<"chat" | "comments">("chat");
   // Bumped when the files of the open design change; the canvas reloads its frames.
   const [revision, setRevision] = useState(0);
   const activeRef = useRef(active);
@@ -95,6 +98,11 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const comments = useComments(active, revision);
+  const commentList = comments.comments.state === "ready" ? comments.comments.data : [];
+  const pins = useMemo(() => pinsOf(commentList), [commentList]);
+  const openComments = commentList.filter((c) => c.status === "open").length;
+
   const generate = config.state === "ready" ? config.data.models.generate : null;
   const generateStatus =
     generate && providers.state === "ready" ? (providers.data.find((p) => p.id === generate.provider) ?? null) : null;
@@ -113,15 +121,49 @@ export function App() {
         onRetry={retryProjects}
         onChanged={onProjectsChanged}
       />
-      <ChatPanel
-        key={active ? `${active.project}/${active.design}` : ""}
-        target={active}
+      <section className="side-panel" aria-label="Chat and comments">
+        <div className="panel-header panel-tabs" role="tablist">
+          <button className="panel-tab" role="tab" aria-selected={tab === "chat"} onClick={() => setTab("chat")}>
+            Chat
+          </button>
+          <button className="panel-tab" role="tab" aria-selected={tab === "comments"} onClick={() => setTab("comments")}>
+            Comments
+            {openComments > 0 && <span className="tab-count" aria-label={`${openComments} open`}>{openComments}</span>}
+          </button>
+        </div>
+        <ChatPanel
+          key={active ? `${active.project}/${active.design}` : ""}
+          target={active}
+          selection={selection}
+          model={generate?.model ?? null}
+          modelStatus={generateStatus}
+          onClearSelection={clearSelection}
+          hidden={tab !== "chat"}
+        />
+        {tab === "comments" && (
+          <CommentsPanel
+            comments={active ? comments.comments : { state: "ready", data: [] }}
+            selection={selection}
+            onSelect={(oid) => setSelection({ oid })}
+            onAdd={comments.add}
+            onStatus={comments.setStatus}
+            onRemove={comments.remove}
+            onRetry={comments.reload}
+          />
+        )}
+      </section>
+      <Canvas
+        active={active}
+        revision={revision}
         selection={selection}
-        model={generate?.model ?? null}
-        modelStatus={generateStatus}
-        onClearSelection={clearSelection}
+        pins={pins}
+        onSelect={setSelection}
+        onClear={clearSelection}
+        onPin={(oid) => {
+          setSelection({ oid });
+          setTab("comments");
+        }}
       />
-      <Canvas active={active} revision={revision} selection={selection} onSelect={setSelection} onClear={clearSelection} />
     </div>
   );
 }

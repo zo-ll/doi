@@ -2,6 +2,7 @@ import { appendFile, mkdir, rename } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { ProviderId } from "../config.ts";
 import type { Message } from "../providers/types.ts";
+import { withFileLock } from "./file-lock.ts";
 import { assertName } from "./paths.ts";
 
 export interface Usage {
@@ -46,16 +47,7 @@ export function chatFile(workspace: string, project: string): string {
 
 // One write at a time for each chat file: a design rename rewrites the whole file, and an
 // append from a turn on another design must not land between its read and its replace.
-const chatQueues = new Map<string, Promise<unknown>>();
-function withChatLock<T>(path: string, job: () => Promise<T>): Promise<T> {
-  const run = (chatQueues.get(path) ?? Promise.resolve()).then(job, job);
-  const tail = run.catch(() => {});
-  chatQueues.set(path, tail);
-  void tail.then(() => {
-    if (chatQueues.get(path) === tail) chatQueues.delete(path);
-  });
-  return run;
-}
+const withChatLock = withFileLock;
 
 export async function appendChat(workspace: string, project: string, entry: ChatEntry): Promise<void> {
   const path = chatFile(workspace, project);

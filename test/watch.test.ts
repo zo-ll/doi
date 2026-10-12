@@ -22,6 +22,10 @@ async function setup() {
 describe("designOf", () => {
   test("maps design files and ignores the rest", () => {
     expect(designOf("p/designs/d/styles.css")).toEqual({ project: "p", design: "d" });
+    // Comments are app data: a change does not reload the page.
+    expect(designOf("p/designs/d/.comments.json")).toBeNull();
+    expect(designOf("p/designs/d/.comments.json.1234.tmp")).toBeNull();
+    expect(designOf("p/designs/d/.git/x")).toBeNull();
     expect(designOf("p/designs/d/assets/a.png")).toEqual({ project: "p", design: "d" });
     expect(designOf("p/chat.jsonl")).toBeNull();
     expect(designOf("p/designs/d")).toBeNull();

@@ -5,8 +5,9 @@ import { getProvider } from "../providers/registry.ts";
 import { providerStatus } from "../providers/status.ts";
 import { designFile, ensureWorkspace, listProjects } from "../workspace/paths.ts";
 import { designEvents, watchDesigns } from "../workspace/watch.ts";
-import { commitPaths, commitTurn, ensureRepo } from "../workspace/git.ts";
+import { commitPaths, commitTurn, designVersion, ensureRepo } from "../workspace/git.ts";
 import { uploadFile } from "../workspace/uploads.ts";
+import { deleteCommentRoute, getComments, patchComment, postComment } from "./comments.ts";
 import { DesignLocks } from "./locks.ts";
 import { patchDesign, patchProject, postDesign, postProject } from "./projects.ts";
 import { createTurnHandler, getChat } from "./turns.ts";
@@ -18,6 +19,10 @@ await ensureRepo(config.workspace).catch((e) => console.error("Version history i
 
 const watcher = watchDesigns(config.workspace);
 const locks = new DesignLocks();
+const commentDeps = {
+  workspace: config.workspace,
+  version: (project: string, design: string) => designVersion(config.workspace, project, design),
+};
 const projectDeps = {
   workspace: config.workspace,
   locks,
@@ -39,6 +44,8 @@ async function serveDesign(url: URL): Promise<Response> {
   const [, , project, design, ...rest] = url.pathname.split("/");
   if (!project || !design) return new Response("Not found", { status: 404 });
   if (rest.length === 0) return Response.redirect(`${url.pathname}/`, 301);
+  // Hidden files (comments) are app data, not part of the page.
+  if (rest.some((part) => part.startsWith("."))) return new Response("Not found", { status: 404 });
 
   let path: string | null;
   try {
@@ -88,6 +95,14 @@ const server = Bun.serve({
       return new Response(file, { headers: { "cache-control": "private, max-age=31536000, immutable" } });
     },
         "/api/projects/:project/designs/:design/chat": (req) => getChat(config.workspace, req.params),
+    "/api/projects/:project/designs/:design/comments": {
+      GET: (req) => getComments(commentDeps, req.params),
+      POST: (req) => postComment(commentDeps, req, req.params),
+    },
+    "/api/projects/:project/designs/:design/comments/:id": {
+      PATCH: (req) => patchComment(commentDeps, req, req.params),
+      DELETE: (req) => deleteCommentRoute(commentDeps, req.params),
+    },
     "/api/projects/:project/designs/:design/turns": { POST: (req, srv) => runTurnRequest(req, req.params, srv) },
     "/__doi/bridge.js": () => new Response(bridge, { headers: { "content-type": "text/javascript" } }),
   },

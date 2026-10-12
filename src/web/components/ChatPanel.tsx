@@ -25,7 +25,7 @@ const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigat
  * The chat of one design. App mounts it with key = the design, so a design switch starts a
  * new panel: a run of the old design is aborted, and its messages cannot reach the new one.
  */
-export function ChatPanel({ target, selection, model, modelStatus, onClearSelection }: {
+export function ChatPanel({ target, selection, model, modelStatus, onClearSelection, hidden = false }: {
   /** The open design; null disables the composer. */
   target: Active | null;
   selection: Selection | null;
@@ -33,6 +33,8 @@ export function ChatPanel({ target, selection, model, modelStatus, onClearSelect
   /** Status of the provider behind `model`; null while it loads. */
   modelStatus: ProviderStatus | null;
   onClearSelection: () => void;
+  /** The panel stays mounted behind another tab, so a running turn goes on. */
+  hidden?: boolean;
 }) {
   const disabled = target === null;
   const [draft, setDraft] = useState("");
@@ -178,10 +180,7 @@ export function ChatPanel({ target, selection, model, modelStatus, onClearSelect
       : null;
 
   return (
-    <section className="chat" aria-label="Chat">
-      <div className="panel-header">
-        <span className="panel-title">Chat</span>
-      </div>
+    <section className="chat" aria-label="Chat" hidden={hidden}>
 
       <div className="chat-messages" ref={listRef}>
         {messages.length === 0 ? (
