@@ -5,7 +5,7 @@ import { SYSTEM_PROMPT } from "../generation/prompts.ts";
 import type { Provider } from "../providers/types.ts";
 import { appendChat, historyMessages, readChat } from "../workspace/chat.ts";
 import { designDir } from "../workspace/paths.ts";
-import { IMAGE_LIMITS, IMAGE_TYPES, saveUploads, type ImageType } from "../workspace/uploads.ts";
+import { IMAGE_LIMITS, IMAGE_TYPES, isImageType, saveUploads, type ImageType } from "../workspace/uploads.ts";
 import type { DesignWatcher } from "../workspace/watch.ts";
 import { designKey, DesignLocks } from "./locks.ts";
 
@@ -58,7 +58,7 @@ function parseImages(raw: unknown): TurnBody["images"] | string {
   const out: TurnBody["images"] = [];
   for (const img of raw) {
     const { mediaType, data } = (img ?? {}) as Record<string, unknown>;
-    if (typeof mediaType !== "string" || !(mediaType in IMAGE_TYPES)) {
+    if (typeof mediaType !== "string" || !isImageType(mediaType)) {
       return `Images must be ${Object.keys(IMAGE_TYPES).join(", ")}.`;
     }
     if (typeof data !== "string" || !data) return "Each image needs base64 data.";
@@ -67,7 +67,7 @@ function parseImages(raw: unknown): TurnBody["images"] | string {
     if (bytes.length > IMAGE_LIMITS.bytes) {
       return `An image is larger than ${Math.round(IMAGE_LIMITS.bytes / 1_000_000)} MB. The app scales images down; send the scaled image.`;
     }
-    out.push({ mediaType: mediaType as ImageType, data: new Uint8Array(bytes) });
+    out.push({ mediaType, data: new Uint8Array(bytes) });
   }
   return out;
 }

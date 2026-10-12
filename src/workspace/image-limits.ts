@@ -4,6 +4,9 @@
 export const IMAGE_TYPES = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif" } as const;
 export type ImageType = keyof typeof IMAGE_TYPES;
 
+/** Own keys only: names on the object prototype, such as "toString", are not image types. */
+export const isImageType = (t: string): t is ImageType => Object.hasOwn(IMAGE_TYPES, t);
+
 /**
  * One limit for all providers. The browser scales larger images down to it. Anthropic allows
  * 5 MB of base64 (about 3.75 MB of bytes) and recommends at most 1568 px on the long edge;

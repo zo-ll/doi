@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { assertName } from "./paths.ts";
 import { IMAGE_TYPES, type ImageType } from "./image-limits.ts";
 
-export { IMAGE_LIMITS, IMAGE_TYPES, type ImageType } from "./image-limits.ts";
+export { IMAGE_LIMITS, IMAGE_TYPES, isImageType, type ImageType } from "./image-limits.ts";
 
 const UPLOAD_NAME = /^[0-9a-f-]{36}-\d\.(png|jpg|webp|gif)$/;
 

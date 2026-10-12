@@ -1,4 +1,6 @@
-import { IMAGE_LIMITS, IMAGE_TYPES, type ImageType } from "../workspace/image-limits.ts";
+import { IMAGE_LIMITS, isImageType, type ImageType } from "../workspace/image-limits.ts";
+
+export { isImageType };
 
 export interface PreparedImage {
   mediaType: ImageType;
@@ -7,8 +9,6 @@ export interface PreparedImage {
   /** A data: URL for the thumbnail. */
   url: string;
 }
-
-export const isImageType = (t: string): t is ImageType => t in IMAGE_TYPES;
 
 /** The size that fits `edge` on the long side and keeps the aspect ratio. Never scales up. */
 export function fitWithin(width: number, height: number, edge: number): { width: number; height: number } {

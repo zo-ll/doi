@@ -13,6 +13,8 @@ describe("images", () => {
   test("only the four common image types", () => {
     expect(["image/png", "image/jpeg", "image/webp", "image/gif"].every(isImageType)).toBe(true);
     expect(isImageType("image/svg+xml")).toBe(false);
+    expect(isImageType("toString")).toBe(false);
+    expect(isImageType("constructor")).toBe(false);
   });
 
   test("upload names cannot leave the uploads folder", () => {

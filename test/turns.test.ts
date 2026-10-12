@@ -274,6 +274,9 @@ describe("POST turns", () => {
     for (const images of [
       "x",
       [img("image/svg+xml", ok)],
+      // Names on the object prototype are not image types.
+      [img("toString", ok)],
+      [img("__proto__", ok)],
       [img("image/png", "")],
       Array.from({ length: 6 }, () => img("image/png", ok)),
       [img("image/png", Buffer.alloc(3_750_001).toString("base64"))],
