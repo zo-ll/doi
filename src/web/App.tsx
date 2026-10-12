@@ -1,80 +1,71 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { getJSON, type AppConfig, type Harnesses, type Load, type ProjectSummary } from "./api.ts";
+import { Canvas } from "./components/Canvas.tsx";
+import { ChatPanel, type Selection } from "./components/ChatPanel.tsx";
+import { Sidebar, type Active } from "./components/Sidebar.tsx";
+import { TopBar } from "./components/TopBar.tsx";
 
-interface Selection {
-  oid: string;
-  rect: { x: number; y: number; width: number; height: number };
-}
-
-const FRAMES = [
-  { id: "desktop", width: 1440, height: 900 },
-  { id: "mobile", width: 390, height: 844 },
-];
-const SCALE = 0.4;
-
-function Frame({ src, width, height, onSelect }: {
-  src: string;
-  width: number;
-  height: number;
-  onSelect: (s: Selection) => void;
-}) {
-  const ref = useRef<HTMLIFrameElement>(null);
-  const [selected, setSelected] = useState<Selection | null>(null);
-
+function useLoad<T>(url: string): [Load<T>, () => void] {
+  const [load, setLoad] = useState<Load<T>>({ state: "loading" });
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      if (event.source !== ref.current?.contentWindow) return;
-      if (event.data?.type !== "doi:select") return;
-      const s = { oid: String(event.data.oid), rect: event.data.rect };
-      setSelected(s);
-      onSelect(s);
-    };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, [onSelect]);
-
-  return (
-    <div className="frame" style={{ width: width * SCALE, height: height * SCALE }}>
-      <div style={{ width, height, transform: `scale(${SCALE})`, transformOrigin: "0 0", position: "relative" }}>
-        <iframe ref={ref} src={src} sandbox="allow-scripts" width={width} height={height} />
-        {selected && (
-          <div
-            className="selection"
-            style={{ left: selected.rect.x, top: selected.rect.y, width: selected.rect.width, height: selected.rect.height }}
-          />
-        )}
-      </div>
-    </div>
-  );
+    let live = true;
+    setLoad({ state: "loading" });
+    getJSON<T>(url)
+      .then((data) => live && setLoad({ state: "ready", data }))
+      .catch((e: unknown) => live && setLoad({ state: "error", message: e instanceof Error ? e.message : String(e) }));
+    return () => { live = false; };
+  }, [url, attempt]);
+  return [load, () => setAttempt((n) => n + 1)];
 }
 
 export function App() {
+  const [projects, retryProjects] = useLoad<ProjectSummary[]>("/api/projects");
+  const [config] = useLoad<AppConfig>("/api/config");
+  const [harnesses] = useLoad<Harnesses>("/api/harnesses");
+  const [active, setActive] = useState<Active | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
-  const [prompt, setPrompt] = useState("");
+
+  // Open the first design when the project list arrives. #12 adds "reopen the last design".
+  useEffect(() => {
+    if (active || projects.state !== "ready") return;
+    const first = projects.data.find((p) => p.designs.length > 0);
+    if (first) setActive({ project: first.id, design: first.designs[0]! });
+  }, [projects, active]);
+
+  const open = useCallback((a: Active) => {
+    setActive(a);
+    setSelection(null);
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !(e.target instanceof HTMLTextAreaElement)) setSelection(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const projectName =
+    active && projects.state === "ready" ? (projects.data.find((p) => p.id === active.project)?.name ?? active.project) : null;
 
   return (
     <div className="app">
-      <aside className="chat">
-        <h1>doi</h1>
-        <p className="muted">Chat and generation arrive in M1.</p>
-        {selection && <p className="chip">Selected: <code>{selection.oid}</code></p>}
-        <form onSubmit={(e) => e.preventDefault()}>
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Describe a design or a change"
-            rows={4}
-          />
-          <button type="submit" disabled>Send</button>
-        </form>
-      </aside>
-      <main className="canvas">
-        {FRAMES.map((f) => (
-          <figure key={f.id}>
-            <figcaption>{f.id} · {f.width}px</figcaption>
-            <Frame src="/design/sample/home/" width={f.width} height={f.height} onSelect={setSelection} />
-          </figure>
-        ))}
-      </main>
+      <TopBar project={projectName} design={active?.design ?? null} config={config} harnesses={harnesses} />
+      <Sidebar
+        projects={projects}
+        active={active}
+        workspace={config.state === "ready" ? config.data.workspace : null}
+        onOpen={open}
+        onRetry={retryProjects}
+      />
+      <ChatPanel
+        target={active}
+        selection={selection}
+        model={config.state === "ready" ? config.data.models.generate.model : null}
+        onClearSelection={() => setSelection(null)}
+      />
+      <Canvas active={active} selection={selection} onSelect={setSelection} />
     </div>
   );
 }

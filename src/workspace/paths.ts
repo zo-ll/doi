@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import { join, normalize, sep } from "node:path";
 
 const NAME = /^[a-z0-9][a-z0-9-]*$/;
@@ -18,6 +18,41 @@ export function designFile(workspace: string, project: string, design: string, f
   const dir = designDir(workspace, project, design);
   const full = normalize(join(dir, file));
   return full.startsWith(dir + sep) ? full : null;
+}
+
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  designs: string[];
+}
+
+async function subdirs(dir: string): Promise<string[]> {
+  try {
+    const entries = await readdir(dir, { withFileTypes: true });
+    return entries.filter((e) => e.isDirectory() && NAME.test(e.name)).map((e) => e.name).sort();
+  } catch {
+    return [];
+  }
+}
+
+/** Lists projects and their designs. A design is a folder with an index.html. */
+export async function listProjects(workspace: string): Promise<ProjectSummary[]> {
+  const projects: ProjectSummary[] = [];
+  for (const id of await subdirs(join(workspace, "projects"))) {
+    const meta = Bun.file(join(workspace, "projects", id, "project.json"));
+    let name = id;
+    try {
+      if (await meta.exists()) name = String((await meta.json()).name ?? id);
+    } catch {
+      // A hand-edited project.json with bad JSON must not hide the other projects.
+    }
+    const designs: string[] = [];
+    for (const design of await subdirs(join(workspace, "projects", id, "designs"))) {
+      if (await Bun.file(join(designDir(workspace, id, design), "index.html")).exists()) designs.push(design);
+    }
+    projects.push({ id, name, designs });
+  }
+  return projects;
 }
 
 const SAMPLE_HTML = `<!doctype html>
