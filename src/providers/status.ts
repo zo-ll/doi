@@ -34,6 +34,18 @@ export interface StatusDeps {
 
 const CLI_TIMEOUT_MS = 10_000;
 
+/** The only detail a ready CLI backend reports: its login state, never the plan or the login method. */
+export const LOGGED_IN = "Logged in";
+
+/** The host of a URL, without user information that can hold a credential. */
+export function safeHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "the configured base_url";
+  }
+}
+
 export const defaultDeps: StatusDeps = {
   env: process.env,
   which: (bin) => Bun.which(bin),
@@ -54,10 +66,10 @@ async function claudeCode(deps: StatusDeps): Promise<Pick<ProviderStatus, "ready
   const { code, stdout } = await deps.run(["claude", "auth", "status", "--json"]);
   if (code !== 0) return { ready: false, detail: "claude auth status failed" };
   try {
-    // Read only the login state; the output also has account details that doi does not need.
-    const { loggedIn, subscriptionType } = JSON.parse(stdout) as { loggedIn?: boolean; subscriptionType?: string };
+    // Read only the login state; the output also has account details that must not reach the UI.
+    const { loggedIn } = JSON.parse(stdout) as { loggedIn?: boolean };
     if (!loggedIn) return { ready: false, detail: "Not logged in. Run: claude auth login" };
-    return { ready: true, detail: subscriptionType ? `Claude ${subscriptionType} subscription` : "Logged in" };
+    return { ready: true, detail: LOGGED_IN };
   } catch {
     return { ready: false, detail: "Cannot read claude auth status" };
   }
@@ -65,11 +77,10 @@ async function claudeCode(deps: StatusDeps): Promise<Pick<ProviderStatus, "ready
 
 async function codex(deps: StatusDeps): Promise<Pick<ProviderStatus, "ready" | "detail">> {
   if (!deps.which("codex")) return { ready: false, detail: "Codex CLI not found on PATH" };
-  // Codex prints its login state on stderr.
-  const { code, stdout, stderr } = await deps.run(["codex", "login", "status"]);
+  // Only the exit code is used: the output names the login method, an account detail.
+  const { code } = await deps.run(["codex", "login", "status"]);
   if (code !== 0) return { ready: false, detail: "Not logged in. Run: codex login" };
-  const viaChatGPT = /chatgpt/i.test(stdout + stderr);
-  return { ready: true, detail: viaChatGPT ? "ChatGPT subscription" : "Logged in with an API key" };
+  return { ready: true, detail: LOGGED_IN };
 }
 
 async function statusOf(id: ProviderId, config: Config, deps: StatusDeps): Promise<ProviderStatus> {
@@ -79,7 +90,8 @@ async function statusOf(id: ProviderId, config: Config, deps: StatusDeps): Promi
   if (id === "ollama") {
     const base = config.providers.ollama?.base_url ?? "http://localhost:11434";
     const ok = await deps.fetch(`${base}/api/tags`).then((r) => r.ok, () => false);
-    return { id, source: "local", implemented, ready: ok, detail: ok ? base : `No Ollama server at ${base}` };
+    const host = safeHost(base);
+    return { id, source: "local", implemented, ready: ok, detail: ok ? host : `No Ollama server at ${host}` };
   }
   const env = keyEnvFor(id, config)!;
   const ready = Boolean(deps.env[env]);

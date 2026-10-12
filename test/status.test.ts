@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { parseConfig } from "../src/config.ts";
-import { providerStatus, type StatusDeps } from "../src/providers/status.ts";
+import { LOGGED_IN, providerStatus, safeHost, type StatusDeps } from "../src/providers/status.ts";
 
 function deps(over: Partial<StatusDeps> = {}): StatusDeps & { calls: string[][] } {
   const calls: string[][] = [];
@@ -43,7 +43,7 @@ describe("providerStatus", () => {
     expect(JSON.stringify(all)).not.toContain("sk-secret-value");
   });
 
-  test("claude-code reads only the login state and the plan from claude auth status", async () => {
+  test("claude-code reports only the login state from claude auth status", async () => {
     const d = deps({
       run: async (cmd) => {
         d.calls.push(cmd);
@@ -52,8 +52,9 @@ describe("providerStatus", () => {
     });
     const s = await byId(d);
     expect(d.calls).toContainEqual(["claude", "auth", "status", "--json"]);
-    expect(s["claude-code"]).toMatchObject({ source: "cli", ready: true, detail: "Claude max subscription" });
+    expect(s["claude-code"]).toMatchObject({ source: "cli", ready: true, detail: LOGGED_IN });
     expect(JSON.stringify(s)).not.toContain("me@example.com");
+    expect(JSON.stringify(s)).not.toContain("max");
   });
 
   test("claude-code: not logged in, missing CLI, bad output", async () => {
@@ -63,12 +64,22 @@ describe("providerStatus", () => {
     expect((await byId(deps({ which: () => null })))["claude-code"]).toMatchObject({ ready: false, detail: "Claude Code CLI not found on PATH" });
   });
 
-  test("codex: ChatGPT login, API key login, not logged in", async () => {
-    // Codex writes the login state to stderr.
+  test("codex reports only the login state, never the login method", async () => {
     const res = (code: number, stderr: string) => deps({ run: async () => ({ code, stdout: "", stderr }) });
-    expect((await byId(res(0, "Logged in using ChatGPT")))["codex"]).toMatchObject({ ready: true, detail: "ChatGPT subscription" });
-    expect((await byId(res(0, "Logged in using an API key")))["codex"]).toMatchObject({ ready: true, detail: "Logged in with an API key" });
+    for (const line of ["Logged in using ChatGPT", "Logged in using an API key"]) {
+      expect((await byId(res(0, line)))["codex"]).toMatchObject({ ready: true, detail: LOGGED_IN });
+    }
     expect((await byId(res(1, "Not logged in")))["codex"]).toMatchObject({ ready: false, detail: "Not logged in. Run: codex login" });
+  });
+
+  test("ollama details show the host only, never user information from base_url", async () => {
+    const c = parseConfig({ providers: { ollama: { base_url: "https://user:s3cret-token@ollama.example:8443" } } }, "/tmp/doi");
+    for (const ok of [true, false]) {
+      const s = await byId(deps({ fetch: async () => ({ ok }) }), c);
+      expect(s.ollama!.detail).toContain("ollama.example:8443");
+      expect(JSON.stringify(s)).not.toContain("s3cret-token");
+    }
+    expect(safeHost("not a url")).toBe("the configured base_url");
   });
 
   test("ollama is ready when its server answers", async () => {
