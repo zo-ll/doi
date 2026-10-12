@@ -3,12 +3,14 @@ import { loadConfig } from "../config.ts";
 import { detectHarnesses } from "../harnesses/registry.ts";
 import { getProvider } from "../providers/registry.ts";
 import { providerStatus } from "../providers/status.ts";
-import { designFile, ensureWorkspace, listProjects } from "../workspace/paths.ts";
+import { designDir, ensureWorkspace, fileIn, listProjects } from "../workspace/paths.ts";
+import { variantDir } from "../workspace/variants.ts";
 import { designEvents, watchDesigns } from "../workspace/watch.ts";
 import { commitPaths, commitTurn, designVersion, ensureRepo } from "../workspace/git.ts";
 import { uploadFile } from "../workspace/uploads.ts";
 import { deleteCommentRoute, getComments, patchComment, postComment } from "./comments.ts";
 import { getLayout, putLayout } from "./layout.ts";
+import { createVariantHandlers } from "./variants.ts";
 import { DesignLocks } from "./locks.ts";
 import { patchDesign, patchProject, postDesign, postProject } from "./projects.ts";
 import { createTurnHandler, getChat } from "./turns.ts";
@@ -29,9 +31,16 @@ const projectDeps = {
   locks,
   commit: (paths: string[], message: string) => commitPaths(config.workspace, paths, message),
 };
+const variants = createVariantHandlers({
+  config,
+  locks,
+  getProvider,
+  commit: (paths, message) => commitPaths(config.workspace, paths, message),
+});
 const runTurnRequest = createTurnHandler({
   config,
   locks,
+  variantsOpen: variants.isOpen,
   getProvider,
   watcher,
   commit: (project, design, prompt) => commitTurn(config.workspace, project, design, prompt),
@@ -40,17 +49,15 @@ const runTurnRequest = createTurnHandler({
 const BRIDGE_TAG = `<script src="/__doi/bridge.js"></script>`;
 const bridge = Bun.file(new URL("../frame/bridge.js", import.meta.url).pathname);
 
-/** Serves /design/<project>/<design>/<file>. Injects the bridge script into HTML pages. */
-async function serveDesign(url: URL): Promise<Response> {
-  const [, , project, design, ...rest] = url.pathname.split("/");
-  if (!project || !design) return new Response("Not found", { status: 404 });
+/** Serves a file of a page folder. Injects the bridge script into HTML pages. */
+async function servePage(url: URL, dir: () => string, rest: string[]): Promise<Response> {
   if (rest.length === 0) return Response.redirect(`${url.pathname}/`, 301);
   // Hidden files (comments) are app data, not part of the page.
   if (rest.some((part) => part.startsWith("."))) return new Response("Not found", { status: 404 });
 
   let path: string | null;
   try {
-    path = designFile(config.workspace, project, design, rest.join("/") || "index.html");
+    path = fileIn(dir(), rest.join("/") || "index.html");
   } catch {
     return new Response("Bad request", { status: 400 });
   }
@@ -64,6 +71,20 @@ async function serveDesign(url: URL): Promise<Response> {
 
   const html = (await file.text()).replace("</body>", `${BRIDGE_TAG}\n</body>`);
   return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", ...noStore } });
+}
+
+/** /design/<project>/<design>/<file> */
+function serveDesign(url: URL): Promise<Response> | Response {
+  const [, , project, design, ...rest] = url.pathname.split("/");
+  if (!project || !design) return new Response("Not found", { status: 404 });
+  return servePage(url, () => designDir(config.workspace, project, design), rest);
+}
+
+/** /variant/<project>/<design>/<set>/<n>/<file> */
+function serveVariant(url: URL): Promise<Response> | Response {
+  const [, , project, design, set, n, ...rest] = url.pathname.split("/");
+  if (!project || !design || !set || !n) return new Response("Not found", { status: 404 });
+  return servePage(url, () => variantDir(config.workspace, project, design, set, Number(n)), rest);
 }
 
 const server = Bun.serve({
@@ -96,6 +117,12 @@ const server = Bun.serve({
       return new Response(file, { headers: { "cache-control": "private, max-age=31536000, immutable" } });
     },
         "/api/projects/:project/designs/:design/chat": (req) => getChat(config.workspace, req.params),
+    "/api/projects/:project/designs/:design/variants": {
+      GET: (req) => variants.get(req.params),
+      POST: (req, srv) => variants.post(req, req.params, srv),
+    },
+    "/api/projects/:project/designs/:design/variants/:set/pick": { POST: (req) => variants.pick(req, req.params) },
+    "/api/projects/:project/designs/:design/variants/:set": { DELETE: (req) => variants.discard(req.params) },
     "/api/projects/:project/designs/:design/layout": {
       GET: (req) => getLayout(config.workspace, req.params),
       PUT: (req) => putLayout(config.workspace, req, req.params),
@@ -114,6 +141,7 @@ const server = Bun.serve({
   fetch(req) {
     const url = new URL(req.url);
     if (url.pathname.startsWith("/design/")) return serveDesign(url);
+    if (url.pathname.startsWith("/variant/")) return serveVariant(url);
     return new Response("Not found", { status: 404 });
   },
   development: process.env.NODE_ENV !== "production" && { hmr: true, console: true },

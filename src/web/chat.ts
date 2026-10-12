@@ -1,4 +1,4 @@
-import type { ChatEntry, TurnStreamEvent, Usage } from "./api.ts";
+import type { ChatEntry, TurnStreamEvent, Usage, VariantStreamEvent } from "./api.ts";
 
 export type AnswerStatus = "running" | "done" | "error" | "stopped";
 
@@ -27,10 +27,70 @@ export type ChatMessage =
       /** How many of the turn's comments are done now. */
       commentsDone?: number;
     }
+  | VariantsMessage
   | { id: number; kind: "error"; text: string }
   | { id: number; kind: "info"; text: string };
 
 export type Answer = Extract<ChatMessage, { kind: "assistant" }>;
+
+/** One variant while it runs, as the chat shows it. */
+export interface VariantItem {
+  n: number;
+  model: string;
+  status: "running" | "done" | "error" | "stopped";
+  text: string;
+  usage: Usage | null;
+  error?: string;
+}
+
+/** The answer of a variants run: one item per variant. It is not stored; the pick is. */
+export interface VariantsMessage {
+  id: number;
+  kind: "variants";
+  status: "running" | "done" | "error" | "stopped";
+  items: VariantItem[];
+  error?: string;
+}
+
+/** Applies one event of a variants stream. */
+export function applyVariantEvent(m: VariantsMessage, e: VariantStreamEvent): VariantsMessage {
+  switch (e.type) {
+    case "variants":
+      return {
+        ...m,
+        items: e.variants.map((v) => ({ n: v.n, model: `${v.provider}:${v.model}`, status: "running", text: "", usage: null })),
+      };
+    case "variants-done":
+      return { ...m, status: m.items.some((i) => i.status === "done") ? "done" : "error", ...(e.error ? { error: e.error } : {}) };
+    case "variant":
+      return {
+        ...m,
+        items: m.items.map((item) => {
+          if (item.n !== e.n) return item;
+          const ev = e.event;
+          switch (ev.type) {
+            case "text":
+              return { ...item, text: item.text + ev.delta };
+            case "retry":
+              return { ...item, text: "" };
+            case "usage": {
+              const u = item.usage ?? { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
+              return {
+                ...item,
+                usage: { inputTokens: u.inputTokens + ev.inputTokens, outputTokens: u.outputTokens + ev.outputTokens, cachedTokens: u.cachedTokens + ev.cachedTokens },
+              };
+            }
+            case "done":
+              return { ...item, status: "done" };
+            case "error":
+              return { ...item, status: "error", error: errorText(ev.kind, ev.message) };
+            default:
+              return item;
+          }
+        }),
+      };
+  }
+}
 
 export function newAnswer(id: number): Answer {
   return { id, kind: "assistant", text: "", status: "running", files: [], usage: null, retries: 0 };
@@ -112,7 +172,7 @@ export function errorText(kind: "context" | "apply" | "provider", message: strin
 }
 
 /** Reads server-sent events and yields the JSON of each data line. */
-export async function* readEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<TurnStreamEvent> {
+export async function* readEvents<T = TurnStreamEvent>(body: ReadableStream<Uint8Array>): AsyncGenerator<T> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -128,7 +188,7 @@ export async function* readEvents(body: ReadableStream<Uint8Array>): AsyncGenera
         .filter((l) => l.startsWith("data:"))
         .map((l) => l.slice(5).trimStart())
         .join("\n");
-      if (data) yield JSON.parse(data) as TurnStreamEvent;
+      if (data) yield JSON.parse(data) as T;
     }
     if (done) return;
   }

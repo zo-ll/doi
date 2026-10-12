@@ -1,7 +1,7 @@
 import { mkdir, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { GenerateEvent, GenerateRequest, Message, Provider } from "../providers/types.ts";
-import { designFile } from "../workspace/paths.ts";
+import { designFile, fileIn } from "../workspace/paths.ts";
 
 export type FileChange = Extract<GenerateEvent, { type: "edit" } | { type: "write" }>;
 
@@ -9,6 +9,8 @@ export interface DesignRef {
   workspace: string;
   project: string;
   design: string;
+  /** The folder the changes go to, when it is not the design folder (a variant). */
+  dir?: string;
 }
 
 export interface ChangeFailure {
@@ -21,7 +23,7 @@ export type ApplyResult = { ok: true; files: string[] } | { ok: false; failures:
 
 function resolve(ref: DesignRef, file: string): string | null {
   try {
-    return designFile(ref.workspace, ref.project, ref.design, file);
+    return ref.dir ? fileIn(ref.dir, file) : designFile(ref.workspace, ref.project, ref.design, file);
   } catch {
     return null;
   }

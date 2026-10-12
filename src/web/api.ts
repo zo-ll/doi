@@ -4,6 +4,7 @@ export type { ProviderStatus } from "../providers/status.ts";
 export type { ChatEntry, Usage } from "../workspace/chat.ts";
 export type { TurnStreamEvent } from "../server/turns.ts";
 export type { CommentView } from "../server/comments.ts";
+export type { VariantSetView, VariantStreamEvent } from "../server/variants.ts";
 
 export interface AppConfig {
   models: Record<"generate" | "edit" | "extract", { provider: string; model: string }>;
@@ -55,4 +56,14 @@ export function uploadUrl(project: string, name: string): string {
 /** Comments of one design (#16); with an id, one comment. */
 export function commentsUrl(project: string, design: string, id?: string): string {
   return `/api/projects/${project}/designs/${design}/comments${id ? `/${id}` : ""}`;
+}
+
+/** Variants of one design (#19): the open set, a pick, a discard. */
+export function variantsUrl(project: string, design: string, path = ""): string {
+  return `/api/projects/${project}/designs/${design}/variants${path}`;
+}
+
+/** A file of one variant, for its frame. */
+export function variantPageUrl(project: string, design: string, set: string, n: number): string {
+  return `/variant/${project}/${design}/${set}/${n}/`;
 }

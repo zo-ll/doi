@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { designUrl, getJSON, sendJSON } from "../api.ts";
+import { designUrl, getJSON, sendJSON, variantPageUrl, type VariantSetView } from "../api.ts";
+import { formatTokens } from "../chat.ts";
 import type { Pin } from "../comments.ts";
 import { parseFrameMessage, trackMessage, type FrameMessage, type Rect } from "../frame.ts";
 import {
@@ -8,6 +9,7 @@ import {
   newFrameId,
   nextPosition,
   stepZoom,
+  variantSlots,
   wheelFactor,
   zoomAt,
   ZOOM_MAX,
@@ -188,6 +190,67 @@ const Frame = memo(function Frame({
   );
 });
 
+/** One variant on the canvas: its page, its model and tokens, and Pick. No selection here. */
+const VariantFrame = memo(function VariantFrame({
+  slot,
+  src,
+  variant,
+  canPick,
+  onPick,
+  onWheel,
+  onKey,
+}: {
+  slot: { x: number; y: number; width: number; height: number };
+  src: string;
+  variant: VariantSetView["variants"][number];
+  canPick: boolean;
+  onPick: (n: number) => void;
+  onWheel: (frame: FrameSpec, m: WheelMessage) => void;
+  onKey: (m: KeyMessage) => void;
+}) {
+  const ref = useRef<HTMLIFrameElement>(null);
+  const spec: FrameSpec = { id: `variant-${variant.n}`, label: `Variant ${variant.n}`, ...slot };
+  const latest = useRef({ spec, onWheel, onKey });
+  latest.current = { spec, onWheel, onKey };
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== ref.current?.contentWindow) return;
+      const m = parseFrameMessage(event.data);
+      if (m?.type === "doi:wheel") latest.current.onWheel(latest.current.spec, m);
+      else if (m?.type === "doi:key") latest.current.onKey(m);
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+  const u = variant.usage;
+  const status = variant.status === "running" ? "Working…" : variant.status === "done" ? null : variant.status === "stopped" ? "Stopped" : "Failed";
+  return (
+    <figure className={`frame variant-frame is-${variant.status}`} style={{ left: slot.x, top: slot.y, width: slot.width, height: slot.height }}>
+      <figcaption className="frame-label variant-label">
+        <span>Variant {variant.n}</span>
+        <span className="muted truncate">{variant.provider}:{variant.model}</span>
+        {u.inputTokens + u.outputTokens > 0 && (
+          <span className="muted" title="Input and output tokens">{formatTokens(u.inputTokens)} in · {formatTokens(u.outputTokens)} out</span>
+        )}
+        {status && <span className="muted">{status}</span>}
+        <button className="variant-pick" disabled={!canPick} onClick={() => onPick(variant.n)} aria-label={`Pick variant ${variant.n}`}>
+          Pick
+        </button>
+      </figcaption>
+      <div className="frame-surface">
+        {variant.status === "error" ? (
+          <div className="frame-state">
+            <Icon name="alert" size={20} />
+            <p>{variant.error ?? "This variant failed."}</p>
+          </div>
+        ) : (
+          <iframe ref={ref} src={src} title={`Variant ${variant.n} preview`} sandbox="allow-scripts" width={slot.width} height={slot.height} />
+        )}
+      </div>
+    </figure>
+  );
+});
+
 /** The "Add frame" menu: the presets, or a custom size. */
 function AddFrameMenu({ onAdd, onClose }: { onAdd: (label: string, width: number, height: number) => void; onClose: () => void }) {
   const [w, setW] = useState("1280");
@@ -231,7 +294,7 @@ type Drag =
   | { kind: "pan"; start: Point; view: View }
   | { kind: "move"; id: string; start: Point; frame: FrameSpec; moved: boolean };
 
-export function Canvas({ active, revision, selection, pins, onSelect, onClear, onPin }: {
+export function Canvas({ active, revision, selection, pins, onSelect, onClear, onPin, variants = null, variantsError = null, onPickVariant, onDiscardVariants }: {
   active: Active | null;
   /** Changes when the design files changed; the frames load again. */
   revision: number;
@@ -241,6 +304,11 @@ export function Canvas({ active, revision, selection, pins, onSelect, onClear, o
   onSelect: (s: Selection) => void;
   onClear: () => void;
   onPin: (oid: string) => void;
+  /** The open variant set of the design: its frames show under the design frames. */
+  variants?: VariantSetView | null;
+  variantsError?: string | null;
+  onPickVariant?: (n: number) => void;
+  onDiscardVariants?: () => void;
 }) {
   const ref = useRef<HTMLElement>(null);
   const [frames, setFrames] = useState<FrameSpec[] | null>(null);
@@ -250,8 +318,11 @@ export function Canvas({ active, revision, selection, pins, onSelect, onClear, o
   const [spaceDown, setSpaceDown] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const needsFit = useRef(true);
-  const state = useRef({ view, frames, active });
-  state.current = { view, frames, active };
+  const slots = frames && variants ? variantSlots(frames, variants.variants.length) : [];
+  // Fit takes the variant frames too, so a new set is in view at once.
+  const allFrames: FrameSpec[] = [...(frames ?? []), ...slots.map((s, i) => ({ id: `variant-${i + 1}`, label: "", ...s }))];
+  const state = useRef({ view, frames, active, allFrames });
+  state.current = { view, frames, active, allFrames };
 
   // Load the frames of the design; a new design fits to the screen once they are there.
   useEffect(() => {
@@ -279,8 +350,8 @@ export function Canvas({ active, revision, selection, pins, onSelect, onClear, o
     return { x: s.width / 2, y: s.height / 2 };
   };
   const fit = useCallback(() => {
-    const f = state.current.frames;
-    if (f?.length) setView(fitView(f, size()));
+    const f = state.current.allFrames;
+    if (f.length) setView(fitView(f, size()));
   }, []);
 
   useLayoutEffect(() => {
@@ -289,6 +360,12 @@ export function Canvas({ active, revision, selection, pins, onSelect, onClear, o
       fit();
     }
   }, [frames, fit]);
+
+  // A new variant set comes into view.
+  const setId = variants?.id ?? null;
+  useLayoutEffect(() => {
+    if (setId && frames?.length) fit();
+  }, [setId, frames !== null]);
 
   /** Changes the frames and stores them. A failed save shows a message and keeps the change. */
   const changeFrames = useCallback((next: FrameSpec[]) => {
@@ -479,7 +556,38 @@ export function Canvas({ active, revision, selection, pins, onSelect, onClear, o
             onKey={onFrameKey}
           />
         ))}
+        {variants &&
+          slots.map((slot, i) => {
+            const v = variants.variants[i]!;
+            return (
+              <VariantFrame
+                key={`${variants.id}-${v.n}`}
+                slot={slot}
+                // A finished variant loads again with its changes.
+                src={`${variantPageUrl(active.project, active.design, variants.id, v.n)}?s=${v.status}`}
+                variant={v}
+                canPick={!variants.running && v.status === "done"}
+                onPick={(n) => onPickVariant?.(n)}
+                onWheel={onFrameWheel}
+                onKey={onFrameKey}
+              />
+            );
+          })}
       </div>
+
+      {variants && (
+        <div className="variants-bar" role="region" aria-label="Variants">
+          <Icon name="sparkle" size={14} />
+          <span className="truncate">
+            Variants of <q>{variants.prompt}</q>
+          </span>
+          <span className="muted">{variants.running ? "Working…" : "Pick one under the frames."}</span>
+          <button className="btn btn-secondary" disabled={variants.running} onClick={onDiscardVariants}>
+            Discard all
+          </button>
+          {variantsError && <span className="variants-error" role="alert">{variantsError}</span>}
+        </div>
+      )}
 
       {layoutError && (
         <p className="canvas-error notice notice-danger" role="alert">

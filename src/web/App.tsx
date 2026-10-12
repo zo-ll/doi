@@ -4,6 +4,7 @@ import { Canvas } from "./components/Canvas.tsx";
 import { ChatPanel, type CommentRequest, type Selection } from "./components/ChatPanel.tsx";
 import { CommentsPanel } from "./components/CommentsPanel.tsx";
 import { pinsOf, useComments } from "./comments.ts";
+import { useVariants } from "./variants.ts";
 import { Sidebar, type Active } from "./components/Sidebar.tsx";
 import { TopBar } from "./components/TopBar.tsx";
 
@@ -103,11 +104,16 @@ export function App() {
   }, []);
 
   const comments = useComments(active, revision);
+  const variants = useVariants(active);
+  // Bumped after a pick: the chat loads again and shows the picked answer.
+  const [chatEpoch, setChatEpoch] = useState(0);
   const commentList = comments.comments.state === "ready" ? comments.comments.data : [];
   const pins = useMemo(() => pinsOf(commentList), [commentList]);
   const openComments = commentList.filter((c) => c.status === "open").length;
 
   const generate = config.state === "ready" ? config.data.models.generate : null;
+  const modelChoices =
+    config.state === "ready" ? [...new Set(Object.values(config.data.models).map((m) => `${m.provider}:${m.model}`))] : [];
   const generateStatus =
     generate && providers.state === "ready" ? (providers.data.find((p) => p.id === generate.provider) ?? null) : null;
 
@@ -144,7 +150,7 @@ export function App() {
           </button>
         </div>
         <ChatPanel
-          key={active ? `${active.project}/${active.design}` : ""}
+          key={active ? `${active.project}/${active.design}/${chatEpoch}` : ""}
           target={active}
           selection={selection}
           model={generate?.model ?? null}
@@ -155,6 +161,10 @@ export function App() {
           onRequestTaken={() => setRequest(null)}
           onRunningChange={setRunning}
           onCommentsChanged={comments.reload}
+          modelRef={generate ? `${generate.provider}:${generate.model}` : null}
+          models={modelChoices}
+          variantsOpen={variants.set !== null}
+          onVariantsChanged={variants.reload}
         />
         {tab === "comments" && (
           <CommentsPanel
@@ -180,6 +190,14 @@ export function App() {
         pins={pins}
         onSelect={setSelection}
         onClear={clearSelection}
+        variants={variants.set}
+        variantsError={variants.error}
+        onPickVariant={(n) => {
+          variants.pick(n).then(() => setChatEpoch((e) => e + 1), () => {});
+        }}
+        onDiscardVariants={() => {
+          variants.discard().catch(() => {});
+        }}
         onPin={(oid) => {
           setSelection({ oid });
           setTab("comments");

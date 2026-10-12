@@ -1,8 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import { chatUrl, getJSON, turnUrl, uploadUrl, type ChatEntry, type ProviderStatus } from "../api.ts";
+import { chatUrl, getJSON, turnUrl, uploadUrl, variantsUrl, type ChatEntry, type ProviderStatus, type VariantStreamEvent } from "../api.ts";
 import { isImageType, prepareImage, type PreparedImage } from "../images.ts";
 import { IMAGE_LIMITS } from "../../workspace/image-limits.ts";
-import { applyEvent, formatTokens, fromEntries, newAnswer, readEvents, type Answer, type ChatMessage } from "../chat.ts";
+import {
+  applyEvent,
+  applyVariantEvent,
+  formatTokens,
+  fromEntries,
+  newAnswer,
+  readEvents,
+  type Answer,
+  type ChatMessage,
+  type VariantsMessage,
+} from "../chat.ts";
 import type { Active } from "./Sidebar.tsx";
 import { Icon } from "./Icon.tsx";
 
@@ -42,6 +52,10 @@ export function ChatPanel({
   onRequestTaken,
   onRunningChange,
   onCommentsChanged,
+  modelRef = null,
+  models = [],
+  variantsOpen = false,
+  onVariantsChanged,
 }: {
   /** The open design; null disables the composer. */
   target: Active | null;
@@ -57,6 +71,14 @@ export function ChatPanel({
   onRunningChange?: (running: boolean) => void;
   /** A turn marked comments done. */
   onCommentsChanged?: () => void;
+  /** The default model as "<provider>:<model>", for variants. */
+  modelRef?: string | null;
+  /** The models from config.toml, offered for each variant. */
+  models?: string[];
+  /** The design has open variants: no turn can start until one is picked or they are discarded. */
+  variantsOpen?: boolean;
+  /** A variants run changed the open set. */
+  onVariantsChanged?: () => void;
 }) {
   const disabled = target === null;
   const [draft, setDraft] = useState("");
@@ -66,6 +88,9 @@ export function ChatPanel({
   const fileRef = useRef<HTMLInputElement>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [running, setRunning] = useState(false);
+  // 1 is a normal turn; 2 to 4 starts that many variants.
+  const [count, setCount] = useState(1);
+  const [variantModels, setVariantModels] = useState<string[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(1);
@@ -88,6 +113,53 @@ export function ChatPanel({
 
   const updateAnswer = (id: number, f: (a: Answer) => Answer) =>
     setMessages((list) => list.map((m) => (m.id === id && m.kind === "assistant" ? f(m) : m)));
+  const updateVariants = (id: number, f: (m: VariantsMessage) => VariantsMessage) =>
+    setMessages((list) => list.map((m) => (m.id === id && m.kind === "variants" ? f(m) : m)));
+
+  /** The model of each variant: the chosen one, or the default. */
+  const modelsFor = (n: number) => Array.from({ length: n }, (_, i) => variantModels[i]?.trim() || modelRef || "");
+
+  /** Starts `count` variants of the draft. The answer streams into one message. */
+  const sendVariants = async () => {
+    const text = draft.trim();
+    if (!text || running || !target) return;
+    const turnTarget = selection?.oid ?? null;
+    push({ kind: "user", text, ...(turnTarget ? { target: turnTarget } : {}) });
+    const id = nextId.current++;
+    setMessages((list) => [...list, { id, kind: "variants", status: "running", items: [] }]);
+    setDraft("");
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setRunning(true);
+    try {
+      const res = await fetch(variantsUrl(target.project, target.design), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text, target: turnTarget, count, models: modelsFor(count) }),
+        signal: controller.signal,
+      });
+      if (!res.ok || !res.body) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        updateVariants(id, (m) => ({ ...m, status: "error", error: body?.error ?? `The request failed: ${res.status} ${res.statusText}` }));
+        return;
+      }
+      let ended = false;
+      for await (const event of readEvents<VariantStreamEvent>(res.body)) {
+        updateVariants(id, (m) => applyVariantEvent(m, event));
+        if (event.type === "variants" || event.type === "variants-done") onVariantsChanged?.();
+        if (event.type === "variant" && (event.event.type === "done" || event.event.type === "error")) onVariantsChanged?.();
+        if (event.type === "variants-done") ended = true;
+      }
+      if (!ended) updateVariants(id, (m) => ({ ...m, status: "error", error: "The connection closed before the variants ended." }));
+    } catch (e) {
+      if (controller.signal.aborted) updateVariants(id, (m) => ({ ...m, status: "stopped" }));
+      else updateVariants(id, (m) => ({ ...m, status: "error", error: `The request failed: ${e instanceof Error ? e.message : String(e)}` }));
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+      setRunning(false);
+      onVariantsChanged?.();
+    }
+  };
 
   // Load the stored chat. Messages sent before it arrives stay after it.
   useEffect(() => {
@@ -198,17 +270,21 @@ export function ChatPanel({
     void send(request.comments);
   }, [request, running]);
 
+  const submit = () => void (count > 1 ? sendVariants() : send());
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      void send();
+      if (canSend) submit();
     } else if (e.key === "Escape" && running) {
       e.preventDefault();
       stop();
     }
   };
 
-  const canSend = draft.trim().length > 0 && !disabled;
+  // Variants take text only; images go with a normal turn.
+  const variantsWithImages = count > 1 && images.length > 0;
+  const canSend = draft.trim().length > 0 && !disabled && !variantsOpen && !variantsWithImages;
   const modelReady = modelStatus ? modelStatus.ready && modelStatus.implemented : false;
   const modelProblem =
     modelStatus && !modelReady
@@ -262,6 +338,8 @@ export function ChatPanel({
                 <Icon name="alert" />
                 <p className="notice-text">{m.text}</p>
               </div>
+            ) : m.kind === "variants" ? (
+              <VariantsView key={m.id} message={m} />
             ) : (
               <p key={m.id} className="msg-info">{m.text}</p>
             ),
@@ -276,6 +354,12 @@ export function ChatPanel({
       </div>
 
       <div className="composer-wrap">
+        {variantsOpen && (
+          <p className="composer-warning" role="status">
+            <Icon name="alert" size={14} />
+            <span>This design has variants. Pick one on the canvas, or discard them, before the next change.</span>
+          </p>
+        )}
         {modelProblem && (
           <p className="composer-warning" role="status">
             <Icon name="alert" size={14} />
@@ -330,6 +414,27 @@ export function ChatPanel({
             </div>
           )}
           {imageError && <p className="composer-image-error" role="alert">{imageError}</p>}
+          {variantsWithImages && <p className="composer-image-error" role="alert">Variants do not take images. Remove the images, or make one design.</p>}
+          {count > 1 && (
+            <div className="variant-models">
+              {Array.from({ length: count }, (_, i) => (
+                <label key={i} className="variant-model">
+                  <span className="muted">{i + 1}</span>
+                  <input
+                    list="doi-models"
+                    value={variantModels[i] ?? modelRef ?? ""}
+                    onChange={(e) => setVariantModels((list) => Object.assign([...list], { [i]: e.target.value }))}
+                    aria-label={`Model of variant ${i + 1}`}
+                    placeholder="provider:model"
+                    spellCheck={false}
+                  />
+                </label>
+              ))}
+              <datalist id="doi-models">
+                {models.map((m) => <option key={m} value={m} />)}
+              </datalist>
+            </div>
+          )}
           <textarea
             ref={inputRef}
             value={draft}
@@ -368,6 +473,19 @@ export function ChatPanel({
                 e.target.value = "";
               }}
             />
+            <select
+              className="variant-count"
+              value={count}
+              onChange={(e) => setCount(Number(e.target.value))}
+              aria-label="Number of variants"
+              title="Make one design, or 2 to 4 variants to compare"
+              disabled={disabled || running}
+            >
+              <option value={1}>1×</option>
+              <option value={2}>2×</option>
+              <option value={3}>3×</option>
+              <option value={4}>4×</option>
+            </select>
             {model && (
               <span className="composer-model truncate" title={modelStatus?.detail}>
                 <span className={`status-dot ${modelStatus ? (modelReady ? "is-on" : "is-off") : ""}`} />
@@ -380,8 +498,8 @@ export function ChatPanel({
                 Stop
               </button>
             ) : (
-              <button className="btn btn-primary" onClick={() => void send()} disabled={!canSend} title={`Send (${isMac ? "⌘" : "Ctrl"}+Enter)`}>
-                Send
+              <button className="btn btn-primary" onClick={submit} disabled={!canSend} title={`Send (${isMac ? "⌘" : "Ctrl"}+Enter)`}>
+                {count > 1 ? `Make ${count}` : "Send"}
                 <kbd>{isMac ? "⌘" : "Ctrl"}↵</kbd>
               </button>
             )}
@@ -389,6 +507,43 @@ export function ChatPanel({
         </div>
       </div>
     </section>
+  );
+}
+
+function VariantsView({ message: m }: { message: VariantsMessage }) {
+  return (
+    <div className="msg msg-assistant msg-variants" aria-label="Variants">
+      {m.items.map((v) => (
+        <div key={v.n} className={`variant-item is-${v.status}`}>
+          <p className="variant-head">
+            <span className="comment-number">{v.n}</span>
+            <span className="truncate">{v.model}</span>
+            <span className="muted">
+              {v.status === "running" ? "Working…" : v.status === "done" ? "Ready" : v.status === "stopped" ? "Stopped" : "Failed"}
+            </span>
+          </p>
+          {v.text && <p className="variant-text">{v.text}</p>}
+          {v.error && <p className="variant-error">{v.error}</p>}
+          {v.usage && (
+            <p className="msg-meta">
+              <span title="Input, output and cached tokens">
+                {formatTokens(v.usage.inputTokens)} in · {formatTokens(v.usage.outputTokens)} out
+                {v.usage.cachedTokens > 0 && ` · ${formatTokens(v.usage.cachedTokens)} cached`}
+              </span>
+            </p>
+          )}
+        </div>
+      ))}
+      {m.status === "running" && m.items.length === 0 && <p className="msg-info">Starting the variants…</p>}
+      {m.status === "done" && <p className="msg-info">Pick a variant on the canvas. The others stay in the version history.</p>}
+      {m.status === "stopped" && <p className="msg-info">Stopped.</p>}
+      {m.error && (
+        <div className="notice notice-danger" role="alert">
+          <Icon name="alert" />
+          <p className="notice-text">{m.error}</p>
+        </div>
+      )}
+    </div>
   );
 }
 
