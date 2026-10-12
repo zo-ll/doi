@@ -1,15 +1,24 @@
+import { createOpenAI as createOpenAISDK } from "@ai-sdk/openai";
 import { keyEnvFor, type Config } from "../config.ts";
+import { streamDesign } from "./ai-sdk.ts";
 import type { Provider } from "./types.ts";
 
-export function createOpenAI(config: Config): Provider {
+export interface OpenAIDeps {
+  /** Replaced in tests; the SDK calls the real fetch by default. */
+  fetch?: typeof globalThis.fetch;
+}
+
+export function createOpenAI(config: Config, deps: OpenAIDeps = {}): Provider {
   const keyEnv = keyEnvFor("openai", config)!;
   return {
     id: "openai",
     capabilities: { vision: true, toolUse: true, promptCache: "automatic", maxContextTokens: 128_000, editsFiles: false },
-    async *generate(_req) {
-      if (!process.env[keyEnv]) throw new Error(`Set ${keyEnv} to use the OpenAI provider.`);
-      // M1: streamText from "ai" + @ai-sdk/openai, with edit/write tools. Map the stream to GenerateEvent.
-      throw new Error("openai.generate is not implemented yet (M1).");
+    async *generate(req) {
+      const apiKey = process.env[keyEnv];
+      if (!apiKey) throw new Error(`Set ${keyEnv} to use the OpenAI provider.`);
+      const openai = createOpenAISDK({ apiKey, baseURL: config.providers.openai?.base_url, fetch: deps.fetch });
+      // The Responses API caches a stable prefix without markers, so no cache marker goes to streamDesign.
+      yield* streamDesign(openai.responses(req.model), req);
     },
   };
 }
