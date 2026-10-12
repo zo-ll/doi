@@ -3,6 +3,8 @@ import { getJSON, type AppConfig, type Harnesses, type Load, type ProjectSummary
 import { Canvas } from "./components/Canvas.tsx";
 import { ChatPanel, type CommentRequest, type Selection } from "./components/ChatPanel.tsx";
 import { CommentsPanel } from "./components/CommentsPanel.tsx";
+import { HistoryPanel } from "./components/HistoryPanel.tsx";
+import { useHistory } from "./history.ts";
 import { pinsOf, useComments } from "./comments.ts";
 import { useVariants } from "./variants.ts";
 import { Sidebar, type Active } from "./components/Sidebar.tsx";
@@ -51,7 +53,7 @@ export function App() {
   const [active, setActive] = useState<Active | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
   const clearSelection = useCallback(() => setSelection(null), []);
-  const [tab, setTab] = useState<"chat" | "comments">("chat");
+  const [tab, setTab] = useState<"chat" | "comments" | "history">("chat");
   const [request, setRequest] = useState<CommentRequest | null>(null);
   const [running, setRunning] = useState(false);
   const requestKey = useRef(0);
@@ -105,6 +107,7 @@ export function App() {
 
   const comments = useComments(active, revision);
   const variants = useVariants(active);
+  const history = useHistory(active, revision);
   // Bumped after a pick: the chat loads again and shows the picked answer.
   const [chatEpoch, setChatEpoch] = useState(0);
   const commentList = comments.comments.state === "ready" ? comments.comments.data : [];
@@ -148,6 +151,17 @@ export function App() {
             Comments
             {openComments > 0 && <span className="tab-count" aria-label={`${openComments} open`}>{openComments}</span>}
           </button>
+          <button
+            className="panel-tab"
+            role="tab"
+            aria-selected={tab === "history"}
+            onClick={() => {
+              setTab("history");
+              history.reload();
+            }}
+          >
+            History
+          </button>
         </div>
         <ChatPanel
           key={active ? `${active.project}/${active.design}/${chatEpoch}` : ""}
@@ -166,6 +180,14 @@ export function App() {
           variantsOpen={variants.set !== null}
           onVariantsChanged={variants.reload}
         />
+        {tab === "history" && (
+          <HistoryPanel
+            versions={active ? history.versions : { state: "ready", data: [] }}
+            preview={history.preview?.sha ?? null}
+            onPreview={history.setPreview}
+            onRetry={history.reload}
+          />
+        )}
         {tab === "comments" && (
           <CommentsPanel
             comments={active ? comments.comments : { state: "ready", data: [] }}
@@ -190,6 +212,13 @@ export function App() {
         pins={pins}
         onSelect={setSelection}
         onClear={clearSelection}
+        preview={history.preview}
+        previewBusy={history.busy}
+        previewError={history.error}
+        onRestorePreview={() => {
+          history.restore().catch(() => {}); // the bar shows the error
+        }}
+        onClosePreview={() => history.setPreview(null)}
         variants={variants.set}
         variantsError={variants.error}
         onPickVariant={(n) => {

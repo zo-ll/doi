@@ -1,8 +1,8 @@
 import { $ } from "bun";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative, sep } from "node:path";
 import { chatFile } from "./chat.ts";
-import { designDir } from "./paths.ts";
+import { designDir, designFile } from "./paths.ts";
 import { uploadsDir } from "./uploads.ts";
 
 // One git command at a time: two turns on different designs must not race for the index lock.
@@ -71,4 +71,58 @@ export function designVersion(workspace: string, project: string, design: string
       return null; // a repo without commits
     }
   });
+}
+
+/** One version of a design: a commit that changed its folder. */
+export interface Version {
+  sha: string;
+  /** Commit time, ISO 8601. */
+  at: string;
+  /** The first line of the commit message: the prompt, or what the user did. */
+  message: string;
+}
+
+const SHA = /^[0-9a-f]{7,40}$/;
+export const isSha = (s: string) => SHA.test(s);
+
+/** The versions of a design, newest first. A design that was renamed starts at the rename. */
+export function designLog(workspace: string, project: string, design: string, limit = 200): Promise<Version[]> {
+  return serial(async () => {
+    let out: string;
+    try {
+      out = await git(workspace, ["log", `-${limit}`, "--format=%H%x1f%aI%x1f%s", "--", designDir(workspace, project, design)]);
+    } catch {
+      return []; // a repo without commits
+    }
+    return out
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        const [sha, at, message] = line.split("\x1f") as [string, string, string];
+        return { sha, at, message };
+      });
+  });
+}
+
+const relPath = (workspace: string, path: string) => relative(workspace, path).split(sep).join("/");
+
+/** The page files of a design at a commit (no hidden files), as paths in the design folder. */
+export async function designFilesAt(workspace: string, project: string, design: string, sha: string): Promise<string[]> {
+  if (!isSha(sha)) throw new Error("Invalid commit id.");
+  const dir = relPath(workspace, designDir(workspace, project, design));
+  const out = await git(workspace, ["ls-tree", "-r", "--name-only", sha, "--", `${dir}/`]);
+  return out
+    .split("\n")
+    .filter(Boolean)
+    .map((p) => p.slice(dir.length + 1))
+    .filter((p) => p && !p.split("/").some((part) => part.startsWith(".")));
+}
+
+/** One file of a design at a commit, or null when it was not there. */
+export async function designFileAt(workspace: string, project: string, design: string, sha: string, file: string): Promise<Uint8Array<ArrayBuffer> | null> {
+  if (!isSha(sha)) throw new Error("Invalid commit id.");
+  const path = designFile(workspace, project, design, file);
+  if (!path) return null;
+  const result = await $`git show ${`${sha}:${relPath(workspace, path)}`}`.cwd(workspace).quiet().nothrow();
+  return result.exitCode === 0 ? new Uint8Array(result.stdout) : null;
 }

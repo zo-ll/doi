@@ -89,6 +89,9 @@ describe("POST turns", () => {
     expect(evs.find((e) => e.type === "applied")).toEqual({ type: "applied", files: ["styles.css"] });
     expect(evs.at(-1)).toEqual({ type: "commit", sha: "a".repeat(40) });
     expect(commits).toEqual(["p/d: Make it blue"]);
+    // A commit line links the turn to its commit, for the version history.
+    const raw = (await Bun.file(join(config.workspace, "projects", "p", "chat.jsonl")).text()).trim().split("\n").map((l) => JSON.parse(l));
+    expect(raw.at(-1)).toMatchObject({ role: "commit", design: "d", sha: "a".repeat(40), turn: raw[0].turn });
     expect(await Bun.file(join(designDir(config.workspace, "p", "d"), "styles.css")).text()).toBe("h1 { color: blue; }");
 
     const req = calls[0]!.req;

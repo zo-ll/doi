@@ -5,6 +5,7 @@ export type { ChatEntry, Usage } from "../workspace/chat.ts";
 export type { TurnStreamEvent } from "../server/turns.ts";
 export type { CommentView } from "../server/comments.ts";
 export type { VariantSetView, VariantStreamEvent } from "../server/variants.ts";
+export type { VersionView } from "../server/history.ts";
 
 export interface AppConfig {
   models: Record<"generate" | "edit" | "extract", { provider: string; model: string }>;
@@ -66,4 +67,14 @@ export function variantsUrl(project: string, design: string, path = ""): string 
 /** A file of one variant, for its frame. */
 export function variantPageUrl(project: string, design: string, set: string, n: number): string {
   return `/variant/${project}/${design}/${set}/${n}/`;
+}
+
+/** Versions of one design (#20); with a commit id, its restore action. */
+export function historyUrl(project: string, design: string, path = ""): string {
+  return `/api/projects/${project}/designs/${design}/history${path}`;
+}
+
+/** A design as it was at a commit, for the preview frame. */
+export function versionPageUrl(project: string, design: string, sha: string): string {
+  return `/version/${project}/${design}/${sha}/`;
 }

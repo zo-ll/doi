@@ -813,9 +813,11 @@ button { font: inherit; color: inherit; }
 }
 .variants-bar .muted { white-space: nowrap; }
 .variants-error { color: var(--danger); font-size: var(--text-xs); }
-.variant-frame.is-running .frame-surface { opacity: 0.6; }
-.variant-label { cursor: default; }
-.variant-pick {
+/* With variants open too, the preview bar goes under the variants bar. */
+.variants-bar.is-second { top: calc(var(--space-4) * 2 + var(--control-h) + var(--space-2)); }
+.page-frame.is-running .frame-surface { opacity: 0.6; }
+.page-label { cursor: default; }
+.page-action {
   height: calc(var(--control-h-sm) / var(--zoom, 1));
   padding: 0 calc(var(--space-2) / var(--zoom, 1));
   border: 0;
@@ -826,4 +828,34 @@ button { font: inherit; color: inherit; }
   font-weight: var(--weight-medium);
   cursor: pointer;
 }
-.variant-pick:disabled { opacity: 0.4; cursor: not-allowed; }
+.page-action:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---------- History ---------- */
+
+.version {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.version:hover { background: var(--surface-hover); }
+.version.is-active { border-color: var(--accent); background: var(--accent-soft); }
+.version-message { overflow-wrap: anywhere; }
+.version-meta { display: flex; align-items: center; gap: var(--space-2); min-width: 0; font-size: var(--text-xs); color: var(--text-tertiary); }
+.version-meta > span { white-space: nowrap; flex: none; }
+.version-meta > .truncate { flex: 0 1 auto; }
+.version-sha { font-family: var(--font-mono); }
+.badge-current {
+  margin-left: auto;
+  padding: 0 var(--space-1-5);
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  color: var(--accent-soft-text);
+  font-weight: var(--weight-medium);
+}
