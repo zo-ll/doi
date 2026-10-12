@@ -261,9 +261,11 @@ function AnswerView({ answer: a }: { answer: Answer }) {
         </div>
       )}
       {a.status === "stopped" && <p className="msg-info">Stopped.</p>}
+      {a.commitError && <p className="msg-info">The change was not saved in the version history: {a.commitError}</p>}
       {(a.files.length > 0 || a.usage) && (
         <p className="msg-meta">
           {a.files.length > 0 && <span>Changed {a.files.join(", ")}</span>}
+          {a.commit && <span title={a.commit}>Saved as {a.commit.slice(0, 7)}</span>}
           {a.usage && (
             <span title="Input, output and cached tokens">
               {formatTokens(a.usage.inputTokens)} in · {formatTokens(a.usage.outputTokens)} out

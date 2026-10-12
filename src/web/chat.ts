@@ -13,6 +13,9 @@ export type ChatMessage =
       usage: Usage | null;
       retries: number;
       error?: string;
+      /** The commit of the turn; commitError when it failed (the turn itself succeeded). */
+      commit?: string;
+      commitError?: string;
     }
   | { id: number; kind: "error"; text: string }
   | { id: number; kind: "info"; text: string };
@@ -78,6 +81,8 @@ export function applyEvent(a: Answer, e: TurnStreamEvent): Answer {
       return { ...a, status: "done" };
     case "error":
       return { ...a, status: "error", error: errorText(e.kind, e.message) };
+    case "commit":
+      return e.sha ? { ...a, commit: e.sha } : e.error ? { ...a, commitError: e.error } : a;
   }
 }
 

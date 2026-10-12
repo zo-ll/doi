@@ -12,6 +12,8 @@ export interface TurnDeps {
   getProvider: (id: ProviderId, config: Config) => Provider;
   /** Holds the live reload of a design while a turn runs on it, so the turn reloads it once. */
   watcher?: Pick<DesignWatcher, "hold" | "release">;
+  /** Commits a completed turn (#11). Returns the commit id, or null when nothing changed. */
+  commit?: (project: string, design: string, prompt: string) => Promise<string | null>;
 }
 
 export interface TurnBody {
@@ -20,8 +22,12 @@ export interface TurnBody {
   target: string | null;
 }
 
-/** Events on the stream: the turn events, then an error event if the turn failed. */
-export type TurnStreamEvent = TurnEvent | { type: "error"; kind: "context" | "apply" | "provider"; message: string };
+/** Events on the stream: the turn events, an error event if the turn failed, then the commit. */
+export type TurnStreamEvent =
+  | TurnEvent
+  | { type: "error"; kind: "context" | "apply" | "provider"; message: string }
+  /** After `done`: the commit of the turn, or why it failed. The turn itself succeeded. */
+  | { type: "commit"; sha: string | null; error?: string };
 
 const MAX_TEXT = 20_000;
 const OID = /^[A-Za-z0-9_-]{1,100}$/;
@@ -174,6 +180,16 @@ export function createTurnHandler(deps: TurnDeps) {
               ...(error ? { error } : {}),
               prompt: SYSTEM_PROMPT.version,
             }).catch((e) => console.error("Could not write chat.jsonl:", e));
+          }
+          // Only a completed turn that changed files is a version. A failed turn makes no commit.
+          if (status === "done" && files.size > 0 && deps.commit) {
+            try {
+              send({ type: "commit", sha: await deps.commit(params.project, params.design, turn.text) });
+            } catch (e) {
+              const message = e instanceof Error ? e.message : String(e);
+              console.error("Could not commit the turn:", message);
+              send({ type: "commit", sha: null, error: message });
+            }
           }
           running.delete(key);
           deps.watcher?.release(params);

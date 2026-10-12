@@ -15,6 +15,8 @@ let server: ReturnType<typeof Bun.serve>;
 let calls: { provider: string; req: GenerateRequest }[];
 let behave: (req: GenerateRequest) => AsyncGenerator<any>;
 let capabilities: ProviderCapabilities;
+let commits: string[];
+let commitResult: () => Promise<string | null>;
 
 beforeEach(async () => {
   const workspace = await mkdtemp(join(tmpdir(), "doi-turns-"));
@@ -27,6 +29,8 @@ beforeEach(async () => {
   await Bun.write(join(dir, "index.html"), '<h1 data-oid="title">Hi</h1>');
   await Bun.write(join(dir, "styles.css"), "h1 { color: red; }");
   calls = [];
+  commits = [];
+  commitResult = async () => "a".repeat(40);
   capabilities = caps;
   behave = async function* () {
     yield { type: "text", delta: "Blue now." };
@@ -36,6 +40,10 @@ beforeEach(async () => {
   };
   const handler = createTurnHandler({
     config,
+    commit: (project, design, prompt) => {
+      commits.push(`${project}/${design}: ${prompt}`);
+      return commitResult();
+    },
     getProvider: (id) =>
       ({
         id,
@@ -73,8 +81,10 @@ describe("POST turns", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toStartWith("text/event-stream");
     const evs = await events(res);
-    expect(evs.map((e) => e.type)).toEqual(["text", "edit", "usage", "applied", "done"]);
+    expect(evs.map((e) => e.type)).toEqual(["text", "edit", "usage", "applied", "done", "commit"]);
     expect(evs.find((e) => e.type === "applied")).toEqual({ type: "applied", files: ["styles.css"] });
+    expect(evs.at(-1)).toEqual({ type: "commit", sha: "a".repeat(40) });
+    expect(commits).toEqual(["p/d: Make it blue"]);
     expect(await Bun.file(join(designDir(config.workspace, "p", "d"), "styles.css")).text()).toBe("h1 { color: blue; }");
 
     const req = calls[0]!.req;
@@ -127,6 +137,7 @@ describe("POST turns", () => {
     const second = await post({ text: "two" });
     expect(second.status).toBe(409);
     release();
+    // No files changed: no commit.
     expect((await events(first)).map((e) => e.type)).toEqual(["text", "applied", "done"]);
     // The lock is free again.
     expect((await post({ text: "three" })).status).toBe(200);
@@ -215,6 +226,27 @@ describe("POST turns", () => {
     expect(entries.filter((e) => e.role === "assistant")).toMatchObject([
       { status: "error", error: "rate limit" },
       { status: "error", error: expect.stringContaining("tokens") },
+    ]);
+  });
+
+  test("a failed turn makes no commit, and a failed commit is reported after done", async () => {
+    behave = async function* () {
+      throw new Error("rate limit");
+    };
+    await events(await post({ text: "x" }));
+    expect(commits).toEqual([]);
+
+    behave = async function* () {
+      yield { type: "edit", file: "styles.css", oldText: "red", newText: "blue" };
+      yield { type: "done" };
+    };
+    commitResult = async () => {
+      throw new Error("git commit failed: Please tell me who you are");
+    };
+    const evs = await events(await post({ text: "y" }));
+    expect(evs.slice(-2)).toEqual([
+      { type: "done" },
+      { type: "commit", sha: null, error: "git commit failed: Please tell me who you are" },
     ]);
   });
 });

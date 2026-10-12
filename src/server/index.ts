@@ -5,13 +5,21 @@ import { getProvider } from "../providers/registry.ts";
 import { providerStatus } from "../providers/status.ts";
 import { designFile, ensureWorkspace, listProjects } from "../workspace/paths.ts";
 import { designEvents, watchDesigns } from "../workspace/watch.ts";
+import { commitTurn, ensureRepo } from "../workspace/git.ts";
 import { createTurnHandler, getChat } from "./turns.ts";
 
 const config = await loadConfig();
 await ensureWorkspace(config.workspace);
+// Without git, doi still works; only the version history is missing.
+await ensureRepo(config.workspace).catch((e) => console.error("Version history is off:", e instanceof Error ? e.message : e));
 
 const watcher = watchDesigns(config.workspace);
-const runTurnRequest = createTurnHandler({ config, getProvider, watcher });
+const runTurnRequest = createTurnHandler({
+  config,
+  getProvider,
+  watcher,
+  commit: (project, design, prompt) => commitTurn(config.workspace, project, design, prompt),
+});
 
 const BRIDGE_TAG = `<script src="/__doi/bridge.js"></script>`;
 const bridge = Bun.file(new URL("../frame/bridge.js", import.meta.url).pathname);
