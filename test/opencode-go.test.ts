@@ -95,12 +95,12 @@ describe("opencode-go provider requests", () => {
     });
   }
 
-  test("the messages format sends the cache marker on the last system part", async () => {
+  test("the messages format sends the cache marker on each system part", async () => {
     const { fn, calls } = fakeFetch();
     await expect(collect(createOpenCodeGo(config, { fetch: fn }).generate(req("claude-haiku-5-5")))).rejects.toThrow();
     const system = calls[0]!.body.system as { text: string; cache_control?: unknown }[];
     expect(system.map((s) => s.text)).toEqual(["rules", "stable context"]);
-    expect(system[0]!.cache_control).toBeUndefined();
+    expect(system[0]!.cache_control).toEqual({ type: "ephemeral" });
     expect(system[1]!.cache_control).toEqual({ type: "ephemeral" });
   });
 
