@@ -229,6 +229,25 @@ describe("POST turns", () => {
     ]);
   });
 
+  test("a dropped data-oid is restored and a new element gets one, before the commit", async () => {
+    behave = async function* () {
+      yield { type: "write", file: "index.html", content: "<h1>Hi</h1><p>New</p>" };
+      yield { type: "done" };
+    };
+    const evs = await events(await post({ text: "Add a line" }));
+    expect(evs.find((e) => e.type === "applied")).toEqual({ type: "applied", files: ["index.html"] });
+    expect(await Bun.file(join(designDir(config.workspace, "p", "d"), "index.html")).text()).toBe(
+      '<h1 data-oid="title">Hi</h1><p data-oid="p-new">New</p>',
+    );
+    expect(commits).toEqual(["p/d: Add a line"]);
+  });
+
+  test("a missing id is fixed also when the turn changed only CSS", async () => {
+    await Bun.write(join(designDir(config.workspace, "p", "d"), "index.html"), "<h1>No id yet</h1>");
+    const evs = await events(await post({ text: "Make it blue" }));
+    expect(evs.find((e) => e.type === "applied")).toEqual({ type: "applied", files: ["styles.css", "index.html"] });
+  });
+
   test("a failed turn makes no commit, and a failed commit is reported after done", async () => {
     behave = async function* () {
       throw new Error("rate limit");
