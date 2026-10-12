@@ -70,6 +70,51 @@ export async function appendChat(workspace: string, project: string, entry: Chat
   });
 }
 
+/**
+ * A line that links a turn to its commit, so the version history can name the model of each
+ * version. `readChat` skips it: it is not a message.
+ */
+export interface CommitLine {
+  role: "commit";
+  turn: string;
+  design: string;
+  at: string;
+  sha: string;
+}
+
+export async function appendCommit(workspace: string, project: string, line: Omit<CommitLine, "role" | "at">): Promise<void> {
+  const path = chatFile(workspace, project);
+  const entry: CommitLine = { role: "commit", ...line, at: new Date().toISOString() };
+  await withChatLock(path, async () => {
+    await mkdir(dirname(path), { recursive: true });
+    await appendFile(path, JSON.stringify(entry) + "\n");
+  });
+}
+
+/** For each commit of a turn: the provider and model that made it, as "<provider>:<model>". */
+export async function commitModels(workspace: string, project: string): Promise<Map<string, string>> {
+  const file = Bun.file(chatFile(workspace, project));
+  const out = new Map<string, string>();
+  if (!(await file.exists())) return out;
+  const models = new Map<string, string>(); // turn → model
+  const commits: CommitLine[] = [];
+  for (const line of (await file.text()).split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const e = JSON.parse(line);
+      if (e.role === "assistant" && typeof e.turn === "string") models.set(e.turn, `${e.provider}:${e.model}`);
+      if (e.role === "commit" && typeof e.sha === "string") commits.push(e);
+    } catch {
+      // A bad line does not hide the others.
+    }
+  }
+  for (const c of commits) {
+    const m = models.get(c.turn);
+    if (m) out.set(c.sha, m);
+  }
+  return out;
+}
+
 /** Renames a design in the project's chat. The file is replaced whole, so a crash cannot leave half of it. */
 export async function renameInChat(workspace: string, project: string, from: string, to: string): Promise<void> {
   const path = chatFile(workspace, project);

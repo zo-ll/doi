@@ -4,7 +4,7 @@ import { assembleContext, capabilitiesFor, ContextTooLargeError, readDesignFiles
 import { fixDesignOids } from "../generation/oids.ts";
 import { SYSTEM_PROMPT } from "../generation/prompts.ts";
 import type { Provider } from "../providers/types.ts";
-import { appendChat, chatFile, historyMessages, readChat } from "../workspace/chat.ts";
+import { appendChat, appendCommit, chatFile, historyMessages, readChat } from "../workspace/chat.ts";
 import { designDir } from "../workspace/paths.ts";
 import {
   createSet,
@@ -297,7 +297,9 @@ export function createVariantHandlers(deps: VariantDeps) {
       await removeSet(workspace, params.project, params.design, set.id);
       const paths = [designDir(workspace, params.project, params.design), setDir(workspace, params.project, params.design, set.id), chatFile(workspace, params.project)];
       try {
-        return Response.json({ commit: await deps.commit(paths, `Pick variant ${v.n}: ${set.prompt}`) });
+        const sha = await deps.commit(paths, `Pick variant ${v.n}: ${set.prompt}`);
+        if (sha) await appendCommit(workspace, params.project, { turn, design: params.design, sha });
+        return Response.json({ commit: sha });
       } catch (e) {
         return Response.json({ commit: null, commitError: e instanceof Error ? e.message : String(e) });
       }

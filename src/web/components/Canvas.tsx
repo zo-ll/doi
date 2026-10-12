@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { designUrl, getJSON, sendJSON, variantPageUrl, type VariantSetView } from "../api.ts";
+import { designUrl, getJSON, sendJSON, variantPageUrl, versionPageUrl, type VariantSetView, type VersionView } from "../api.ts";
 import { formatTokens } from "../chat.ts";
 import type { Pin } from "../comments.ts";
 import { parseFrameMessage, trackMessage, type FrameMessage, type Rect } from "../frame.ts";
@@ -190,26 +190,34 @@ const Frame = memo(function Frame({
   );
 });
 
-/** One variant on the canvas: its page, its model and tokens, and Pick. No selection here. */
-const VariantFrame = memo(function VariantFrame({
+/**
+ * A read-only page on the canvas: a variant or an old version. No selection or pins here;
+ * a pinch and the canvas keys still work over it.
+ */
+const PageFrame = memo(function PageFrame({
+  id,
   slot,
   src,
-  variant,
-  canPick,
-  onPick,
+  title,
+  label,
+  className = "",
+  failed = null,
   onWheel,
   onKey,
 }: {
+  id: string;
   slot: { x: number; y: number; width: number; height: number };
   src: string;
-  variant: VariantSetView["variants"][number];
-  canPick: boolean;
-  onPick: (n: number) => void;
+  title: string;
+  label: React.ReactNode;
+  className?: string;
+  /** A message instead of the page. */
+  failed?: string | null;
   onWheel: (frame: FrameSpec, m: WheelMessage) => void;
   onKey: (m: KeyMessage) => void;
 }) {
   const ref = useRef<HTMLIFrameElement>(null);
-  const spec: FrameSpec = { id: `variant-${variant.n}`, label: `Variant ${variant.n}`, ...slot };
+  const spec: FrameSpec = { id, label: title, ...slot };
   const latest = useRef({ spec, onWheel, onKey });
   latest.current = { spec, onWheel, onKey };
   useEffect(() => {
@@ -222,34 +230,40 @@ const VariantFrame = memo(function VariantFrame({
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, []);
-  const u = variant.usage;
-  const status = variant.status === "running" ? "Working…" : variant.status === "done" ? null : variant.status === "stopped" ? "Stopped" : "Failed";
   return (
-    <figure className={`frame variant-frame is-${variant.status}`} style={{ left: slot.x, top: slot.y, width: slot.width, height: slot.height }}>
-      <figcaption className="frame-label variant-label">
-        <span>Variant {variant.n}</span>
-        <span className="muted truncate">{variant.provider}:{variant.model}</span>
-        {u.inputTokens + u.outputTokens > 0 && (
-          <span className="muted" title="Input and output tokens">{formatTokens(u.inputTokens)} in · {formatTokens(u.outputTokens)} out</span>
-        )}
-        {status && <span className="muted">{status}</span>}
-        <button className="variant-pick" disabled={!canPick} onClick={() => onPick(variant.n)} aria-label={`Pick variant ${variant.n}`}>
-          Pick
-        </button>
-      </figcaption>
+    <figure className={`frame page-frame ${className}`} style={{ left: slot.x, top: slot.y, width: slot.width, height: slot.height }}>
+      <figcaption className="frame-label page-label">{label}</figcaption>
       <div className="frame-surface">
-        {variant.status === "error" ? (
+        {failed ? (
           <div className="frame-state">
             <Icon name="alert" size={20} />
-            <p>{variant.error ?? "This variant failed."}</p>
+            <p>{failed}</p>
           </div>
         ) : (
-          <iframe ref={ref} src={src} title={`Variant ${variant.n} preview`} sandbox="allow-scripts" width={slot.width} height={slot.height} />
+          <iframe ref={ref} src={src} title={`${title} preview`} sandbox="allow-scripts" width={slot.width} height={slot.height} />
         )}
       </div>
     </figure>
   );
 });
+
+function variantLabel(v: VariantSetView["variants"][number], canPick: boolean, onPick: (n: number) => void) {
+  const u = v.usage;
+  const status = v.status === "running" ? "Working…" : v.status === "done" ? null : v.status === "stopped" ? "Stopped" : "Failed";
+  return (
+    <>
+      <span>Variant {v.n}</span>
+      <span className="muted truncate">{v.provider}:{v.model}</span>
+      {u.inputTokens + u.outputTokens > 0 && (
+        <span className="muted" title="Input and output tokens">{formatTokens(u.inputTokens)} in · {formatTokens(u.outputTokens)} out</span>
+      )}
+      {status && <span className="muted">{status}</span>}
+      <button className="page-action" disabled={!canPick} onClick={() => onPick(v.n)} aria-label={`Pick variant ${v.n}`}>
+        Pick
+      </button>
+    </>
+  );
+}
 
 /** The "Add frame" menu: the presets, or a custom size. */
 function AddFrameMenu({ onAdd, onClose }: { onAdd: (label: string, width: number, height: number) => void; onClose: () => void }) {
@@ -294,7 +308,24 @@ type Drag =
   | { kind: "pan"; start: Point; view: View }
   | { kind: "move"; id: string; start: Point; frame: FrameSpec; moved: boolean };
 
-export function Canvas({ active, revision, selection, pins, onSelect, onClear, onPin, variants = null, variantsError = null, onPickVariant, onDiscardVariants }: {
+export function Canvas({
+  active,
+  revision,
+  selection,
+  pins,
+  onSelect,
+  onClear,
+  onPin,
+  variants = null,
+  variantsError = null,
+  onPickVariant,
+  onDiscardVariants,
+  preview = null,
+  previewBusy = false,
+  previewError = null,
+  onRestorePreview,
+  onClosePreview,
+}: {
   active: Active | null;
   /** Changes when the design files changed; the frames load again. */
   revision: number;
@@ -309,6 +340,12 @@ export function Canvas({ active, revision, selection, pins, onSelect, onClear, o
   variantsError?: string | null;
   onPickVariant?: (n: number) => void;
   onDiscardVariants?: () => void;
+  /** An old version shown next to the design, from the History tab. */
+  preview?: VersionView | null;
+  previewBusy?: boolean;
+  previewError?: string | null;
+  onRestorePreview?: () => void;
+  onClosePreview?: () => void;
 }) {
   const ref = useRef<HTMLElement>(null);
   const [frames, setFrames] = useState<FrameSpec[] | null>(null);
@@ -318,9 +355,12 @@ export function Canvas({ active, revision, selection, pins, onSelect, onClear, o
   const [spaceDown, setSpaceDown] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const needsFit = useRef(true);
-  const slots = frames && variants ? variantSlots(frames, variants.variants.length) : [];
+  const pageCount = (variants?.variants.length ?? 0) + (preview ? 1 : 0);
+  const pageSlots = frames && pageCount ? variantSlots(frames, pageCount) : [];
+  const slots = pageSlots.slice(0, variants?.variants.length ?? 0);
+  const previewSlot = preview ? pageSlots.at(-1) : undefined;
   // Fit takes the variant frames too, so a new set is in view at once.
-  const allFrames: FrameSpec[] = [...(frames ?? []), ...slots.map((s, i) => ({ id: `variant-${i + 1}`, label: "", ...s }))];
+  const allFrames: FrameSpec[] = [...(frames ?? []), ...pageSlots.map((s, i) => ({ id: `page-${i + 1}`, label: "", ...s }))];
   const state = useRef({ view, frames, active, allFrames });
   state.current = { view, frames, active, allFrames };
 
@@ -366,6 +406,12 @@ export function Canvas({ active, revision, selection, pins, onSelect, onClear, o
   useLayoutEffect(() => {
     if (setId && frames?.length) fit();
   }, [setId, frames !== null]);
+
+  // An opened preview comes into view.
+  const previewSha = preview?.sha ?? null;
+  useLayoutEffect(() => {
+    if (previewSha && frames?.length) fit();
+  }, [previewSha, frames !== null]);
 
   /** Changes the frames and stores them. A failed save shows a message and keeps the change. */
   const changeFrames = useCallback((next: FrameSpec[]) => {
@@ -560,19 +606,39 @@ export function Canvas({ active, revision, selection, pins, onSelect, onClear, o
           slots.map((slot, i) => {
             const v = variants.variants[i]!;
             return (
-              <VariantFrame
+              <PageFrame
                 key={`${variants.id}-${v.n}`}
+                id={`variant-${v.n}`}
+                className={`is-${v.status}`}
                 slot={slot}
                 // A finished variant loads again with its changes.
                 src={`${variantPageUrl(active.project, active.design, variants.id, v.n)}?s=${v.status}`}
-                variant={v}
-                canPick={!variants.running && v.status === "done"}
-                onPick={(n) => onPickVariant?.(n)}
+                title={`Variant ${v.n}`}
+                label={variantLabel(v, !variants.running && v.status === "done", (n) => onPickVariant?.(n))}
+                failed={v.status === "error" ? (v.error ?? "This variant failed.") : null}
                 onWheel={onFrameWheel}
                 onKey={onFrameKey}
               />
             );
           })}
+        {preview && previewSlot && (
+          <PageFrame
+            key={preview.sha}
+            id="preview"
+            slot={previewSlot}
+            src={versionPageUrl(active.project, active.design, preview.sha)}
+            title={`Version ${preview.sha.slice(0, 7)}`}
+            className="is-preview"
+            label={
+              <>
+                <span>Version {preview.sha.slice(0, 7)}</span>
+                <span className="muted truncate">{preview.message}</span>
+              </>
+            }
+            onWheel={onFrameWheel}
+            onKey={onFrameKey}
+          />
+        )}
       </div>
 
       {variants && (
@@ -586,6 +652,22 @@ export function Canvas({ active, revision, selection, pins, onSelect, onClear, o
             Discard all
           </button>
           {variantsError && <span className="variants-error" role="alert">{variantsError}</span>}
+        </div>
+      )}
+
+      {preview && (
+        <div className={`variants-bar${variants ? " is-second" : ""}`} role="region" aria-label="Version preview">
+          <Icon name="history" size={14} />
+          <span className="truncate">
+            Version {preview.sha.slice(0, 7)}: <q>{preview.message}</q>
+          </span>
+          <button className="btn btn-primary" disabled={previewBusy || variants !== null} onClick={onRestorePreview} title={variants ? "Pick or discard the variants first" : "Make this version the current one, as a new version"}>
+            Restore
+          </button>
+          <button className="icon-btn" onClick={onClosePreview} aria-label="Close the preview" title="Close">
+            <Icon name="close" />
+          </button>
+          {previewError && <span className="variants-error" role="alert">{previewError}</span>}
         </div>
       )}
 

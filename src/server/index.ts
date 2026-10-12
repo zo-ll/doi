@@ -6,9 +6,10 @@ import { providerStatus } from "../providers/status.ts";
 import { designDir, ensureWorkspace, fileIn, listProjects } from "../workspace/paths.ts";
 import { variantDir } from "../workspace/variants.ts";
 import { designEvents, watchDesigns } from "../workspace/watch.ts";
-import { commitPaths, commitTurn, designVersion, ensureRepo } from "../workspace/git.ts";
+import { commitPaths, commitTurn, designFileAt, designVersion, ensureRepo, isSha } from "../workspace/git.ts";
 import { uploadFile } from "../workspace/uploads.ts";
 import { deleteCommentRoute, getComments, patchComment, postComment } from "./comments.ts";
+import { getHistory, restoreVersion } from "./history.ts";
 import { getLayout, putLayout } from "./layout.ts";
 import { createVariantHandlers } from "./variants.ts";
 import { DesignLocks } from "./locks.ts";
@@ -37,6 +38,12 @@ const variants = createVariantHandlers({
   getProvider,
   commit: (paths, message) => commitPaths(config.workspace, paths, message),
 });
+const historyDeps = {
+  workspace: config.workspace,
+  locks,
+  variantsOpen: variants.isOpen,
+  commit: (paths: string[], message: string) => commitPaths(config.workspace, paths, message),
+};
 const runTurnRequest = createTurnHandler({
   config,
   locks,
@@ -78,6 +85,28 @@ function serveDesign(url: URL): Promise<Response> | Response {
   const [, , project, design, ...rest] = url.pathname.split("/");
   if (!project || !design) return new Response("Not found", { status: 404 });
   return servePage(url, () => designDir(config.workspace, project, design), rest);
+}
+
+/** /version/<project>/<design>/<sha>/<file>: a design as it was at a commit, read from git. */
+async function serveVersion(url: URL): Promise<Response> {
+  const [, , project, design, sha, ...rest] = url.pathname.split("/");
+  if (!project || !design || !sha) return new Response("Not found", { status: 404 });
+  if (rest.length === 0) return Response.redirect(`${url.pathname}/`, 301);
+  if (rest.some((part) => part.startsWith("."))) return new Response("Not found", { status: 404 });
+  if (!isSha(sha)) return new Response("Bad request", { status: 400 });
+  const file = rest.join("/") || "index.html";
+  let data: Uint8Array<ArrayBuffer> | null;
+  try {
+    data = await designFileAt(config.workspace, project, design, sha, file);
+  } catch {
+    return new Response("Bad request", { status: 400 });
+  }
+  if (!data) return new Response("Not found", { status: 404 });
+  // A commit never changes, so its files can be kept.
+  const keep = { "cache-control": "private, max-age=31536000, immutable" };
+  if (!file.endsWith(".html")) return new Response(data, { headers: { "content-type": Bun.file(file).type, ...keep } });
+  const html = new TextDecoder().decode(data).replace("</body>", `${BRIDGE_TAG}\n</body>`);
+  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", ...keep } });
 }
 
 /** /variant/<project>/<design>/<set>/<n>/<file> */
@@ -123,6 +152,8 @@ const server = Bun.serve({
     },
     "/api/projects/:project/designs/:design/variants/:set/pick": { POST: (req) => variants.pick(req, req.params) },
     "/api/projects/:project/designs/:design/variants/:set": { DELETE: (req) => variants.discard(req.params) },
+    "/api/projects/:project/designs/:design/history": (req) => getHistory(historyDeps, req.params),
+    "/api/projects/:project/designs/:design/history/:sha/restore": { POST: (req) => restoreVersion(historyDeps, req.params) },
     "/api/projects/:project/designs/:design/layout": {
       GET: (req) => getLayout(config.workspace, req.params),
       PUT: (req) => putLayout(config.workspace, req, req.params),
@@ -142,6 +173,7 @@ const server = Bun.serve({
     const url = new URL(req.url);
     if (url.pathname.startsWith("/design/")) return serveDesign(url);
     if (url.pathname.startsWith("/variant/")) return serveVariant(url);
+    if (url.pathname.startsWith("/version/")) return serveVersion(url);
     return new Response("Not found", { status: 404 });
   },
   development: process.env.NODE_ENV !== "production" && { hmr: true, console: true },

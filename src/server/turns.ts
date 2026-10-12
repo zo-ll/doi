@@ -5,7 +5,7 @@ import { designOids, fixDesignOids } from "../generation/oids.ts";
 import { touchedOids } from "../generation/touched.ts";
 import { SYSTEM_PROMPT } from "../generation/prompts.ts";
 import type { Provider } from "../providers/types.ts";
-import { appendChat, historyMessages, readChat, type TurnComment } from "../workspace/chat.ts";
+import { appendChat, appendCommit, historyMessages, readChat, type TurnComment } from "../workspace/chat.ts";
 import { CommentError, readComments, updateComment } from "../workspace/comments.ts";
 import { designDir } from "../workspace/paths.ts";
 import { IMAGE_LIMITS, IMAGE_TYPES, isImageType, saveUploads, type ImageType } from "../workspace/uploads.ts";
@@ -297,7 +297,10 @@ export function createTurnHandler(deps: TurnDeps) {
           if (status === "done" && files.size > 0 && deps.commit) {
             try {
               const message = turn.text.trim() || `Apply ${turn.comments.length} comment${turn.comments.length === 1 ? "" : "s"}`;
-              send({ type: "commit", sha: await deps.commit(params.project, params.design, message) });
+              const sha = await deps.commit(params.project, params.design, message);
+              // The version history names the model of this commit through this line.
+              if (sha) await appendCommit(workspace, params.project, { turn: turnId, design: params.design, sha });
+              send({ type: "commit", sha });
             } catch (e) {
               const message = e instanceof Error ? e.message : String(e);
               console.error("Could not commit the turn:", message);
