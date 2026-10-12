@@ -2,6 +2,7 @@ import { cp, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { HarnessId } from "../config.ts";
 import { createClaudeCode } from "../providers/claude-code.ts";
+import { createCodex } from "../providers/codex.ts";
 import type { HandoffBundle, Harness, RunHandle } from "./types.ts";
 
 export const HANDOFF_DIR = ".design-handoff";
@@ -32,7 +33,7 @@ function cliHarness(id: HarnessId, bin: string, headless: string[]): Harness {
 // Flags change between releases. Verify each one before M4.
 export const harnesses: Record<HarnessId, Harness> = {
   "claude-code": { ...cliHarness("claude-code", "claude", ["-p"]), asProvider: (config) => createClaudeCode(config) },
-  codex: cliHarness("codex", "codex", ["exec"]),
+  codex: { ...cliHarness("codex", "codex", ["exec"]), asProvider: (config) => createCodex(config) },
   opencode: cliHarness("opencode", "opencode", ["run"]),
   "gemini-cli": cliHarness("gemini-cli", "gemini", ["-p"]),
   aider: cliHarness("aider", "aider", ["--message"]),

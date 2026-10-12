@@ -1,8 +1,11 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { join } from "node:path";
 import type { Config } from "../config.ts";
+import { bunSpawn, insideCwd, lines, textOf, type Proc, type Spawn } from "./cli.ts";
 import type { ContentPart, GenerateEvent, GenerateRequest, Message, Provider } from "./types.ts";
+
+export type { Proc, Spawn } from "./cli.ts";
 
 /**
  * A Claude Pro or Max subscription, through the unmodified Claude Code CLI. Anthropic's terms
@@ -34,25 +37,6 @@ export function claudeArgs(model: string, systemFile: string): string[] {
   ];
 }
 
-export interface Proc {
-  stdin: { write(data: string): unknown; end(): unknown };
-  stdout: ReadableStream<Uint8Array>;
-  stderr: ReadableStream<Uint8Array>;
-  exited: Promise<number>;
-  kill(): void;
-}
-
-export type Spawn = (cmd: string[], cwd: string) => Proc;
-
-const bunSpawn: Spawn = (cmd, cwd) => {
-  const proc = Bun.spawn(cmd, { cwd, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
-  return { stdin: proc.stdin, stdout: proc.stdout, stderr: proc.stderr, exited: proc.exited, kill: () => proc.kill() };
-};
-
-function textOf(m: Message): string {
-  return m.content.flatMap((p) => (p.type === "text" ? [p.text] : [])).join("\n");
-}
-
 /** One stream-json user message: earlier turns as a transcript, then the new message with its images. */
 export function userInput(messages: Message[]): string {
   const last = messages.at(-1);
@@ -71,28 +55,6 @@ export function userInput(messages: Message[]): string {
     );
   }
   return JSON.stringify({ type: "user", message: { role: "user", content } }) + "\n";
-}
-
-async function* lines(stream: ReadableStream<Uint8Array>): AsyncGenerator<string> {
-  const decoder = new TextDecoder();
-  let buffer = "";
-  for await (const chunk of stream) {
-    buffer += decoder.decode(chunk, { stream: true });
-    let nl: number;
-    while ((nl = buffer.indexOf("\n")) >= 0) {
-      const line = buffer.slice(0, nl).trim();
-      buffer = buffer.slice(nl + 1);
-      if (line) yield line;
-    }
-  }
-  if (buffer.trim()) yield buffer.trim();
-}
-
-/** A path from a tool call, relative to the design folder; null when it is outside. */
-function insideCwd(cwd: string, file: unknown): string | null {
-  if (typeof file !== "string") return null;
-  const rel = isAbsolute(file) ? relative(cwd, file) : file;
-  return rel === "" || rel.startsWith("..") || rel.split(sep).includes("..") || isAbsolute(rel) ? null : rel;
 }
 
 /** Maps one stream-json event to GenerateEvents. Throws on a result error. */
