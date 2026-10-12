@@ -60,9 +60,9 @@ export function App() {
         onRetry={retryProjects}
       />
       <ChatPanel
+        target={active}
         selection={selection}
         model={config.state === "ready" ? config.data.models.generate.model : null}
-        disabled={!active}
         onClearSelection={() => setSelection(null)}
       />
       <Canvas active={active} selection={selection} onSelect={setSelection} />

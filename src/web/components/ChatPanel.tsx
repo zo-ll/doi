@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { turnUrl } from "../api.ts";
+import type { Active } from "./Sidebar.tsx";
 import { Icon } from "./Icon.tsx";
 
 export interface Selection {
@@ -10,7 +12,10 @@ export interface Selection {
 
 type Message =
   | { id: number; kind: "user"; text: string; target?: string }
-  | { id: number; kind: "error"; text: string };
+  | { id: number; kind: "error"; text: string }
+  | { id: number; kind: "info"; text: string };
+
+type NewMessage = Message extends infer M ? (M extends Message ? Omit<M, "id"> : never) : never;
 
 const SUGGESTIONS = [
   "A pricing page with three plans and a FAQ",
@@ -20,18 +25,21 @@ const SUGGESTIONS = [
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
-export function ChatPanel({ selection, model, disabled, onClearSelection }: {
+export function ChatPanel({ target, selection, model, onClearSelection }: {
+  /** The open design; null disables the composer. */
+  target: Active | null;
   selection: Selection | null;
   model: string | null;
-  disabled: boolean;
   onClearSelection: () => void;
 }) {
+  const disabled = target === null;
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [running, setRunning] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(1);
+  const abortRef = useRef<AbortController | null>(null);
 
   // Auto-grow the composer up to its CSS max-height.
   useEffect(() => {
@@ -45,26 +53,49 @@ export function ChatPanel({ selection, model, disabled, onClearSelection }: {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [messages]);
 
-  const send = () => {
+  const push = (m: NewMessage) =>
+    setMessages((list) => [...list, { ...m, id: nextId.current++ } as Message]);
+
+  // Stop a running request when the panel unmounts or the design changes.
+  useEffect(() => () => abortRef.current?.abort(), [target?.project, target?.design]);
+
+  const send = async () => {
     const text = draft.trim();
-    if (!text || running || disabled) return;
-    const id = nextId.current;
-    nextId.current += 2;
-    setMessages((m) => [
-      ...m,
-      { id, kind: "user", text, target: selection?.oid },
-      // Replaced by the streamed answer when the generation endpoint exists (#7, #8).
-      { id: id + 1, kind: "error", text: "Generation is not available yet. See issues #7 and #8." },
-    ]);
+    if (!text || running || !target) return;
+    push({ kind: "user", text, target: selection?.oid });
     setDraft("");
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setRunning(true);
+    try {
+      const res = await fetch(turnUrl(target.project, target.design), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text, target: selection?.oid ?? null }),
+        signal: controller.signal,
+      });
+      if (res.status === 404) {
+        push({ kind: "error", text: "Generation is not available yet. See issues #7 and #8." });
+      } else if (!res.ok) {
+        push({ kind: "error", text: `The request failed: ${res.status} ${res.statusText}` });
+      }
+      // #7 and #8 replace this with the streamed answer.
+    } catch (e) {
+      if (controller.signal.aborted) push({ kind: "info", text: "Stopped." });
+      else push({ kind: "error", text: `The request failed: ${e instanceof Error ? e.message : String(e)}` });
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+      setRunning(false);
+    }
   };
 
-  const stop = () => setRunning(false);
+  const stop = () => abortRef.current?.abort();
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      send();
+      void send();
     } else if (e.key === "Escape" && running) {
       e.preventDefault();
       stop();
@@ -100,13 +131,21 @@ export function ChatPanel({ selection, model, disabled, onClearSelection }: {
                 {m.target && <span className="msg-target"><Icon name="target" size={12} />{m.target}</span>}
                 <p>{m.text}</p>
               </div>
-            ) : (
+            ) : m.kind === "error" ? (
               <div key={m.id} className="notice notice-danger" role="alert">
                 <Icon name="alert" />
                 <p className="notice-text">{m.text}</p>
               </div>
+            ) : (
+              <p key={m.id} className="msg-info">{m.text}</p>
             ),
           )
+        )}
+        {running && (
+          <div className="msg-pending" role="status">
+            <span className="pending-dot" />
+            Working… <span className="muted">Esc to stop</span>
+          </div>
         )}
       </div>
 
@@ -145,7 +184,7 @@ export function ChatPanel({ selection, model, disabled, onClearSelection }: {
                 Stop
               </button>
             ) : (
-              <button className="btn btn-primary" onClick={send} disabled={!canSend} title={`Send (${isMac ? "⌘" : "Ctrl"}+Enter)`}>
+              <button className="btn btn-primary" onClick={() => void send()} disabled={!canSend} title={`Send (${isMac ? "⌘" : "Ctrl"}+Enter)`}>
                 Send
                 <kbd>{isMac ? "⌘" : "Ctrl"}↵</kbd>
               </button>

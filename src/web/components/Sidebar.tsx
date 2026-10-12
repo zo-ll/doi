@@ -25,9 +25,9 @@ export function Sidebar({ projects, active, workspace, onOpen, onRetry }: {
       <div className="sidebar-body">
         {projects.state === "loading" && (
           <div className="skeleton-list" aria-busy="true" aria-label="Loading projects">
-            <div className="skeleton" style={{ width: "60%" }} />
-            <div className="skeleton skeleton-indent" style={{ width: "45%" }} />
-            <div className="skeleton skeleton-indent" style={{ width: "52%" }} />
+            <div className="skeleton" />
+            <div className="skeleton skeleton-indent" />
+            <div className="skeleton skeleton-indent" />
           </div>
         )}
 

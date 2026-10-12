@@ -63,7 +63,10 @@ function Frame({ id, src, label, width, height, zoom, selection, onSelect }: {
             <p>This design cannot load.</p>
           </div>
         ) : (
-          <div className="frame-scale" style={{ width, height, transform: `scale(${zoom})` }}>
+          <div
+            className="frame-scale"
+            style={{ width, height, transform: `scale(${zoom})`, "--zoom": zoom } as React.CSSProperties}
+          >
             <iframe
               ref={ref}
               src={src}
@@ -75,7 +78,7 @@ function Frame({ id, src, label, width, height, zoom, selection, onSelect }: {
             />
             {rect && (
               <div className="selection-box" style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}>
-                <span className="selection-tag" style={{ fontSize: 11 / zoom, padding: `${2 / zoom}px ${6 / zoom}px` }}>
+                <span className="selection-tag">
                   {selection!.oid}
                 </span>
               </div>

@@ -40,7 +40,12 @@ export async function listProjects(workspace: string): Promise<ProjectSummary[]>
   const projects: ProjectSummary[] = [];
   for (const id of await subdirs(join(workspace, "projects"))) {
     const meta = Bun.file(join(workspace, "projects", id, "project.json"));
-    const name = (await meta.exists()) ? String((await meta.json()).name ?? id) : id;
+    let name = id;
+    try {
+      if (await meta.exists()) name = String((await meta.json()).name ?? id);
+    } catch {
+      // A hand-edited project.json with bad JSON must not hide the other projects.
+    }
     const designs: string[] = [];
     for (const design of await subdirs(join(workspace, "projects", id, "designs"))) {
       if (await Bun.file(join(designDir(workspace, id, design), "index.html")).exists()) designs.push(design);

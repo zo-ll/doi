@@ -50,6 +50,15 @@ describe("listProjects", () => {
     ]);
   });
 
+  test("falls back to the folder id when project.json is not valid JSON", async () => {
+    const ws = await mkdtemp(join(tmpdir(), "doi-"));
+    dirs.push(ws);
+    await Bun.write(join(ws, "projects/broken/project.json"), "{ not json");
+    await Bun.write(join(ws, "projects/broken/designs/home/index.html"), "<html></html>");
+
+    expect(await listProjects(ws)).toEqual([{ id: "broken", name: "broken", designs: ["home"] }]);
+  });
+
   test("returns an empty list for a missing workspace", async () => {
     expect(await listProjects("/nonexistent/doi-workspace")).toEqual([]);
   });
