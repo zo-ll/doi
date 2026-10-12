@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-10-12, after PR #80 (`main` at `15f325e`). Tests: 68 pass. `bun check`: no errors.
+Last update: 2026-10-12, after PR #81 (`main` at `27d3b97`). Tests: 72 pass. `bun check`: no errors.
 
 ## 1. What doi is
 
@@ -72,6 +72,8 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 | `src/providers/status.ts` | Provider readiness without secrets or account details |
 | `src/providers/registry.ts` | Provider factories, `isImplemented()` |
 | `src/harnesses/` | Coding-agent CLIs for handoff (M4); `asProvider()` for the two subscription CLIs |
+| `src/generation/prompts.ts`, `prompts/system-v0.md` | System prompt as a versioned file (`SYSTEM_PROMPT`). A new version is a new file |
+| `test/fixtures/prompts.md` | Five sample prompts, the acceptance checks and the last results |
 | `scripts/try-provider.ts` | Manual check of a provider with real credentials |
 
 ### Provider contract
@@ -82,7 +84,7 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 
 ## 6. State and next steps
 
-Done and closed: #1 CI, #13 app shell, #74 credentials and status, #60 Claude Code backend, #73 Codex backend.
+Done and closed: #1 CI, #13 app shell, #74 credentials and status, #60 Claude Code backend, #73 Codex backend, #4 system prompt v0.
 
 Open only for a manual run with a real key (the user must set the key; do not read pi's credentials):
 - #2 Anthropic: `ANTHROPIC_API_KEY=... bun scripts/try-provider.ts anthropic:claude-haiku-5-5`
@@ -91,12 +93,11 @@ Open only for a manual run with a real key (the user must set the key; do not re
 
 Next, in this order (M1):
 
-1. **#4 System prompt v0.** A versioned file, not a string in code.
-2. **#5 Context assembler.** Stable parts first, for the prompt cache. Use `Provider.forModel()` when it exists.
-3. **#6 Edit applier.** Skip providers with `editsFiles: true`. All edits of a turn apply, or none.
-4. **#7 Generation endpoint.** `POST /api/projects/:project/designs/:design/turns`. The chat panel already posts there and handles 404, abort and errors. Pass `cwd` for CLI backends.
-5. **#8 Chat history.** Also fix the task that was added from a review: keep messages for each design.
-6. **#10 Live reload**, **#11 Git history**, **#12 Projects**, **#9 Image input.**
+1. **#5 Context assembler.** Stable parts first, for the prompt cache. The first part is `SYSTEM_PROMPT.text` from `src/generation/prompts.ts`. Use `Provider.forModel()` when it exists.
+2. **#6 Edit applier.** Skip providers with `editsFiles: true`. All edits of a turn apply, or none.
+3. **#7 Generation endpoint.** `POST /api/projects/:project/designs/:design/turns`. The chat panel already posts there and handles 404, abort and errors. Pass `cwd` for CLI backends.
+4. **#8 Chat history.** Also fix the task that was added from a review: keep messages for each design.
+5. **#10 Live reload**, **#11 Git history**, **#12 Projects**, **#9 Image input.**
 
 After M1: M2 (precision), M3 (design systems), M4 (handoff), M5 (breadth). #75 (Sign in with ChatGPT) waits for a client ID from OpenAI.
 
@@ -107,4 +108,5 @@ After M1: M2 (precision), M3 (design systems), M4 (handoff), M5 (breadth). #75 (
 - Provider status reports only "Logged in" for CLI backends. The plan and the login method are account details and stay out of the UI.
 - Bun was not installed on this machine on 2026-10-12. It was installed with `npm i -g bun` (1.4.3).
 - OpenAI reasoning models get the system parts as `developer` messages. This is SDK behavior. The Responses API stores responses by default (`store: true`); doi does not set `store: false` yet.
+- `claude -p` loads the user's own Claude Code context. In a sample run it put the user's real name into a generated profile. Check if a flag can turn this off without `--bare` (see the Claude Code note above).
 - `.gitignore` uses `/workspace` (root only). A bare `workspace` rule once hid `src/workspace/`.
