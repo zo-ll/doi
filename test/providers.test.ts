@@ -89,20 +89,26 @@ describe("streamDesign", () => {
     });
   });
 
-  test("sends system parts as separate messages with the cache marker on the last one", async () => {
+  test("sends system parts as separate messages, each with the cache marker", async () => {
     const { model, calls } = mockModel([finish]);
     const marker = { anthropic: { cacheControl: { type: "ephemeral" } } };
     await collect(streamDesign(model, req, marker));
 
     const system = calls[0].prompt.filter((m: any) => m.role === "system");
     expect(system.map((m: any) => m.content)).toEqual(["rules", "design system and current files"]);
-    expect(system[0].providerOptions).toBeUndefined();
+    expect(system[0].providerOptions).toEqual(marker);
     expect(system[1].providerOptions).toEqual(marker);
     expect(calls[0].tools.map((t: any) => t.name).sort()).toEqual(["edit", "write"]);
   });
 });
 
 describe("request mapping", () => {
+  test("more system parts than breakpoints put the markers on the last four", () => {
+    const marker = { anthropic: { cacheControl: { type: "ephemeral" } } };
+    const marked = toInstructions(["a", "b", "c", "d", "e"], marker).map((m) => m.providerOptions !== undefined);
+    expect(marked).toEqual([false, true, true, true, true]);
+  });
+
   test("no cache marker leaves all system messages plain", () => {
     expect(toInstructions(["a", "b"])).toEqual([
       { role: "system", content: "a" },

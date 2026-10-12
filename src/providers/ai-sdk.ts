@@ -28,15 +28,19 @@ export const designTools = {
 
 export type CacheMarker = SystemModelMessage["providerOptions"];
 
+/** Anthropic takes at most 4 cache breakpoints in one request. */
+const MAX_CACHE_MARKERS = 4;
+
 /**
- * System parts become separate system messages. The cache marker goes on the last one,
- * so everything up to and including the stable context can come from the prompt cache.
+ * System parts become separate system messages. Each part gets the cache marker, so a turn
+ * that changes only the design files still reads the system prompt and the design system
+ * from the cache. With more parts than breakpoints, the last parts get the markers.
  */
 export function toInstructions(system: string[], cacheMarker?: CacheMarker): SystemModelMessage[] {
   return system.map((content, i) => ({
     role: "system",
     content,
-    ...(cacheMarker && i === system.length - 1 ? { providerOptions: cacheMarker } : {}),
+    ...(cacheMarker && i >= system.length - MAX_CACHE_MARKERS ? { providerOptions: cacheMarker } : {}),
   }));
 }
 
