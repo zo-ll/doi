@@ -249,4 +249,51 @@ describe("POST turns", () => {
       { type: "commit", sha: null, error: "git commit failed: Please tell me who you are" },
     ]);
   });
+
+  test("images are saved, stored in the chat and sent as image parts", async () => {
+    const png = Buffer.from([137, 80, 78, 71, 1, 2, 3]);
+    const evs = await events(await post({ text: "Like this", images: [{ mediaType: "image/png", data: png.toString("base64") }] }));
+    expect(evs.at(-1)!.type).toBe("commit");
+    const last = calls[0]!.req.messages.at(-1)!;
+    expect(last.content[1]).toEqual({ type: "image", mediaType: "image/png", data: new Uint8Array(png) });
+    const [user] = await readChat(config.workspace, "p", "d");
+    const names = user?.role === "user" ? (user.images ?? []) : [];
+    expect(names).toHaveLength(1);
+    const name = names[0]!;
+    expect(name).toMatch(/^[0-9a-f-]{36}-0\.png$/);
+    expect(Buffer.from(await Bun.file(join(config.workspace, "projects", "p", "uploads", name)).arrayBuffer())).toEqual(png);
+
+    // The next turn does not send the old image again; it only says that there was one.
+    await events(await post({ text: "Now bigger" }));
+    expect(calls[1]!.req.messages[0]!.content).toEqual([{ type: "text", text: "Like this\n\n(1 image attached to this message.)" }]);
+  });
+
+  test("bad images fail before any provider call", async () => {
+    const img = (mediaType: string, data: string) => ({ mediaType, data });
+    const ok = Buffer.from([1]).toString("base64");
+    for (const images of [
+      "x",
+      [img("image/svg+xml", ok)],
+      // Names on the object prototype are not image types.
+      [img("toString", ok)],
+      [img("__proto__", ok)],
+      [img("image/png", "")],
+      Array.from({ length: 6 }, () => img("image/png", ok)),
+      [img("image/png", Buffer.alloc(3_750_001).toString("base64"))],
+    ]) {
+      const res = await post({ text: "x", images });
+      expect(res.status).toBe(400);
+    }
+    expect(calls).toHaveLength(0);
+  });
+
+  test("a model without vision refuses images with a clear message", async () => {
+    capabilities = { ...caps, vision: false };
+    const res = await post({ text: "x", images: [{ mediaType: "image/png", data: "AQ==" }] });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("anthropic:big-model cannot read images. Remove the images, or choose a model with vision in config.toml.");
+    expect(calls).toHaveLength(0);
+    // The design is not locked by the refused request.
+    expect((await post({ text: "no images" })).status).toBe(200);
+  });
 });

@@ -3,7 +3,7 @@ import type { ChatEntry, TurnStreamEvent, Usage } from "./api.ts";
 export type AnswerStatus = "running" | "done" | "error" | "stopped";
 
 export type ChatMessage =
-  | { id: number; kind: "user"; text: string; target?: string }
+  | { id: number; kind: "user"; text: string; target?: string; images?: string[] }
   | {
       id: number;
       kind: "assistant";
@@ -27,12 +27,18 @@ export function newAnswer(id: number): Answer {
 }
 
 /** The stored chat as panel messages. A user line without an answer is a turn that never ended. */
-export function fromEntries(entries: ChatEntry[], nextId: () => number): ChatMessage[] {
+export function fromEntries(entries: ChatEntry[], nextId: () => number, imageUrl: (name: string) => string = (n) => n): ChatMessage[] {
   const answered = new Set(entries.filter((e) => e.role === "assistant").map((e) => e.turn));
   const out: ChatMessage[] = [];
   for (const e of entries) {
     if (e.role === "user") {
-      out.push({ id: nextId(), kind: "user", text: e.text, ...(e.target ? { target: e.target } : {}) });
+      out.push({
+        id: nextId(),
+        kind: "user",
+        text: e.text,
+        ...(e.target ? { target: e.target } : {}),
+        ...(e.images?.length ? { images: e.images.map(imageUrl) } : {}),
+      });
       if (!answered.has(e.turn)) out.push({ id: nextId(), kind: "info", text: "This turn did not finish." });
     } else {
       out.push({

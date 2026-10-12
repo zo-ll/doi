@@ -42,3 +42,8 @@ export async function sendJSON<T>(method: "POST" | "PATCH", url: string, body: u
   if (!res.ok) throw new Error(data?.error ?? `${res.status} ${res.statusText}`);
   return data as T;
 }
+
+/** An image the user attached to a message (#9). */
+export function uploadUrl(project: string, name: string): string {
+  return `/api/projects/${project}/uploads/${name}`;
+}

@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { chatFile } from "./chat.ts";
 import { designDir } from "./paths.ts";
+import { uploadsDir } from "./uploads.ts";
 
 // One git command at a time: two turns on different designs must not race for the index lock.
 let queue: Promise<unknown> = Promise.resolve();
@@ -52,7 +53,11 @@ export function commitPaths(workspace: string, paths: string[], message: string)
   });
 }
 
-/** Commits the design folder and the project's chat after a completed turn. */
+/** Commits the design folder, the project's chat and its uploads after a completed turn. */
 export function commitTurn(workspace: string, project: string, design: string, prompt: string): Promise<string | null> {
-  return commitPaths(workspace, [designDir(workspace, project, design), chatFile(workspace, project)], prompt);
+  return commitPaths(
+    workspace,
+    [designDir(workspace, project, design), chatFile(workspace, project), uploadsDir(workspace, project)],
+    prompt,
+  );
 }
