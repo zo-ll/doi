@@ -47,6 +47,18 @@ describe("data-oid post-processing", () => {
     expect(html).toContain(`<p class="big" data-oid="lead">Every Friday</p>`);
   });
 
+  test("a new id never takes a dropped id that a later element restores", async () => {
+    const { html, changes } = await fix(`<p data-oid="p-alpha">Alpha</p>`, `<p>Alpha!</p><p>Alpha</p>`);
+    expect(html).toContain(`<p data-oid="p-alpha-2">Alpha!</p><p data-oid="p-alpha">Alpha</p>`);
+    expect(changes).toEqual({ added: ["p-alpha-2"], restored: ["p-alpha"] });
+  });
+
+  test("a dropped id that no element restores is not given to another element", async () => {
+    // Comments on the old element must not move to a new one.
+    const { html } = await fix(`<p data-oid="p-alpha">Old text</p>`, `<p>Alpha</p>`);
+    expect(oids(html!)).toEqual(["p-alpha-2"]);
+  });
+
   test("a dropped id does not go to an element with other text or another tag", async () => {
     const { html } = await fix(
       `<main data-oid="main"><h1 data-oid="title">Field notes</h1></main>`,

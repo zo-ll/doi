@@ -172,19 +172,33 @@ export async function fixOids(
     dropped.set(n.key, [...(dropped.get(n.key) ?? []), n.oid]);
   }
 
-  const plan = new Map<string, Map<number, string>>(); // file → element index → id
-  const changes: OidChanges = { added: [], restored: [] };
-  for (const n of newNodes) {
+  const needy = newNodes.filter((n) => {
     const hasValid = n.oid !== null && VALID.test(n.oid);
     const duplicate = hasValid && owners.get(n.oid!) !== n;
-    if (!duplicate && (hasValid || (n.oid === null && !n.meaningful))) continue;
-    let id = dropped.get(n.key)?.find((d) => !used.has(d));
-    if (id) changes.restored.push(id);
-    else {
-      id = newId(n, used);
-      changes.added.push(id);
-    }
+    return duplicate || !(hasValid || (n.oid === null && !n.meaningful));
+  });
+  const assigned = new Map<Node, string>();
+  const changes: OidChanges = { added: [], restored: [] };
+  // Restore first, so that a new id cannot take a dropped id that a later element needs.
+  for (const n of needy) {
+    const id = dropped.get(n.key)?.find((d) => !used.has(d));
+    if (!id) continue;
+    assigned.set(n, id);
     used.add(id);
+    changes.restored.push(id);
+  }
+  // New ids also stay off every id from before the turn: comments on an old element must
+  // not move to another one.
+  const taken = new Set([...used, ...oldById.keys()]);
+  for (const n of needy) {
+    if (assigned.has(n)) continue;
+    const id = newId(n, taken);
+    assigned.set(n, id);
+    taken.add(id);
+    changes.added.push(id);
+  }
+  const plan = new Map<string, Map<number, string>>(); // file → element index → id
+  for (const [n, id] of assigned) {
     if (!plan.has(n.file)) plan.set(n.file, new Map());
     plan.get(n.file)!.set(n.index, id);
   }
