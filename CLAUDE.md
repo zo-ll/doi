@@ -115,6 +115,7 @@ For more information, read the Bun API docs in `node_modules/bun-types/docs/**.m
 
 ## doi project notes
 
+- **Start here:** read `docs/agent-handoff.md` for the current state, the workflow, and the next issues. Update it when you stop.
 - The design doc is the source of truth: https://claude.ai/code/artifact/4d202f6c-3105-4a19-8315-24b41aedf3ae
 - Designs are plain HTML + CSS only. Do not add React or framework output for designs.
 - Every meaningful element in a design carries a `data-oid` attribute. Selection, comments and targeted edits depend on it.

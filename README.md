@@ -4,9 +4,11 @@ A local, single-user design tool in the style of Claude Design. You describe a d
 
 Design doc: https://claude.ai/code/artifact/4d202f6c-3105-4a19-8315-24b41aedf3ae
 
+Agents working on the repo: start with [docs/agent-handoff.md](docs/agent-handoff.md).
+
 ## Status
 
-Scaffold. The server, the canvas with two frames, element selection through `data-oid`, config loading and harness detection work. Generation is M1.
+In progress (M1). The app shell, element selection, provider status, the Anthropic and OpenCode Go adapters, and the Claude Code and Codex subscription backends work. The generation loop (endpoint, edit applier, history) is next. See [docs/agent-handoff.md](docs/agent-handoff.md).
 
 ## Run
 
