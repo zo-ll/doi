@@ -1,0 +1,130 @@
+import { mkdir, rename } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { chatFile } from "./chat.ts";
+import { assertName, designDir } from "./paths.ts";
+
+/** A workspace error with the HTTP status that fits it. */
+export class WorkspaceError extends Error {
+  override name = "WorkspaceError";
+  constructor(readonly status: 400 | 404 | 409, message: string) {
+    super(message);
+  }
+}
+
+function checkName(kind: string, name: unknown): string {
+  if (typeof name !== "string") throw new WorkspaceError(400, `The ${kind} name must be a string.`);
+  try {
+    assertName(kind, name);
+  } catch (e) {
+    throw new WorkspaceError(400, (e as Error).message);
+  }
+  return name;
+}
+
+function checkTitle(title: unknown): string {
+  const t = typeof title === "string" ? title.trim() : "";
+  if (!t || t.length > 80) throw new WorkspaceError(400, "The project name must have 1 to 80 characters.");
+  return t;
+}
+
+export const projectDir = (workspace: string, project: string) => join(workspace, "projects", project);
+export const projectFile = (workspace: string, project: string) => join(projectDir(workspace, project), "project.json");
+
+const STARTER_HTML = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main data-oid="main"></main>
+</body>
+</html>
+`;
+const STARTER_CSS = "body { margin: 0; font-family: system-ui, sans-serif; }\n";
+
+/** "My Shop!" → "my-shop". The result can still be empty; checkName rejects that. */
+export function slugify(title: string): string {
+  return title.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+}
+
+async function readProjectJson(workspace: string, project: string): Promise<Record<string, unknown>> {
+  const file = Bun.file(projectFile(workspace, project));
+  if (!(await file.exists())) return {};
+  try {
+    return (await file.json()) as Record<string, unknown>;
+  } catch {
+    return {}; // a hand-edited file with bad JSON gets replaced by a good one
+  }
+}
+
+/** Creates a project with its first design, "home". Returns the paths to commit. */
+export async function createProject(workspace: string, title: unknown, id?: unknown): Promise<{ id: string; paths: string[] }> {
+  const name = checkTitle(title);
+  const projectId = checkName("project", id ?? slugify(name));
+  if (existsSync(projectDir(workspace, projectId))) throw new WorkspaceError(409, `A project "${projectId}" already exists.`);
+  await mkdir(join(projectDir(workspace, projectId), "designs"), { recursive: true });
+  await Bun.write(projectFile(workspace, projectId), JSON.stringify({ name, designSystem: null, viewports: [1440, 390] }, null, 2) + "\n");
+  const { paths } = await createDesign(workspace, projectId, "home");
+  return { id: projectId, paths: [projectFile(workspace, projectId), ...paths] };
+}
+
+/** Changes the display name in project.json. The folder keeps its id. */
+export async function renameProject(workspace: string, project: unknown, title: unknown): Promise<{ paths: string[] }> {
+  const id = checkName("project", project);
+  const name = checkTitle(title);
+  if (!existsSync(projectDir(workspace, id))) throw new WorkspaceError(404, `No project "${id}".`);
+  const meta = await readProjectJson(workspace, id);
+  await Bun.write(projectFile(workspace, id), JSON.stringify({ ...meta, name }, null, 2) + "\n");
+  return { paths: [projectFile(workspace, id)] };
+}
+
+/** Creates an empty design in a project. */
+export async function createDesign(workspace: string, project: unknown, design: unknown): Promise<{ paths: string[] }> {
+  const p = checkName("project", project);
+  const d = checkName("design", design);
+  if (!existsSync(projectDir(workspace, p))) throw new WorkspaceError(404, `No project "${p}".`);
+  const dir = designDir(workspace, p, d);
+  if (existsSync(dir)) throw new WorkspaceError(409, `A design "${d}" already exists in "${p}".`);
+  await mkdir(join(dir, "assets"), { recursive: true });
+  await Bun.write(join(dir, "index.html"), STARTER_HTML);
+  await Bun.write(join(dir, "styles.css"), STARTER_CSS);
+  return { paths: [dir] };
+}
+
+/**
+ * Moves a design folder and renames it in the project's chat, so its history follows it.
+ * The caller must make sure that no turn runs on the design.
+ */
+export async function renameDesign(workspace: string, project: unknown, from: unknown, to: unknown): Promise<{ paths: string[] }> {
+  const p = checkName("project", project);
+  const a = checkName("design", from);
+  const b = checkName("design", to);
+  const src = designDir(workspace, p, a);
+  const dst = designDir(workspace, p, b);
+  if (!existsSync(src)) throw new WorkspaceError(404, `No design "${a}" in "${p}".`);
+  if (a === b) return { paths: [] };
+  if (existsSync(dst)) throw new WorkspaceError(409, `A design "${b}" already exists in "${p}".`);
+  await rename(src, dst);
+
+  const chat = chatFile(workspace, p);
+  const file = Bun.file(chat);
+  if (await file.exists()) {
+    const lines = (await file.text()).split("\n").map((line) => {
+      if (!line.trim()) return line;
+      try {
+        const entry = JSON.parse(line);
+        return entry.design === a ? JSON.stringify({ ...entry, design: b }) : line;
+      } catch {
+        return line; // keep a bad line as it is
+      }
+    });
+    // Write a new file and move it over the old one, so a crash cannot leave half a chat.
+    const tmp = `${chat}.tmp`;
+    await Bun.write(tmp, lines.join("\n"));
+    await rename(tmp, chat);
+  }
+  return { paths: [src, dst, chat] };
+}

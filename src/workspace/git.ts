@@ -1,4 +1,5 @@
 import { $ } from "bun";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { chatFile } from "./chat.ts";
 import { designDir } from "./paths.ts";
@@ -33,18 +34,25 @@ export function commitMessage(prompt: string): string {
 }
 
 /**
- * Commits the design folder and the project's chat after a completed turn. Only these paths
- * go into the commit, so files the user staged elsewhere stay out of it. The commit uses the
- * user's own git identity. Returns the commit id, or null when nothing changed.
+ * Commits only `paths`, so files the user staged elsewhere stay out of the commit. A path that
+ * is gone counts when git tracks it (a rename or a delete). The commit uses the user's own git
+ * identity. Returns the commit id, or null when nothing changed.
  */
-export async function commitTurn(workspace: string, project: string, design: string, prompt: string): Promise<string | null> {
-  const paths = [designDir(workspace, project, design)];
-  const chat = chatFile(workspace, project);
-  if (await Bun.file(chat).exists()) paths.push(chat);
+export function commitPaths(workspace: string, paths: string[], message: string): Promise<string | null> {
   return serial(async () => {
-    await git(workspace, ["add", "-A", "--", ...paths]);
-    if (!(await git(workspace, ["diff", "--cached", "--name-only", "--", ...paths])).trim()) return null;
-    await git(workspace, ["commit", "--quiet", "-m", commitMessage(prompt), "--", ...paths]);
+    const present: string[] = [];
+    for (const p of paths) {
+      if (existsSync(p) || (await git(workspace, ["ls-files", "--", p])).trim()) present.push(p);
+    }
+    if (!present.length) return null;
+    await git(workspace, ["add", "-A", "--", ...present]);
+    if (!(await git(workspace, ["diff", "--cached", "--name-only", "--", ...present])).trim()) return null;
+    await git(workspace, ["commit", "--quiet", "-m", commitMessage(message), "--", ...present]);
     return (await git(workspace, ["rev-parse", "HEAD"])).trim();
   });
+}
+
+/** Commits the design folder and the project's chat after a completed turn. */
+export function commitTurn(workspace: string, project: string, design: string, prompt: string): Promise<string | null> {
+  return commitPaths(workspace, [designDir(workspace, project, design), chatFile(workspace, project)], prompt);
 }

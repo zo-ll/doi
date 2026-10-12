@@ -5,18 +5,39 @@ import { ChatPanel, type Selection } from "./components/ChatPanel.tsx";
 import { Sidebar, type Active } from "./components/Sidebar.tsx";
 import { TopBar } from "./components/TopBar.tsx";
 
+const LAST_DESIGN = "doi:last-design";
+
+// Storage can be off (private window, blocked site data); then the app just opens the first design.
+function loadLast(): Active | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(LAST_DESIGN) ?? "null");
+    return typeof v?.project === "string" && typeof v?.design === "string" ? v : null;
+  } catch {
+    return null;
+  }
+}
+function saveLast(a: Active): void {
+  try {
+    localStorage.setItem(LAST_DESIGN, JSON.stringify(a));
+  } catch {
+    // ignore
+  }
+}
+
 function useLoad<T>(url: string): [Load<T>, () => void] {
   const [load, setLoad] = useState<Load<T>>({ state: "loading" });
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let live = true;
-    setLoad({ state: "loading" });
+    // A reload keeps the old data on screen until the new data arrives.
+    setLoad((l) => (l.state === "ready" ? l : { state: "loading" }));
     getJSON<T>(url)
       .then((data) => live && setLoad({ state: "ready", data }))
       .catch((e: unknown) => live && setLoad({ state: "error", message: e instanceof Error ? e.message : String(e) }));
     return () => { live = false; };
   }, [url, attempt]);
-  return [load, () => setAttempt((n) => n + 1)];
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  return [load, retry];
 }
 
 export function App() {
@@ -43,17 +64,27 @@ export function App() {
     return () => events.close();
   }, []);
 
-  // Open the first design when the project list arrives. #12 adds "reopen the last design".
-  useEffect(() => {
-    if (active || projects.state !== "ready") return;
-    const first = projects.data.find((p) => p.designs.length > 0);
-    if (first) setActive({ project: first.id, design: first.designs[0]! });
-  }, [projects, active]);
-
   const open = useCallback((a: Active) => {
     setActive(a);
     setSelection(null);
+    saveLast(a);
   }, []);
+
+  // When the project list arrives, open the last design again, or else the first one.
+  useEffect(() => {
+    if (active || projects.state !== "ready") return;
+    const last = loadLast();
+    const exists = (a: Active) => projects.data.some((p) => p.id === a.project && p.designs.includes(a.design));
+    if (last && exists(last)) return open(last);
+    const first = projects.data.find((p) => p.designs.length > 0);
+    if (first) open({ project: first.id, design: first.designs[0]! });
+  }, [projects, active, open]);
+
+  // Open a new or renamed design at once: the old one may be gone. The list catches up.
+  const onProjectsChanged = useCallback((next?: Active) => {
+    if (next) open(next);
+    retryProjects();
+  }, [open, retryProjects]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -79,6 +110,7 @@ export function App() {
         workspace={config.state === "ready" ? config.data.workspace : null}
         onOpen={open}
         onRetry={retryProjects}
+        onChanged={onProjectsChanged}
       />
       <ChatPanel
         key={active ? `${active.project}/${active.design}` : ""}

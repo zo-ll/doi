@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-10-12, after PR #87 (#11 git history). Tests: 125 pass. The core loop works from end to end in the browser. `bun check`: no errors.
+Last update: 2026-10-12, after PR #88 (#12 projects). Tests: 134 pass. The core loop works from end to end in the browser. `bun check`: no errors.
 
 ## 1. What doi is
 
@@ -79,6 +79,7 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 | `src/workspace/chat.ts` | `projects/<project>/chat.jsonl`: one line per message, with `design`, `turn`, status, provider, model, usage, files, prompt version. `historyMessages()` keeps only completed turns |
 | `src/workspace/watch.ts` | `fs.watch` on `projects/`, 100 ms debounce per design, `hold`/`release` while a turn runs; `GET /api/events` streams `design-changed` |
 | `src/workspace/git.ts` | `ensureRepo()` on startup; `commitTurn()` after a completed turn that changed files: only that design folder and `chat.jsonl`, the user's own identity, one git command at a time |
+| `src/workspace/projects.ts`, `src/server/projects.ts` | Create and rename projects (display name in `project.json`) and designs (folder move + `chat.jsonl` rewrite). Each change is committed. A design rename takes the same lock as a turn (`src/server/locks.ts`) |
 | `src/web/chat.ts` | Chat panel logic without React: SSE reader, stream event → answer, stored entries → messages |
 | `test/fixtures/prompts.md` | Five sample prompts, the acceptance checks and the last results |
 | `scripts/try-provider.ts` | Manual check of a provider with real credentials |
@@ -91,7 +92,7 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 
 ## 6. State and next steps
 
-Done and closed: #1 CI, #13 app shell, #74 credentials and status, #60 Claude Code backend, #73 Codex backend, #4 system prompt v0, #5 context assembler, #6 edit applier, #7 generation endpoint, #8 chat history, #10 live reload, #11 git history.
+Done and closed: #1 CI, #13 app shell, #74 credentials and status, #60 Claude Code backend, #73 Codex backend, #4 system prompt v0, #5 context assembler, #6 edit applier, #7 generation endpoint, #8 chat history, #10 live reload, #11 git history, #12 projects.
 
 Open only for a manual run with a real key (the user must set the key; do not read pi's credentials):
 - #2 Anthropic: `ANTHROPIC_API_KEY=... bun scripts/try-provider.ts anthropic:claude-haiku-5-5`
@@ -100,8 +101,8 @@ Open only for a manual run with a real key (the user must set the key; do not re
 
 Next, in this order (M1):
 
-1. **#12 Projects.** Commit `project.json` when a project is created or renamed (turns commit only the design folder and `chat.jsonl`; `src/workspace/git.ts`).
-2. **#9 Image input.**
+1. **#9 Image input.** The last M1 issue. `assembleContext()` already takes `turn.images` and checks `vision`; the composer has a disabled attach button.
+2. After M1: use the tool for one real design (the M1 gate in the design doc).
 
 After M1: M2 (precision), M3 (design systems), M4 (handoff), M5 (breadth). #75 (Sign in with ChatGPT) waits for a client ID from OpenAI.
 
@@ -116,4 +117,6 @@ After M1: M2 (precision), M3 (design systems), M4 (handoff), M5 (breadth). #75 (
 - The chat panel is keyed by the design in `App.tsx`. A design switch unmounts it and aborts its run, so no message of the old design can reach the new one.
 - A stopped CLI-backend turn can leave changed files, but it is stored with `files: []` and is not in the history.
 - Answers show Markdown as plain text.
+- A design rename can race with the watcher event of the old path; the frames may show a 404 for a moment before they load the new name.
+- The last open design is in `localStorage` (`doi:last-design`).
 - `.gitignore` uses `/workspace` (root only). A bare `workspace` rule once hid `src/workspace/`.

@@ -3,7 +3,8 @@ import { $ } from "bun";
 import { mkdir, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { commitMessage, commitTurn, ensureRepo } from "../src/workspace/git.ts";
+import { commitMessage, commitPaths, commitTurn, ensureRepo } from "../src/workspace/git.ts";
+import { rename } from "node:fs/promises";
 import { designDir } from "../src/workspace/paths.ts";
 
 // A test identity in a private global config: the commit must use it, so doi sets none itself.
@@ -78,10 +79,20 @@ describe("git history", () => {
     expect((await git(ws)`git rev-list --count HEAD`).trim()).toBe("2");
   });
 
+  test("a moved folder is committed as a rename; an unknown gone path is skipped", async () => {
+    const ws = await workspace();
+    await commitTurn(ws, "p", "home", "first");
+    await rename(designDir(ws, "p", "home"), designDir(ws, "p", "start"));
+    const never = designDir(ws, "p", "never-existed");
+    await commitPaths(ws, [designDir(ws, "p", "home"), designDir(ws, "p", "start"), never], "Rename design home to start");
+    const status = (await git(ws)`git show --name-status --format= -M HEAD`).trim();
+    expect(status).toMatch(/^R100\tprojects\/p\/designs\/home\/index.html\tprojects\/p\/designs\/start\/index.html$/);
+  });
+
   test("a git failure throws with git's message", async () => {
     const ws = await mkdtemp(join(tmpdir(), "doi-nogit-"));
     await mkdir(designDir(ws, "p", "home"), { recursive: true });
-    await expect(commitTurn(ws, "p", "home", "x")).rejects.toThrow(/git add failed: .+/);
+    await expect(commitTurn(ws, "p", "home", "x")).rejects.toThrow(/git [a-z-]+ failed: .*not a git repository/);
   });
 
   test("the message is the first line, trimmed and short", () => {

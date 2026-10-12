@@ -242,6 +242,24 @@ button { font: inherit; color: inherit; }
 .tree-design.is-active { background: var(--accent-soft); color: var(--accent-soft-text); font-weight: var(--weight-medium); }
 .tree-design.is-active > svg { color: currentColor; }
 .tree-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-project .tree-label { flex: 1; }
+.tree-action { margin-left: auto; opacity: 0; }
+.tree-project:hover .tree-action,
+.tree-action:focus-visible { opacity: 1; }
+.tree-indent { padding-left: var(--tree-indent); }
+.tree-edit { padding: var(--space-0-5) 0; }
+.tree-edit input {
+  width: 100%;
+  height: var(--control-h);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+.tree-edit input[aria-invalid="true"] { border-color: var(--danger-border); }
+.tree-edit-error { margin: var(--space-1) 0 0; font-size: var(--text-xs); color: var(--danger); }
 
 .skeleton-list { display: grid; gap: var(--space-3); padding: var(--space-2); }
 .skeleton-indent { margin-left: var(--space-6); }
