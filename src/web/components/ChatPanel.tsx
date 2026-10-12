@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { chatUrl, getJSON, turnUrl, type ChatEntry, type ProviderStatus } from "../api.ts";
+import { chatUrl, getJSON, turnUrl, uploadUrl, type ChatEntry, type ProviderStatus } from "../api.ts";
+import { isImageType, prepareImage, type PreparedImage } from "../images.ts";
+import { IMAGE_LIMITS } from "../../workspace/image-limits.ts";
 import { applyEvent, formatTokens, fromEntries, newAnswer, readEvents, type Answer, type ChatMessage } from "../chat.ts";
 import type { Active } from "./Sidebar.tsx";
 import { Icon } from "./Icon.tsx";
@@ -36,6 +38,10 @@ export function ChatPanel({ target, selection, model, modelStatus, onClearSelect
 }) {
   const disabled = target === null;
   const [draft, setDraft] = useState("");
+  const [images, setImages] = useState<PreparedImage[]>([]);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [running, setRunning] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -67,7 +73,9 @@ export function ChatPanel({ target, selection, model, modelStatus, onClearSelect
     let live = true;
     getJSON<ChatEntry[]>(chatUrl(target.project, target.design))
       .then((entries) => {
-        if (live) setMessages((list) => [...fromEntries(entries, () => nextId.current++), ...list]);
+        if (!live) return;
+        const loaded = fromEntries(entries, () => nextId.current++, (name) => uploadUrl(target.project, name));
+        setMessages((list) => [...loaded, ...list]);
       })
       .catch((e: unknown) => {
         if (live) push({ kind: "error", text: `The chat history could not load: ${e instanceof Error ? e.message : String(e)}` });
@@ -78,10 +86,37 @@ export function ChatPanel({ target, selection, model, modelStatus, onClearSelect
   // Stop a running request when the panel unmounts or the design changes.
   useEffect(() => () => abortRef.current?.abort(), [target?.project, target?.design]);
 
+  /** Adds images from the picker, a paste or a drop. Large images are scaled down here. */
+  const addImages = async (files: File[]) => {
+    const picked = files.filter((f) => f.type.startsWith("image/"));
+    if (!picked.length) return;
+    setImageError(null);
+    const room = IMAGE_LIMITS.count - images.length;
+    if (picked.length > room) setImageError(`At most ${IMAGE_LIMITS.count} images in one message.`);
+    const added: PreparedImage[] = [];
+    for (const f of picked.slice(0, Math.max(0, room))) {
+      try {
+        if (!isImageType(f.type)) throw new Error(`Use a PNG, JPEG, WebP or GIF image (not ${f.type}).`);
+        added.push(await prepareImage(f));
+      } catch (e) {
+        setImageError(e instanceof Error ? e.message : String(e));
+      }
+    }
+    setImages((list) => [...list, ...added].slice(0, IMAGE_LIMITS.count));
+  };
+
   const send = async () => {
     const text = draft.trim();
     if (!text || running || !target) return;
-    push({ kind: "user", text, ...(selection ? { target: selection.oid } : {}) });
+    const sent = images;
+    push({
+      kind: "user",
+      text,
+      ...(selection ? { target: selection.oid } : {}),
+      ...(sent.length ? { images: sent.map((i) => i.url) } : {}),
+    });
+    setImages([]);
+    setImageError(null);
     const answerId = nextId.current++;
     setMessages((list) => [...list, newAnswer(answerId)]);
     setDraft("");
@@ -93,7 +128,11 @@ export function ChatPanel({ target, selection, model, modelStatus, onClearSelect
       const res = await fetch(turnUrl(target.project, target.design), {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text, target: selection?.oid ?? null }),
+        body: JSON.stringify({
+          text,
+          target: selection?.oid ?? null,
+          images: sent.map(({ mediaType, data }) => ({ mediaType, data })),
+        }),
         signal: controller.signal,
       });
       if (!res.ok || !res.body) {
@@ -165,6 +204,11 @@ export function ChatPanel({ target, selection, model, modelStatus, onClearSelect
             m.kind === "user" ? (
               <div key={m.id} className="msg msg-user">
                 {m.target && <span className="msg-target"><Icon name="target" size={12} />{m.target}</span>}
+                {m.images && (
+                  <div className="msg-images">
+                    {m.images.map((src, i) => <img key={i} src={src} alt={`Attached image ${i + 1}`} />)}
+                  </div>
+                )}
                 <p>{m.text}</p>
               </div>
             ) : m.kind === "assistant" ? (
@@ -196,7 +240,23 @@ export function ChatPanel({ target, selection, model, modelStatus, onClearSelect
             </span>
           </p>
         )}
-        <div className={`composer ${disabled ? "is-disabled" : ""}`}>
+        <div
+          className={`composer ${disabled ? "is-disabled" : ""} ${dragging ? "is-dragging" : ""}`}
+          onDragOver={(e) => {
+            if (disabled || !e.dataTransfer.types.includes("Files")) return;
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+          }}
+          onDrop={(e) => {
+            if (disabled) return;
+            e.preventDefault();
+            setDragging(false);
+            void addImages([...e.dataTransfer.files]);
+          }}
+        >
           {selection && (
             <div className="composer-context">
               <span className="chip chip-accent">
@@ -209,20 +269,61 @@ export function ChatPanel({ target, selection, model, modelStatus, onClearSelect
               <span className="muted">Edits apply to this element</span>
             </div>
           )}
+          {images.length > 0 && (
+            <div className="composer-images">
+              {images.map((img, i) => (
+                <span key={i} className="composer-thumb">
+                  <img src={img.url} alt={`Image ${i + 1} to send`} />
+                  <button
+                    className="chip-close"
+                    aria-label={`Remove image ${i + 1}`}
+                    onClick={() => setImages((list) => list.filter((_, j) => j !== i))}
+                  >
+                    <Icon name="close" size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          {imageError && <p className="composer-image-error" role="alert">{imageError}</p>}
           <textarea
             ref={inputRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={onKeyDown}
+            onPaste={(e) => {
+              const files = [...e.clipboardData.files].filter((f) => f.type.startsWith("image/"));
+              if (files.length) {
+                e.preventDefault();
+                void addImages(files);
+              }
+            }}
             placeholder={disabled ? "Select a design to start" : "Describe a design or a change…"}
             rows={2}
             disabled={disabled}
             aria-label="Message"
           />
           <div className="composer-actions">
-            <button className="icon-btn" disabled title="Image input arrives with #9" aria-label="Attach image">
+            <button
+              className="icon-btn"
+              disabled={disabled || images.length >= IMAGE_LIMITS.count}
+              title="Attach images (or paste or drop them)"
+              aria-label="Attach image"
+              onClick={() => fileRef.current?.click()}
+            >
               <Icon name="attach" />
             </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              multiple
+              hidden
+              onChange={(e) => {
+                void addImages([...(e.target.files ?? [])]);
+                e.target.value = "";
+              }}
+            />
             {model && (
               <span className="composer-model truncate" title={modelStatus?.detail}>
                 <span className={`status-dot ${modelStatus ? (modelReady ? "is-on" : "is-off") : ""}`} />

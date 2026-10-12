@@ -6,6 +6,7 @@ import { providerStatus } from "../providers/status.ts";
 import { designFile, ensureWorkspace, listProjects } from "../workspace/paths.ts";
 import { designEvents, watchDesigns } from "../workspace/watch.ts";
 import { commitPaths, commitTurn, ensureRepo } from "../workspace/git.ts";
+import { uploadFile } from "../workspace/uploads.ts";
 import { DesignLocks } from "./locks.ts";
 import { patchDesign, patchProject, postDesign, postProject } from "./projects.ts";
 import { createTurnHandler, getChat } from "./turns.ts";
@@ -75,7 +76,18 @@ const server = Bun.serve({
     "/api/projects/:project": { PATCH: (req) => patchProject(projectDeps, req, req.params) },
     "/api/projects/:project/designs": { POST: (req) => postDesign(projectDeps, req, req.params) },
     "/api/projects/:project/designs/:design": { PATCH: (req) => patchDesign(projectDeps, req, req.params) },
-    "/api/projects/:project/designs/:design/chat": (req) => getChat(config.workspace, req.params),
+    "/api/projects/:project/uploads/:file": async (req) => {
+      let path: string | null;
+      try {
+        path = uploadFile(config.workspace, req.params.project, req.params.file);
+      } catch {
+        return new Response("Bad request", { status: 400 });
+      }
+      const file = path ? Bun.file(path) : null;
+      if (!file || !(await file.exists())) return new Response("Not found", { status: 404 });
+      return new Response(file, { headers: { "cache-control": "private, max-age=31536000, immutable" } });
+    },
+        "/api/projects/:project/designs/:design/chat": (req) => getChat(config.workspace, req.params),
     "/api/projects/:project/designs/:design/turns": { POST: (req, srv) => runTurnRequest(req, req.params, srv) },
     "/__doi/bridge.js": () => new Response(bridge, { headers: { "content-type": "text/javascript" } }),
   },

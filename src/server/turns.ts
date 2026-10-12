@@ -5,6 +5,7 @@ import { SYSTEM_PROMPT } from "../generation/prompts.ts";
 import type { Provider } from "../providers/types.ts";
 import { appendChat, historyMessages, readChat } from "../workspace/chat.ts";
 import { designDir } from "../workspace/paths.ts";
+import { IMAGE_LIMITS, IMAGE_TYPES, saveUploads, type ImageType } from "../workspace/uploads.ts";
 import type { DesignWatcher } from "../workspace/watch.ts";
 import { designKey, DesignLocks } from "./locks.ts";
 
@@ -23,6 +24,8 @@ export interface TurnBody {
   text: string;
   /** The selected element's data-oid, or null. */
   target: string | null;
+  /** Images, already scaled by the browser to IMAGE_LIMITS. */
+  images: { mediaType: ImageType; data: Uint8Array }[];
 }
 
 /** Events on the stream: the turn events, an error event if the turn failed, then the commit. */
@@ -37,13 +40,36 @@ const OID = /^[A-Za-z0-9_-]{1,100}$/;
 
 function parseBody(raw: unknown): TurnBody | string {
   if (typeof raw !== "object" || raw === null) return "The body must be a JSON object.";
-  const { text, target } = raw as Record<string, unknown>;
+  const { text, target, images } = raw as Record<string, unknown>;
   if (typeof text !== "string" || !text.trim()) return "text must be a non-empty string.";
   if (text.length > MAX_TEXT) return `text must be at most ${MAX_TEXT} characters.`;
   if (target !== undefined && target !== null && (typeof target !== "string" || !OID.test(target))) {
     return "target must be a data-oid or null.";
   }
-  return { text, target: (target as string | null | undefined) ?? null };
+  const parsed = parseImages(images);
+  if (typeof parsed === "string") return parsed;
+  return { text, target: (target as string | null | undefined) ?? null, images: parsed };
+}
+
+function parseImages(raw: unknown): TurnBody["images"] | string {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) return "images must be a list.";
+  if (raw.length > IMAGE_LIMITS.count) return `Send at most ${IMAGE_LIMITS.count} images in one message.`;
+  const out: TurnBody["images"] = [];
+  for (const img of raw) {
+    const { mediaType, data } = (img ?? {}) as Record<string, unknown>;
+    if (typeof mediaType !== "string" || !(mediaType in IMAGE_TYPES)) {
+      return `Images must be ${Object.keys(IMAGE_TYPES).join(", ")}.`;
+    }
+    if (typeof data !== "string" || !data) return "Each image needs base64 data.";
+    const bytes = Buffer.from(data, "base64");
+    if (!bytes.length) return "An image is empty.";
+    if (bytes.length > IMAGE_LIMITS.bytes) {
+      return `An image is larger than ${Math.round(IMAGE_LIMITS.bytes / 1_000_000)} MB. The app scales images down; send the scaled image.`;
+    }
+    out.push({ mediaType: mediaType as ImageType, data: new Uint8Array(bytes) });
+  }
+  return out;
 }
 
 function errorEvent(e: unknown): TurnStreamEvent {
@@ -97,13 +123,26 @@ export function createTurnHandler(deps: TurnDeps) {
     }
     if (typeof body === "string") return Response.json({ error: body }, { status: 400 });
 
+    const ref = body.target ? deps.config.models.edit : deps.config.models.generate;
+    let provider: Provider;
+    try {
+      provider = deps.getProvider(ref.provider, deps.config);
+    } catch (e) {
+      return Response.json({ error: (e as Error).message }, { status: 400 });
+    }
+    if (body.images.length && !capabilitiesFor(provider, ref.model).vision) {
+      return Response.json(
+        { error: `${ref.provider}:${ref.model} cannot read images. Remove the images, or choose a model with vision in config.toml.` },
+        { status: 400 },
+      );
+    }
+
     const key = designKey(params.project, params.design);
     if (!locks.tryLock(key)) {
       return Response.json({ error: "A turn is already running for this design." }, { status: 409 });
     }
     deps.watcher?.hold(params);
 
-    const ref = body.target ? deps.config.models.edit : deps.config.models.generate;
     const abort = new AbortController();
     const onClientAbort = () => abort.abort();
     req.signal.addEventListener("abort", onClientAbort);
@@ -125,6 +164,7 @@ export function createTurnHandler(deps: TurnDeps) {
         try {
           // Read the history before this turn's own user line is in the file.
           const entries = await readChat(workspace, params.project, params.design);
+          const images = await saveUploads(workspace, params.project, turnId, turn.images);
           await appendChat(workspace, params.project, {
             role: "user",
             turn: turnId,
@@ -132,9 +172,9 @@ export function createTurnHandler(deps: TurnDeps) {
             at: new Date().toISOString(),
             text: turn.text,
             target: turn.target,
+            ...(images.length ? { images } : {}),
           });
           started = true;
-          const provider = deps.getProvider(ref.provider, deps.config);
           const history = historyMessages(entries);
           const context = assembleContext({
             systemPrompt: SYSTEM_PROMPT.text,

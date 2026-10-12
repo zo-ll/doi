@@ -12,7 +12,16 @@ export interface Usage {
 
 /** One line of chat.jsonl. A turn has a user line and, when it ends, an assistant line. */
 export type ChatEntry =
-  | { role: "user"; turn: string; design: string; at: string; text: string; target: string | null }
+  | {
+      role: "user";
+      turn: string;
+      design: string;
+      at: string;
+      text: string;
+      target: string | null;
+      /** File names in the project's uploads folder. */
+      images?: string[];
+    }
   | {
       role: "assistant";
       turn: string;
@@ -114,7 +123,9 @@ export function historyMessages(entries: ChatEntry[]): Message[] {
     }
     const user = users.get(e.turn);
     if (!user || e.status !== "done") continue;
-    out.push({ role: "user", content: [{ type: "text", text: userText(user.text, user.target) }] });
+    // Old images stay out of the history: each one costs about 1600 tokens on every turn.
+    const note = user.images?.length ? `\n\n(${user.images.length} image${user.images.length > 1 ? "s" : ""} attached to this message.)` : "";
+    out.push({ role: "user", content: [{ type: "text", text: userText(user.text, user.target) + note }] });
     // Only the answer text: a note such as "(Changed files: …)" here was copied by the model
     // into its next answers. The current files are in the context anyway.
     out.push({ role: "assistant", content: [{ type: "text", text: e.text.trim() || "Done." }] });

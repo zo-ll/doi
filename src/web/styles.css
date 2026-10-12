@@ -339,6 +339,29 @@ button { font: inherit; color: inherit; }
   color: var(--accent-soft-text);
 }
 
+.msg-images,
+.composer-images { display: flex; flex-wrap: wrap; gap: var(--space-1-5); }
+.msg-images img,
+.composer-thumb img {
+  width: var(--icon-box-lg);
+  height: var(--icon-box-lg);
+  object-fit: cover;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.msg-images img { width: calc(var(--icon-box-lg) * 2); height: calc(var(--icon-box-lg) * 2); }
+.composer-thumb { position: relative; display: inline-flex; }
+.composer-thumb .chip-close {
+  position: absolute;
+  top: calc(var(--space-1) * -1);
+  right: calc(var(--space-1) * -1);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+}
+.composer-image-error { margin: 0; font-size: var(--text-xs); color: var(--danger); }
+.composer.is-dragging { border-color: var(--accent); background: var(--accent-soft); }
 .msg-info { align-self: center; font-size: var(--text-xs); color: var(--text-tertiary); }
 .msg-assistant {
   align-self: stretch;

@@ -47,9 +47,17 @@ describe("git history", () => {
     await Bun.write(join(ws, "projects", "p", "chat.jsonl"), "{}\n");
     const sha = await commitTurn(ws, "p", "home", "  Make the title blue\nand bigger  ");
     expect(sha).toMatch(/^[0-9a-f]{40}$/);
-    const log = await git(ws)`git log -1 --format=%an%n%ae%n%s`;
+    const log = await git(ws)`git log -1 --format=%an%n%ae%n%s HEAD`;
     expect(log.trim().split("\n")).toEqual(["Test Person", "test@example.com", "Make the title blue"]);
-    const files = (await git(ws)`git show --name-only --format= HEAD`).trim().split("\n").sort();
+    await mkdir(join(ws, "projects", "p", "uploads"));
+    await Bun.write(join(ws, "projects", "p", "uploads", "a.png"), "png");
+    await Bun.write(join(designDir(ws, "p", "home"), "index.html"), "<h1>2</h1>");
+    await commitTurn(ws, "p", "home", "second");
+    expect((await git(ws)`git show --name-only --format= HEAD`).trim().split("\n").sort()).toEqual([
+      "projects/p/designs/home/index.html",
+      "projects/p/uploads/a.png",
+    ]);
+    const files = (await git(ws)`git show --name-only --format= HEAD~1`).trim().split("\n").sort();
     expect(files).toEqual(["projects/p/chat.jsonl", "projects/p/designs/home/index.html"]);
   });
 
