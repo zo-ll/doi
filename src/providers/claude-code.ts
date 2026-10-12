@@ -1,4 +1,6 @@
-import { isAbsolute, relative, sep } from "node:path";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { isAbsolute, join, relative, sep } from "node:path";
 import type { Config } from "../config.ts";
 import type { ContentPart, GenerateEvent, GenerateRequest, Message, Provider } from "./types.ts";
 
@@ -11,8 +13,11 @@ import type { ContentPart, GenerateEvent, GenerateRequest, Message, Provider } f
  * below only report what it changed; the edit applier does not apply them again.
  */
 
-/** Flags checked against Claude Code 2.1.296. */
-export function claudeArgs(model: string, system: string): string[] {
+/**
+ * Flags checked against Claude Code 2.1.296. The system text goes in a file, not in argv:
+ * one argument is limited to about 128 KB on Linux, and argv is visible in the process list.
+ */
+export function claudeArgs(model: string, systemFile: string): string[] {
   return [
     "-p",
     "--input-format", "stream-json",
@@ -25,7 +30,7 @@ export function claudeArgs(model: string, system: string): string[] {
     "--permission-mode", "acceptEdits",
     "--no-session-persistence",
     "--model", model,
-    "--append-system-prompt", system,
+    "--append-system-prompt-file", systemFile,
   ];
 }
 
@@ -133,7 +138,18 @@ export function createClaudeCode(_config: Config, spawn: Spawn = bunSpawn): Prov
       if (!req.cwd) throw new Error("The claude-code provider needs the design folder (cwd).");
       if (req.signal?.aborted) throw new DOMException("The generation was stopped.", "AbortError");
 
-      const proc = spawn(["claude", ...claudeArgs(req.model, req.system.join("\n\n"))], req.cwd);
+      // A private temporary folder, not the design folder: a file there would show in the canvas and in git.
+      const tmp = await mkdtemp(join(tmpdir(), "doi-claude-"));
+      const systemFile = join(tmp, "system.md");
+      await writeFile(systemFile, req.system.join("\n\n"), { mode: 0o600 });
+
+      let proc: Proc;
+      try {
+        proc = spawn(["claude", ...claudeArgs(req.model, systemFile)], req.cwd);
+      } catch (e) {
+        await rm(tmp, { recursive: true, force: true });
+        throw e;
+      }
       const onAbort = () => proc.kill();
       req.signal?.addEventListener("abort", onAbort, { once: true });
       const stderr = new Response(proc.stderr).text();
@@ -163,6 +179,7 @@ export function createClaudeCode(_config: Config, spawn: Spawn = bunSpawn): Prov
       } finally {
         req.signal?.removeEventListener("abort", onAbort);
         proc.kill(); // no-op after a normal exit; stops the process when the consumer leaves early
+        await rm(tmp, { recursive: true, force: true });
       }
     },
   };

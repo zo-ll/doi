@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { parseConfig } from "../src/config.ts";
 import { claudeArgs, createClaudeCode, mapEvent, userInput, type Proc, type Spawn } from "../src/providers/claude-code.ts";
 import type { GenerateEvent, GenerateRequest } from "../src/providers/types.ts";
@@ -19,10 +20,13 @@ const result = (over: object = {}) => ({
 
 /** A fake `claude` process: replays `events` as stream-json lines and records what doi sent. */
 function fakeSpawn(events: object[], opts: { exitCode?: number; stderr?: string; hang?: boolean } = {}) {
-  const seen = { cmd: [] as string[], cwd: "", stdin: "", killed: false };
+  const seen = { cmd: [] as string[], cwd: "", stdin: "", killed: false, systemFile: "", system: "", mode: 0 };
   const spawn: Spawn = (cmd, cwd) => {
     seen.cmd = cmd;
     seen.cwd = cwd;
+    seen.systemFile = cmd[cmd.indexOf("--append-system-prompt-file") + 1]!;
+    seen.system = readFileSync(seen.systemFile, "utf8");
+    seen.mode = statSync(seen.systemFile).mode & 0o777;
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
     const stdout = new ReadableStream<Uint8Array>({
@@ -89,7 +93,7 @@ describe("claude-code provider", () => {
   });
 
   test("the command is restricted to file tools in the design folder", () => {
-    const args = claudeArgs("opus", "rules");
+    const args = claudeArgs("opus", "/tmp/doi-claude-x/system.md");
     const flag = (name: string) => args[args.indexOf(name) + 1];
     expect(args).toContain("--restricted");
     expect(args).toContain("--strict-mcp-config");
@@ -97,8 +101,27 @@ describe("claude-code provider", () => {
     expect(flag("--tools")).toBe("Read,Edit,Write");
     expect(flag("--permission-mode")).toBe("acceptEdits");
     expect(flag("--model")).toBe("opus");
-    expect(flag("--append-system-prompt")).toBe("rules");
+    expect(flag("--append-system-prompt-file")).toBe("/tmp/doi-claude-x/system.md");
+    expect(args).not.toContain("--append-system-prompt");
     expect(args).not.toContain("--bare"); // --bare skips keychain reads, which the subscription login needs
+  });
+
+  test("the system text goes in a private file outside the design folder, removed after the run", async () => {
+    const big = "x".repeat(300_000); // larger than one Linux argv string (about 128 KB)
+    const { spawn, seen } = fakeSpawn([result()]);
+    await collect(createClaudeCode(config, spawn).generate(req({ system: ["rules", big] })));
+
+    expect(seen.system).toBe(`rules\n\n${big}`);
+    expect(seen.mode).toBe(0o600);
+    expect(seen.systemFile.startsWith(CWD)).toBe(false);
+    expect(seen.cmd.some((a) => a.length > 1000)).toBe(false);
+    expect(existsSync(seen.systemFile)).toBe(false);
+  });
+
+  test("the system file is removed after a failed run", async () => {
+    const { spawn, seen } = fakeSpawn([], { exitCode: 1 });
+    await expect(collect(createClaudeCode(config, spawn).generate(req()))).rejects.toThrow();
+    expect(existsSync(seen.systemFile)).toBe(false);
   });
 
   test("stdin carries one user message with the history as a transcript and the images", () => {
