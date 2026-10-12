@@ -5,6 +5,7 @@ import { getProvider } from "../providers/registry.ts";
 import { providerStatus } from "../providers/status.ts";
 import { designDir, ensureWorkspace, fileIn, listProjects } from "../workspace/paths.ts";
 import { variantDir } from "../workspace/variants.ts";
+import { designSystemDir, listDesignSystems, loadDesignSystem } from "../workspace/design-systems.ts";
 import { designEvents, watchDesigns } from "../workspace/watch.ts";
 import { commitPaths, commitTurn, designFileAt, designVersion, ensureRepo, isSha } from "../workspace/git.ts";
 import { uploadFile } from "../workspace/uploads.ts";
@@ -135,6 +136,26 @@ export async function startServer(config: Config, options: { port?: number; deve
     return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", ...keep } });
   }
 
+  /** /ds/<name>/<file>: design system files that pages link (tokens, fonts). */
+  function serveDesignSystem(url: URL): Promise<Response> | Response {
+    const [, , name, ...rest] = url.pathname.split("/");
+    if (!name) return new Response("Not found", { status: 404 });
+    // Without a components.css file, the <style> blocks of components.html are the components' CSS.
+    if (rest.join("/") === "components.css") {
+      return (async () => {
+        let ds;
+        try {
+          ds = await loadDesignSystem(config.workspace, name);
+        } catch {
+          return new Response("Bad request", { status: 400 });
+        }
+        if (!ds?.componentStyles) return new Response("Not found", { status: 404 });
+        return new Response(ds.componentStyles, { headers: { "content-type": "text/css; charset=utf-8", "cache-control": "no-store", ...PAGE_HEADERS } });
+      })();
+    }
+    return servePage(url, () => designSystemDir(config.workspace, name), rest);
+  }
+
   /** /variant/<project>/<design>/<set>/<n>/<file> */
   function serveVariant(url: URL): Promise<Response> | Response {
     const [, , project, design, set, n, ...rest] = url.pathname.split("/");
@@ -153,6 +174,7 @@ export async function startServer(config: Config, options: { port?: number; deve
       "/api/harnesses": async () => Response.json(await detectHarnesses()),
       "/api/providers": async () => Response.json(await providerStatus(config)),
       "/api/events": (req, srv) => designEvents(watcher, req, srv),
+      "/api/design-systems": async () => Response.json(await listDesignSystems(config.workspace)),
       "/api/projects": {
         GET: async () => Response.json(await listProjects(config.workspace)),
         POST: (req) => postProject(projectDeps, req),
@@ -201,6 +223,7 @@ export async function startServer(config: Config, options: { port?: number; deve
       const url = new URL(req.url);
       if (url.pathname.startsWith("/design/")) return serveDesign(url);
       if (url.pathname.startsWith("/variant/")) return serveVariant(url);
+      if (url.pathname.startsWith("/ds/")) return serveDesignSystem(url);
       if (url.pathname.startsWith("/version/")) return serveVersion(url);
       return new Response("Not found", { status: 404 });
     },
@@ -209,6 +232,7 @@ export async function startServer(config: Config, options: { port?: number; deve
 
   return {
     server,
+    workspace: config.workspace,
     stop() {
       watcher.close();
       server.stop(true);

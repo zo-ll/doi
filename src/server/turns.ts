@@ -1,12 +1,14 @@
 import type { Config, ProviderId } from "../config.ts";
 import { ApplyError, runTurn, type TurnEvent } from "../generation/apply.ts";
 import { assembleContext, capabilitiesFor, ContextTooLargeError, readDesignFiles } from "../generation/context.ts";
+import { linkDesignSystemIn } from "../generation/ds-link.ts";
 import { designOids, fixDesignOids } from "../generation/oids.ts";
 import { touchedOids } from "../generation/touched.ts";
 import { SYSTEM_PROMPT } from "../generation/prompts.ts";
 import type { Provider } from "../providers/types.ts";
 import { appendChat, appendCommit, historyMessages, readChat, type TurnComment } from "../workspace/chat.ts";
 import { CommentError, readComments, updateComment } from "../workspace/comments.ts";
+import { activeDesignSystem, formatDesignSystem } from "../workspace/design-systems.ts";
 import { designDir } from "../workspace/paths.ts";
 import { IMAGE_LIMITS, IMAGE_TYPES, isImageType, saveUploads, type ImageType } from "../workspace/uploads.ts";
 import type { DesignWatcher } from "../workspace/watch.ts";
@@ -234,9 +236,10 @@ export function createTurnHandler(deps: TurnDeps) {
           started = true;
           const history = historyMessages(entries);
           const before = await readDesignFiles(dir);
+          const ds = await activeDesignSystem(workspace, params.project);
           const context = assembleContext({
             systemPrompt: SYSTEM_PROMPT.text,
-            designSystem: null, // M3
+            designSystem: ds ? formatDesignSystem(ds) : null,
             files: before,
             history,
             turn,
@@ -254,7 +257,9 @@ export function createTurnHandler(deps: TurnDeps) {
             if (e.type === "applied") {
               // Each meaningful element keeps or gets a unique data-oid, before the commit.
               const fixed = await fixDesignOids(dir, before, await readDesignFiles(dir));
-              e = { ...e, files: [...new Set([...e.files, ...fixed])] };
+              // Pages link the design system's stylesheets instead of copying them.
+              const linked = ds ? await linkDesignSystemIn(dir, await readDesignFiles(dir), ds) : [];
+              e = { ...e, files: [...new Set([...e.files, ...fixed, ...linked])] };
               e.files.forEach((f) => files.add(f));
               if (turn.comments.length) {
                 commentsDone = await markDone(turn.comments, before);

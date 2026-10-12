@@ -85,6 +85,23 @@ describe("the server", () => {
     expect(await page.text()).toContain('<script src="/__doi/bridge.js"></script>');
     expect((await fetch(`${base}/design/shop/home/styles.css`)).headers.get("content-security-policy")).toBe(PAGE_CSP);
     expect((await fetch(`${base}/design/shop/home/`, { headers: { host: "rebind.example" } })).status).toBe(403);
+
+    // Design system files are served for pages, with the same policy.
+    const ds = join(app.workspace, "design-systems", "brand");
+    await Bun.write(join(ds, "tokens.css"), ":root { --x: 1px; }");
+    await Bun.write(join(ds, ".secret"), "x");
+    const tokens = await fetch(`${base}/ds/brand/tokens.css`);
+    expect(tokens.status).toBe(200);
+    expect(await tokens.text()).toBe(":root { --x: 1px; }");
+    expect(tokens.headers.get("content-security-policy")).toBe(PAGE_CSP);
+    expect((await fetch(`${base}/ds/brand/.secret`)).status).toBe(404);
+    expect((await fetch(`${base}/ds/Bad/tokens.css`)).status).toBe(400);
+    expect(await (await fetch(`${base}/api/design-systems`)).json()).toEqual(["brand"]);
+    // Without components.css, the styles of components.html are served as components.css.
+    expect((await fetch(`${base}/ds/brand/components.css`)).status).toBe(404);
+    await Bun.write(join(ds, "components.html"), "<button class=b>x</button><style>.b { color: red; }</style>");
+    const comps = await fetch(`${base}/ds/brand/components.css`);
+    expect([comps.status, comps.headers.get("content-type"), await comps.text()]).toEqual([200, "text/css; charset=utf-8", ".b { color: red; }\n"]);
   });
 });
 
