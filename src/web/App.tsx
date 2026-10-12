@@ -47,6 +47,7 @@ export function App() {
   const [providers] = useLoad<ProviderStatus[]>("/api/providers");
   const [active, setActive] = useState<Active | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
+  const clearSelection = useCallback(() => setSelection(null), []);
   // Bumped when the files of the open design change; the canvas reloads its frames.
   const [revision, setRevision] = useState(0);
   const activeRef = useRef(active);
@@ -118,9 +119,9 @@ export function App() {
         selection={selection}
         model={generate?.model ?? null}
         modelStatus={generateStatus}
-        onClearSelection={() => setSelection(null)}
+        onClearSelection={clearSelection}
       />
-      <Canvas active={active} revision={revision} selection={selection} onSelect={setSelection} />
+      <Canvas active={active} revision={revision} selection={selection} onSelect={setSelection} onClear={clearSelection} />
     </div>
   );
 }

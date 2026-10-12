@@ -6,11 +6,9 @@ import { applyEvent, formatTokens, fromEntries, newAnswer, readEvents, type Answ
 import type { Active } from "./Sidebar.tsx";
 import { Icon } from "./Icon.tsx";
 
+/** The selected element. Each frame finds it by its data-oid and draws it. */
 export interface Selection {
   oid: string;
-  rect: { x: number; y: number; width: number; height: number };
-  /** The frame that reported the selection. */
-  frame: string;
 }
 
 type NewMessage = ChatMessage extends infer M ? (M extends ChatMessage ? Omit<M, "id"> : never) : never;
