@@ -69,6 +69,7 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 | `src/workspace/variants.ts`, `src/server/variants.ts`, `src/web/variants.ts` | Variants: `projects/<p>/variants/<design>/<set>/<n>/` (copies of the design without hidden files) and `set.json` (prompt, per-variant provider, model, status, text, usage, files). `POST …/variants { text, target?, count 2–4, models? }` streams `variants`, `variant { n, event }`, `variants-done`; the set is committed. `POST …/variants/:set/pick { n }` copies the variant into the design, writes the chat lines (with `variant: n`) and removes the set (commit). `DELETE …/variants/:set` discards (commit). Files are served at `/variant/<p>/<d>/<set>/<n>/` with the bridge |
 | `src/workspace/history.ts`, `src/server/history.ts`, `src/web/history.ts`, `HistoryPanel.tsx` | Version history: `designLog()` (git log of the design folder), `designFilesAt()`/`designFileAt()` (from git), `restoreDesign()` (page files as at a commit, comments stay; the caller commits). `GET …/history` adds the model from the chat's commit lines. `POST …/history/:sha/restore` accepts only commits in the design's log. Old pages are served at `/version/<p>/<d>/<sha>/` with the bridge |
 | `src/workspace/design-systems.ts`, `src/generation/ds-link.ts` | Design systems in `design-systems/<name>/`: `tokens.css`, `components.html` (+ optional `components.css`, else its `<style>` blocks), `rules.md`, `fonts/`, `screenshots/`; all optional. `project.json` → `designSystem`. `formatDesignSystem()` goes into the stable system part (after the system prompt). Files are served at `/ds/<name>/…` (with `PAGE_CSP`); `/ds/<name>/components.css` falls back to the styles of components.html. After each turn and variant, `linkDesignSystem()` makes every HTML page link tokens.css and components.css before its own first stylesheet |
+| `src/generation/repo-scan.ts`, `src/server/design-systems.ts`, `src/generation/prompts/extract-v0.md` | Import from a repo: `scanRepo()` picks Tailwind/theme/token configs, stylesheets with the most tokens and main components (git repos: `git ls-files --cached --others --exclude-standard`, read only; else a walk), skips build and dot folders, links and secret-looking files; 12k per file, 100k total. `POST /api/design-systems/import { name, repo }` streams `sources`, the turn events, then `imported` or `error`. `streamExtraction()` runs the extract model with `EXTRACT_PROMPT` into a hidden `design-systems/.import-*` folder, keeps only tokens.css, components.css, components.html and rules.md, needs tokens.css, renames to `design-systems/<name>/` and commits. `extractProvider()` and `claim()` are shared with #44 |
 | `src/web/frame.ts` | `parseFrameMessage()`: checks each bridge message (the page runs its own scripts); `trackMessage()` |
 | `src/web/` | React UI (Bun HTML import, no Vite). All sizes and colors in `tokens.css`; only 1px hairlines are literal |
 | `src/providers/types.ts` | `Provider`, `GenerateRequest`, `GenerateEvent`, capabilities incl. `editsFiles` |
@@ -108,7 +109,7 @@ Done and closed: #1 CI, #13 app shell, #74 credentials and status, #60 Claude Co
 
 M1 is complete. The user chose to start M2 before the M1 gate (one real design), so the gate is still open.
 
-M3 done: #42 design system format and loader.
+M3 done: #42 design system format and loader, #43 import from a repo.
 
 M2 is complete: #14 data-oid post-processing, #15 selection, #16 comments, #17 targeted edits, #18 canvas, #19 variants, #20 version history, #41 sandbox hardening.
 
@@ -119,7 +120,7 @@ Open only for a manual run with a real key (the user must set the key; do not re
 
 Next, in this order (M2):
 
-1. M3: #43 import from a repo, #44 import from screenshots, #45 design system UI (select per project, show tokens and components). The M1 gate (one real design) is still open.
+1. M3: #44 import from screenshots (reuse `streamExtraction` with image parts; the extract model needs vision), #45 design system UI (select per project, show tokens and components). The M1 gate (one real design) is still open.
 2. Still open for the user: the M1 gate (one real design) and #2, #3, #72 (real API keys).
 
 After M1: M2 (precision), M3 (design systems), M4 (handoff), M5 (breadth). #75 (Sign in with ChatGPT) waits for a client ID from OpenAI.
@@ -135,6 +136,7 @@ After M1: M2 (precision), M3 (design systems), M4 (handoff), M5 (breadth). #75 (
 - The chat panel is keyed by the design in `App.tsx`. A design switch unmounts it and aborts its run, so no message of the old design can reach the new one.
 - A stopped CLI-backend turn can leave changed files, but it is stored with `files: []` and is not in the history.
 - Answers show Markdown as plain text.
+- Import: the repo is only read by doi. The model gets the sources as text and works in the staging folder (`cwd`); API models are kept inside it by the applier, Claude Code (`acceptEdits`) and Codex (`workspace-write`) write only in `cwd`. A real import of the doi repo with `claude-code:claude-haiku-5-5` took 77 s (49k in, 21k out) and gave tokens with doi's real values, components.css with only `var(...)`, and 15 rules.
 - Design systems: pages link `/ds/<name>/tokens.css` and `/ds/<name>/components.css` by absolute URL, so a change to the design system reaches every design without a turn (the frames reload only on the next design change; the watcher does not watch `design-systems/`). An export or handoff (M4) must copy or inline these files. Checked with a real model: without components.css the model used the component class but the page had no component styles, so components.css is now linked too.
 - Design pages: `PAGE_CSP` allows the page's own files from the doi server, inline scripts and styles, Google Fonts (`fonts.googleapis.com`, `fonts.gstatic.com`), and `data:`/`blob:` images and media. `connect-src`, `frame-src`, `worker-src`, `object-src`, `form-action` and `base-uri` are `'none'`: a page cannot fetch, not even from the doi server. A design that needs another font host or images from the web is blocked; extend `PAGE_CSP` on purpose, not with a wildcard. Checked in Chromium with a hostile page (fetch to the API, fetch and image from other sites, a form post: all blocked).
 - Version history: git does not know the model, so each turn and each variant pick appends `{"role":"commit", turn, design, sha}` to `chat.jsonl` after its commit (`readChat` skips it). This line is written after the commit, so `chat.jsonl` stays changed until the next commit takes it along. Commits from before this change show no model. A design that was renamed shows its history from the rename on. A restore is a new commit "Restore <sha7>: <message>", never a reset.
