@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { extname, join, relative, sep } from "node:path";
 import type { ContentPart, Message, Provider, ProviderCapabilities } from "../providers/types.ts";
-import { userText } from "../workspace/chat.ts";
+import { userText, type TurnComment } from "../workspace/chat.ts";
 
 export interface DesignFile {
   /** Path relative to the design folder, with "/" separators. */
@@ -15,6 +15,8 @@ export interface Turn {
   /** The selected element's data-oid, or null. */
   target?: string | null;
   images?: { mediaType: string; data: Uint8Array }[];
+  /** Open comments that this turn applies. */
+  comments?: TurnComment[];
 }
 
 export interface ContextInput {
@@ -72,7 +74,7 @@ export function formatFiles(files: DesignFile[]): string {
 
 /** The new user message. The target uses the same form as the example in the system prompt. */
 export function turnMessage(turn: Turn): Message {
-  const content: ContentPart[] = [{ type: "text", text: userText(turn.text, turn.target ?? null) }];
+  const content: ContentPart[] = [{ type: "text", text: userText(turn.text, turn.target ?? null, turn.comments) }];
   for (const img of turn.images ?? []) content.push({ type: "image", mediaType: img.mediaType, data: img.data });
   return { role: "user", content };
 }

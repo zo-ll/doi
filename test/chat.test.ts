@@ -42,7 +42,7 @@ describe("chat store", () => {
     expect(texts).toEqual([
       "user: make a page",
       "assistant: Made it.",
-      'user: Target: data-oid="title". bigger',
+      'user: Target: data-oid="title". Change only this element and the CSS rules for it, with small edits. bigger',
       "assistant: Done.",
     ]);
   });

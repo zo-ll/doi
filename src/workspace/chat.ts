@@ -11,6 +11,13 @@ export interface Usage {
   cachedTokens: number;
 }
 
+/** A comment sent with a turn (#17), as the model saw it. */
+export interface TurnComment {
+  id: string;
+  oid: string;
+  text: string;
+}
+
 /** One line of chat.jsonl. A turn has a user line and, when it ends, an assistant line. */
 export type ChatEntry =
   | {
@@ -22,6 +29,8 @@ export type ChatEntry =
       target: string | null;
       /** File names in the project's uploads folder. */
       images?: string[];
+      /** Comments the turn applied. */
+      comments?: TurnComment[];
     }
   | {
       role: "assistant";
@@ -36,6 +45,8 @@ export type ChatEntry =
       /** Files the turn changed. */
       files: string[];
       error?: string;
+      /** Ids of the comments this turn marked done. */
+      commentsDone?: string[];
       /** The system prompt version, so a design's history names the prompt that made it. */
       prompt: string;
     };
@@ -96,9 +107,27 @@ export async function readChat(workspace: string, project: string, design: strin
   return out;
 }
 
-/** Same form as the new message in the context, so the model sees one format. */
-export function userText(text: string, target: string | null): string {
-  return target ? `Target: data-oid="${target}". ${text}` : text;
+/**
+ * The user message as the model sees it: the comments to apply, then the text with its target.
+ * The history uses the same form, so the model sees one format.
+ */
+export function userText(text: string, target: string | null, comments: TurnComment[] = []): string {
+  const parts: string[] = [];
+  if (comments.length) {
+    parts.push(
+      "Apply these comments. Each names one element by its data-oid. Change only these elements and " +
+        "the CSS rules for them, with small edits.\n" +
+        comments.map((c, i) => `${i + 1}. data-oid="${c.oid}": ${c.text}`).join("\n"),
+    );
+  }
+  if (text.trim()) {
+    parts.push(
+      target
+        ? `Target: data-oid="${target}". Change only this element and the CSS rules for it, with small edits. ${text}`
+        : text,
+    );
+  }
+  return parts.join("\n\n");
 }
 
 /**
@@ -117,7 +146,7 @@ export function historyMessages(entries: ChatEntry[]): Message[] {
     if (!user || e.status !== "done") continue;
     // Old images stay out of the history: each one costs about 1600 tokens on every turn.
     const note = user.images?.length ? `\n\n(${user.images.length} image${user.images.length > 1 ? "s" : ""} attached to this message.)` : "";
-    out.push({ role: "user", content: [{ type: "text", text: userText(user.text, user.target) + note }] });
+    out.push({ role: "user", content: [{ type: "text", text: userText(user.text, user.target, user.comments) + note }] });
     // Only the answer text: a note such as "(Changed files: …)" here was copied by the model
     // into its next answers. The current files are in the context anyway.
     out.push({ role: "assistant", content: [{ type: "text", text: e.text.trim() || "Done." }] });

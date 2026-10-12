@@ -66,7 +66,7 @@ describe("assembleContext order", () => {
     expect(ctx.messages.at(-1)).toEqual({
       role: "user",
       content: [
-        { type: "text", text: 'Target: data-oid="cta". Bigger' },
+        { type: "text", text: 'Target: data-oid="cta". Change only this element and the CSS rules for it, with small edits. Bigger' },
         { type: "image", mediaType: "image/png", data },
       ],
     });
