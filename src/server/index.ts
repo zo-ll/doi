@@ -8,6 +8,7 @@ import { designEvents, watchDesigns } from "../workspace/watch.ts";
 import { commitPaths, commitTurn, designVersion, ensureRepo } from "../workspace/git.ts";
 import { uploadFile } from "../workspace/uploads.ts";
 import { deleteCommentRoute, getComments, patchComment, postComment } from "./comments.ts";
+import { getLayout, putLayout } from "./layout.ts";
 import { DesignLocks } from "./locks.ts";
 import { patchDesign, patchProject, postDesign, postProject } from "./projects.ts";
 import { createTurnHandler, getChat } from "./turns.ts";
@@ -95,6 +96,10 @@ const server = Bun.serve({
       return new Response(file, { headers: { "cache-control": "private, max-age=31536000, immutable" } });
     },
         "/api/projects/:project/designs/:design/chat": (req) => getChat(config.workspace, req.params),
+    "/api/projects/:project/designs/:design/layout": {
+      GET: (req) => getLayout(config.workspace, req.params),
+      PUT: (req) => putLayout(config.workspace, req, req.params),
+    },
     "/api/projects/:project/designs/:design/comments": {
       GET: (req) => getComments(commentDeps, req.params),
       POST: (req) => postComment(commentDeps, req, req.params),

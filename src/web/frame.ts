@@ -12,6 +12,10 @@ export type FrameMessage =
   | { type: "doi:ready" }
   | { type: "doi:select"; oid: string }
   | { type: "doi:clear" }
+  /** A pinch or Ctrl/⌘ + wheel over the page; x and y in the frame's viewport. */
+  | { type: "doi:wheel"; deltaY: number; x: number; y: number }
+  /** A canvas key pressed while the frame has the focus. */
+  | { type: "doi:key"; key: string; down: boolean; shift: boolean; mod: boolean }
   | {
       type: "doi:rects";
       selected: Rect | null;
@@ -24,6 +28,8 @@ export type FrameMessage =
 const OID = /^[A-Za-z0-9_-]{1,100}$/;
 
 const MAX_PINS = 500;
+/** Keys the canvas uses; a page cannot send other keys to the app. */
+const CANVAS_KEYS = new Set([" ", "=", "+", "-", "0", "!", "1", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
 
 const isOid = (v: unknown): v is string => typeof v === "string" && OID.test(v);
 
@@ -45,6 +51,14 @@ export function parseFrameMessage(data: unknown): FrameMessage | null {
     case "doi:ready":
     case "doi:clear":
       return { type: d.type };
+    case "doi:wheel": {
+      const nums = [d.deltaY, d.x, d.y];
+      if (!nums.every((n) => typeof n === "number" && Number.isFinite(n))) return null;
+      return { type: "doi:wheel", deltaY: d.deltaY as number, x: d.x as number, y: d.y as number };
+    }
+    case "doi:key":
+      if (typeof d.key !== "string" || !CANVAS_KEYS.has(d.key)) return null;
+      return { type: "doi:key", key: d.key, down: d.down === true, shift: d.shift === true, mod: d.mod === true };
     case "doi:select":
       return isOid(d.oid) ? { type: "doi:select", oid: d.oid } : null;
     case "doi:rects": {
