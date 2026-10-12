@@ -80,6 +80,7 @@ describe("providerStatus", () => {
       expect(JSON.stringify(s)).not.toContain("s3cret-token");
     }
     expect(safeHost("not a url")).toBe("the configured base_url");
+    expect(safeHost("localhost:11434")).toBe("the configured base_url");
   });
 
   test("ollama is ready when its server answers", async () => {

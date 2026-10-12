@@ -40,7 +40,8 @@ export const LOGGED_IN = "Logged in";
 /** The host of a URL, without user information that can hold a credential. */
 export function safeHost(url: string): string {
   try {
-    return new URL(url).host;
+    // "localhost:11434" parses with "localhost" as the scheme and an empty host.
+    return new URL(url).host || "the configured base_url";
   } catch {
     return "the configured base_url";
   }
