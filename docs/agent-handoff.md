@@ -65,6 +65,7 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 | `src/generation/touched.ts` | `touchedOids()`: which elements a turn changed (own HTML, or a changed CSS rule that names a class, the id or the `data-oid`). A comment of the turn is done when its element changed |
 | `src/workspace/frames.ts`, `src/workspace/layout.ts`, `src/server/layout.ts` | Frames of a design (`id, label, width, height, x, y`), presets, limits, `parseLayout()`. Stored in `project.json` under `layouts.<design>`; every write of `project.json` goes through `updateProjectMeta()` (one at a time, replaced whole). `GET/PUT …/designs/:design/layout`. A design rename moves its layout |
 | `src/web/viewport.ts` | Camera math: `zoomAt()` (keeps the point under the pointer), `stepZoom()`, `wheelFactor()`, `fitView()`, `nextPosition()`, `arrangeRow()` |
+| `src/workspace/variants.ts`, `src/server/variants.ts`, `src/web/variants.ts` | Variants: `projects/<p>/variants/<design>/<set>/<n>/` (copies of the design without hidden files) and `set.json` (prompt, per-variant provider, model, status, text, usage, files). `POST …/variants { text, target?, count 2–4, models? }` streams `variants`, `variant { n, event }`, `variants-done`; the set is committed. `POST …/variants/:set/pick { n }` copies the variant into the design, writes the chat lines (with `variant: n`) and removes the set (commit). `DELETE …/variants/:set` discards (commit). Files are served at `/variant/<p>/<d>/<set>/<n>/` with the bridge |
 | `src/web/frame.ts` | `parseFrameMessage()`: checks each bridge message (the page runs its own scripts); `trackMessage()` |
 | `src/web/` | React UI (Bun HTML import, no Vite). All sizes and colors in `tokens.css`; only 1px hairlines are literal |
 | `src/providers/types.ts` | `Provider`, `GenerateRequest`, `GenerateEvent`, capabilities incl. `editsFiles` |
@@ -104,7 +105,7 @@ Done and closed: #1 CI, #13 app shell, #74 credentials and status, #60 Claude Co
 
 M1 is complete. The user chose to start M2 before the M1 gate (one real design), so the gate is still open.
 
-M2 done: #14 data-oid post-processing, #15 selection, #16 comments, #17 targeted edits, #18 canvas.
+M2 done: #14 data-oid post-processing, #15 selection, #16 comments, #17 targeted edits, #18 canvas, #19 variants.
 
 Open only for a manual run with a real key (the user must set the key; do not read pi's credentials):
 - #2 Anthropic: `ANTHROPIC_API_KEY=... bun scripts/try-provider.ts anthropic:claude-haiku-5-5`
@@ -113,7 +114,7 @@ Open only for a manual run with a real key (the user must set the key; do not re
 
 Next, in this order (M2):
 
-1. #19 variants, #20 version history, #41 sandbox hardening.
+1. #20 version history, #41 sandbox hardening.
 2. Still open for the user: the M1 gate (one real design) and #2, #3, #72 (real API keys).
 
 After M1: M2 (precision), M3 (design systems), M4 (handoff), M5 (breadth). #75 (Sign in with ChatGPT) waits for a client ID from OpenAI.
@@ -129,6 +130,7 @@ After M1: M2 (precision), M3 (design systems), M4 (handoff), M5 (breadth). #75 (
 - The chat panel is keyed by the design in `App.tsx`. A design switch unmounts it and aborts its run, so no message of the old design can reach the new one.
 - A stopped CLI-backend turn can leave changed files, but it is stored with `files: []` and is not in the history.
 - Answers show Markdown as plain text.
+- Variants: one open set per design. While it is open, a turn or a new set on the design gets 409 (the composer says why). A pick replaces the design's page files (comments stay). All variants stay in the history through the "Variants: …" commit. A model name for a variant must not start with "-" (it goes to a CLI as an argument). Variants take no images and no comments yet. A design rename moves its variants.
 - Canvas: the world element holds the frames at real size; the camera is its CSS transform. Wheel pans, Ctrl/⌘ + wheel or a pinch zooms at the pointer; drag on the background, middle button or Space + drag pans; `=`/`-`/`0`/Shift+1/arrows. Over a frame, a plain wheel scrolls the page; the bridge forwards only a pinch (`doi:wheel`) and the canvas keys (`doi:key`). A layout change makes no commit; the next commit of `project.json` (a rename) takes it along. The camera itself is not stored; a design opens fitted.
 - Targeted edits: a turn body can carry `comments` (ids). The server checks that each is open and its element exists, then the user message lists them ("Apply these comments … 1. data-oid=…"). A selection adds "Change only this element and the CSS rules for it, with small edits." Only the comments sent with a turn can become done; a rule on a tag name only (`button {}`) does not count as a change of the element.
 - Comments are hidden files (`.comments.json`): `readDesignFiles` skips them, the watcher does not reload frames for them, and the design server returns 404 for dot files. They move with a design rename and go into the next turn commit. A CLI backend (`cwd` = design folder) can still read the file.

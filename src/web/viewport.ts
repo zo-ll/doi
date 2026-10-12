@@ -102,3 +102,22 @@ export function newFrameId(frames: Frame[], label: string): string {
   for (let n = 2; ids.has(id); n++) id = `${base}-${n}`;
   return id;
 }
+
+/** Canvas pixels between the design frames and the row of variants. */
+export const VARIANT_GAP = 240;
+
+/**
+ * Places for the frames of `count` variants: one row under the design frames, each with the
+ * size of the first frame.
+ */
+export function variantSlots(frames: Frame[], count: number): { x: number; y: number; width: number; height: number }[] {
+  const first = frames[0] ?? { width: 1440, height: 900 };
+  const left = frames.length ? Math.min(...frames.map((f) => f.x)) : 0;
+  const top = frames.length ? Math.max(...frames.map((f) => f.y + f.height)) + VARIANT_GAP : 0;
+  return Array.from({ length: count }, (_, i) => ({
+    x: left + i * (first.width + FRAME_GAP),
+    y: top,
+    width: first.width,
+    height: first.height,
+  }));
+}

@@ -15,7 +15,11 @@ export function designDir(workspace: string, project: string, design: string): s
 
 /** Resolves a file inside a design folder. Returns null for paths that leave the folder. */
 export function designFile(workspace: string, project: string, design: string, file: string): string | null {
-  const dir = designDir(workspace, project, design);
+  return fileIn(designDir(workspace, project, design), file);
+}
+
+/** Resolves a file inside `dir`. Returns null for paths that leave it. */
+export function fileIn(dir: string, file: string): string | null {
   const full = normalize(join(dir, file));
   return full.startsWith(dir + sep) ? full : null;
 }
