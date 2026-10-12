@@ -13,6 +13,8 @@ export interface ModelRef {
 export interface ProviderConfig {
   api_key_env?: string;
   base_url?: string;
+  /** OpenCode Go only: model id → wire format ("chat", "messages" or "responses"). */
+  formats?: Record<string, string>;
 }
 
 export interface Config {
