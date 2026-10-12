@@ -102,6 +102,25 @@ describe("POST turns", () => {
     expect(req.cwd).toBe(designDir(config.workspace, "p", "d"));
   });
 
+  test("the project's design system is in the stable prompt, and pages link its tokens", async () => {
+    const dsDir = join(config.workspace, "design-systems", "brand");
+    await mkdir(dsDir, { recursive: true });
+    await Bun.write(join(dsDir, "tokens.css"), ":root { --brand: #0a7; }");
+    await Bun.write(join(config.workspace, "projects", "p", "project.json"), JSON.stringify({ name: "P", designSystem: "brand" }));
+    await Bun.write(join(designDir(config.workspace, "p", "d"), "index.html"), '<html><head></head><body><h1 data-oid="title">Hi</h1></body></html>');
+    const evs = await events(await post({ text: "Use the brand color" }));
+    const system = calls[0]!.req.system;
+    // System prompt, then the design system, then the files: the start stays the same for the cache.
+    expect(system[0]).toContain("data-oid");
+    expect(system[1]).toStartWith("# Design system: brand");
+    expect(system[1]).toContain("--brand: #0a7");
+    expect(system.at(-1)).toContain("h1 { color: red; }");
+    expect(evs.find((e) => e.type === "applied")).toEqual({ type: "applied", files: ["styles.css", "index.html"] });
+    expect(await Bun.file(join(designDir(config.workspace, "p", "d"), "index.html")).text()).toContain(
+      '<link rel="stylesheet" href="/ds/brand/tokens.css">',
+    );
+  });
+
   test("a turn waits while the design has open variants", async () => {
     variantsOpen = true;
     const res = await post({ text: "x" });

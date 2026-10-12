@@ -1,7 +1,9 @@
 import { parseModelRef, type Config, type ModelRef, type ProviderId } from "../config.ts";
 import { ApplyError, runTurn, type TurnEvent } from "../generation/apply.ts";
 import { assembleContext, capabilitiesFor, ContextTooLargeError, readDesignFiles } from "../generation/context.ts";
+import { linkDesignSystemIn } from "../generation/ds-link.ts";
 import { fixDesignOids } from "../generation/oids.ts";
+import { activeDesignSystem, formatDesignSystem } from "../workspace/design-systems.ts";
 import { SYSTEM_PROMPT } from "../generation/prompts.ts";
 import type { Provider } from "../providers/types.ts";
 import { appendChat, appendCommit, chatFile, historyMessages, readChat } from "../workspace/chat.ts";
@@ -138,7 +140,9 @@ export function createVariantHandlers(deps: VariantDeps) {
     let set: VariantSet;
     let history;
     let before;
+    let ds;
     try {
+      ds = await activeDesignSystem(workspace, params.project);
       history = historyMessages(await readChat(workspace, params.project, params.design));
       before = await readDesignFiles(dir);
       set = await createSet(workspace, params.project, params.design, {
@@ -177,7 +181,7 @@ export function createVariantHandlers(deps: VariantDeps) {
           try {
             const context = assembleContext({
               systemPrompt: SYSTEM_PROMPT.text,
-              designSystem: null,
+              designSystem: ds ? formatDesignSystem(ds) : null,
               files: before,
               history,
               turn: { text, target: target as string | null },
@@ -194,7 +198,8 @@ export function createVariantHandlers(deps: VariantDeps) {
               }
               if (e.type === "applied") {
                 const fixed = await fixDesignOids(vdir, before, await readDesignFiles(vdir));
-                e = { ...e, files: [...new Set([...e.files, ...fixed])] };
+                const linked = ds ? await linkDesignSystemIn(vdir, await readDesignFiles(vdir), ds) : [];
+                e = { ...e, files: [...new Set([...e.files, ...fixed, ...linked])] };
                 v.files = e.files;
               }
               send({ type: "variant", n: v.n, event: e });
