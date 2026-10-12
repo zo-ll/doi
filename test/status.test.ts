@@ -91,6 +91,7 @@ describe("providerStatus", () => {
   test("implemented reflects the provider registry", async () => {
     const s = await byId(deps());
     expect(s.anthropic!.implemented).toBe(true);
-    expect(s["claude-code"]!.implemented).toBe(false);
+    expect(s["claude-code"]!.implemented).toBe(true);
+    expect(s.codex!.implemented).toBe(false); // #73
   });
 });

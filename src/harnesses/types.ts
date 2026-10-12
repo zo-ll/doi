@@ -1,4 +1,4 @@
-import type { HarnessId } from "../config.ts";
+import type { Config, HarnessId } from "../config.ts";
 import type { Provider } from "../providers/types.ts";
 
 export interface HandoffBundle {
@@ -19,6 +19,6 @@ export interface Harness {
   headless: string[];
   detect(): Promise<boolean>;
   handoff(bundle: HandoffBundle, repoPath: string): Promise<RunHandle>;
-  /** Only for CLIs that stream structured output. In v1, Claude Code only (M5). */
-  asProvider?(): Provider;
+  /** A subscription through this CLI, as a provider (#60 Claude Code, #73 Codex). */
+  asProvider?(config: Config): Provider;
 }
