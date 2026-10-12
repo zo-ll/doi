@@ -110,19 +110,26 @@ Done and closed: #1 CI, #13 app shell, #74 credentials and status, #60 Claude Co
 
 M1 is complete. The user chose to start M2 before the M1 gate (one real design), so the gate is still open.
 
-M3 is complete: #42 design system format and loader, #43 import from a repo, #44 import from screenshots, #45 design system UI.
-
 M2 is complete: #14 data-oid post-processing, #15 selection, #16 comments, #17 targeted edits, #18 canvas, #19 variants, #20 version history, #41 sandbox hardening.
 
-Open only for a manual run with a real key (the user must set the key; do not read pi's credentials):
-- #2 Anthropic: `ANTHROPIC_API_KEY=... bun scripts/try-provider.ts anthropic:claude-haiku-5-5`
-- #3 OpenAI (PR #80 merged): `OPENAI_API_KEY=... bun scripts/try-provider.ts openai:<model>`
-- #72 OpenCode Go: run one model of each format, for example `glm-5.3`, `claude-haiku-5-5`, `gpt-6-luna`. This also confirms the image-support assumption in `supportsVision()`.
+M3 is complete: #42 design system format and loader, #43 import from a repo, #44 import from screenshots, #45 design system UI.
 
-Next, in this order (M2):
+**Subscriptions only.** The user has no Anthropic or OpenAI API keys and will not get them. doi runs on the CLI backends: `claude-code:<model>` (Claude subscription through `claude -p`) and `codex:<model>` (ChatGPT plan through `codex exec`). Do not ask for API keys. #2 (Anthropic adapter) and #3 (OpenAI adapter) were closed on 2026-10-13 as built and unit-tested, but not tested live. Test real runs with `claude-code:claude-haiku-5-5`. The defaults in `config.example.toml` still name the API providers, so a `config.toml` must set all three models to CLI backends (the extract model needs vision for the screenshot import):
 
-1. M4 (handoff): look at the M4 milestone issues on GitHub. Ask the user before M4 starts; the M1 gate (one real design) is still open. M4 export must copy or inline the `/ds/<name>/` files that pages link.
-2. Still open for the user: the M1 gate (one real design) and #2, #3, #72 (real API keys).
+```toml
+[models]
+generate = "claude-code:claude-opus-5-5"
+edit     = "claude-code:claude-sonnet-5-5"
+extract  = "claude-code:claude-haiku-5-5"
+```
+
+Still open for a manual run: #72 OpenCode Go, only if the user has an OpenCode Go key. Run one model of each format, for example `glm-5.3`, `claude-haiku-5-5`, `gpt-6-luna`. This also confirms the image-support assumption in `supportsVision()`.
+
+Next, in this order:
+
+1. Add the subscription setup above to `config.example.toml`, and make the CLI backends the documented default.
+2. M4 (handoff): the M4 milestone issues on GitHub, from #46 HTML export. The user said to continue with M4. M4 export must copy or inline the `/ds/<name>/` files that pages link.
+3. Still open for the user: the M1 gate (one real design), and #72 if they have an OpenCode Go key.
 
 After M1: M2 (precision), M3 (design systems), M4 (handoff), M5 (breadth). #75 (Sign in with ChatGPT) waits for a client ID from OpenAI.
 
