@@ -3,7 +3,15 @@ import type { ChatEntry, TurnStreamEvent, Usage } from "./api.ts";
 export type AnswerStatus = "running" | "done" | "error" | "stopped";
 
 export type ChatMessage =
-  | { id: number; kind: "user"; text: string; target?: string; images?: string[] }
+  | {
+      id: number;
+      kind: "user";
+      text: string;
+      target?: string;
+      images?: string[];
+      /** Comments the turn applied: element and text. */
+      comments?: { oid: string; text: string }[];
+    }
   | {
       id: number;
       kind: "assistant";
@@ -16,6 +24,8 @@ export type ChatMessage =
       /** The commit of the turn; commitError when it failed (the turn itself succeeded). */
       commit?: string;
       commitError?: string;
+      /** How many of the turn's comments are done now. */
+      commentsDone?: number;
     }
   | { id: number; kind: "error"; text: string }
   | { id: number; kind: "info"; text: string };
@@ -38,6 +48,7 @@ export function fromEntries(entries: ChatEntry[], nextId: () => number, imageUrl
         text: e.text,
         ...(e.target ? { target: e.target } : {}),
         ...(e.images?.length ? { images: e.images.map(imageUrl) } : {}),
+        ...(e.comments?.length ? { comments: e.comments.map(({ oid, text }) => ({ oid, text })) } : {}),
       });
       if (!answered.has(e.turn)) out.push({ id: nextId(), kind: "info", text: "This turn did not finish." });
     } else {
@@ -50,6 +61,7 @@ export function fromEntries(entries: ChatEntry[], nextId: () => number, imageUrl
         usage: e.usage,
         retries: 0,
         ...(e.error ? { error: e.error } : {}),
+        ...(e.commentsDone?.length ? { commentsDone: e.commentsDone.length } : {}),
       });
     }
   }
@@ -89,6 +101,8 @@ export function applyEvent(a: Answer, e: TurnStreamEvent): Answer {
       return { ...a, status: "error", error: errorText(e.kind, e.message) };
     case "commit":
       return e.sha ? { ...a, commit: e.sha } : e.error ? { ...a, commitError: e.error } : a;
+    case "comments":
+      return { ...a, commentsDone: e.done.length };
   }
 }
 

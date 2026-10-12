@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getJSON, type AppConfig, type Harnesses, type Load, type ProjectSummary, type ProviderStatus } from "./api.ts";
 import { Canvas } from "./components/Canvas.tsx";
-import { ChatPanel, type Selection } from "./components/ChatPanel.tsx";
+import { ChatPanel, type CommentRequest, type Selection } from "./components/ChatPanel.tsx";
 import { CommentsPanel } from "./components/CommentsPanel.tsx";
 import { pinsOf, useComments } from "./comments.ts";
 import { Sidebar, type Active } from "./components/Sidebar.tsx";
@@ -51,6 +51,9 @@ export function App() {
   const [selection, setSelection] = useState<Selection | null>(null);
   const clearSelection = useCallback(() => setSelection(null), []);
   const [tab, setTab] = useState<"chat" | "comments">("chat");
+  const [request, setRequest] = useState<CommentRequest | null>(null);
+  const [running, setRunning] = useState(false);
+  const requestKey = useRef(0);
   // Bumped when the files of the open design change; the canvas reloads its frames.
   const [revision, setRevision] = useState(0);
   const activeRef = useRef(active);
@@ -71,6 +74,7 @@ export function App() {
   const open = useCallback((a: Active) => {
     setActive(a);
     setSelection(null);
+    setRequest(null); // a request belongs to the design it was made on
     saveLast(a);
   }, []);
 
@@ -126,7 +130,15 @@ export function App() {
           <button className="panel-tab" role="tab" aria-selected={tab === "chat"} onClick={() => setTab("chat")}>
             Chat
           </button>
-          <button className="panel-tab" role="tab" aria-selected={tab === "comments"} onClick={() => setTab("comments")}>
+          <button
+            className="panel-tab"
+            role="tab"
+            aria-selected={tab === "comments"}
+            onClick={() => {
+              setTab("comments");
+              comments.reload(); // another window may have changed them
+            }}
+          >
             Comments
             {openComments > 0 && <span className="tab-count" aria-label={`${openComments} open`}>{openComments}</span>}
           </button>
@@ -139,6 +151,10 @@ export function App() {
           modelStatus={generateStatus}
           onClearSelection={clearSelection}
           hidden={tab !== "chat"}
+          request={request}
+          onRequestTaken={() => setRequest(null)}
+          onRunningChange={setRunning}
+          onCommentsChanged={comments.reload}
         />
         {tab === "comments" && (
           <CommentsPanel
@@ -149,6 +165,11 @@ export function App() {
             onStatus={comments.setStatus}
             onRemove={comments.remove}
             onRetry={comments.reload}
+            running={running}
+            onApply={(list) => {
+              setRequest({ key: ++requestKey.current, comments: list.map(({ id, oid, text }) => ({ id, oid, text })) });
+              setTab("chat"); // the answer streams there
+            }}
           />
         )}
       </section>

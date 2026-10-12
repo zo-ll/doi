@@ -25,7 +25,24 @@ const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigat
  * The chat of one design. App mounts it with key = the design, so a design switch starts a
  * new panel: a run of the old design is aborted, and its messages cannot reach the new one.
  */
-export function ChatPanel({ target, selection, model, modelStatus, onClearSelection, hidden = false }: {
+/** Comments to apply in one turn, from the Comments tab. `key` makes each request new. */
+export interface CommentRequest {
+  key: number;
+  comments: { id: string; oid: string; text: string }[];
+}
+
+export function ChatPanel({
+  target,
+  selection,
+  model,
+  modelStatus,
+  onClearSelection,
+  hidden = false,
+  request = null,
+  onRequestTaken,
+  onRunningChange,
+  onCommentsChanged,
+}: {
   /** The open design; null disables the composer. */
   target: Active | null;
   selection: Selection | null;
@@ -35,6 +52,11 @@ export function ChatPanel({ target, selection, model, modelStatus, onClearSelect
   onClearSelection: () => void;
   /** The panel stays mounted behind another tab, so a running turn goes on. */
   hidden?: boolean;
+  request?: CommentRequest | null;
+  onRequestTaken?: () => void;
+  onRunningChange?: (running: boolean) => void;
+  /** A turn marked comments done. */
+  onCommentsChanged?: () => void;
 }) {
   const disabled = target === null;
   const [draft, setDraft] = useState("");
@@ -105,21 +127,26 @@ export function ChatPanel({ target, selection, model, modelStatus, onClearSelect
     setImages((list) => [...list, ...added].slice(0, IMAGE_LIMITS.count));
   };
 
-  const send = async () => {
-    const text = draft.trim();
-    if (!text || running || !target) return;
-    const sent = images;
+  /** Sends the draft, or with `comments` only those comments; the draft and images stay then. */
+  const send = async (comments?: CommentRequest["comments"]) => {
+    const text = comments ? "" : draft.trim();
+    if ((!text && !comments?.length) || running || !target) return;
+    const sent = comments ? [] : images;
+    const turnTarget = comments ? null : (selection?.oid ?? null);
     push({
       kind: "user",
       text,
-      ...(selection ? { target: selection.oid } : {}),
+      ...(turnTarget ? { target: turnTarget } : {}),
       ...(sent.length ? { images: sent.map((i) => i.url) } : {}),
+      ...(comments ? { comments: comments.map(({ oid, text }) => ({ oid, text })) } : {}),
     });
-    setImages([]);
-    setImageError(null);
+    if (!comments) {
+      setImages([]);
+      setImageError(null);
+      setDraft("");
+    }
     const answerId = nextId.current++;
     setMessages((list) => [...list, newAnswer(answerId)]);
-    setDraft("");
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -130,8 +157,9 @@ export function ChatPanel({ target, selection, model, modelStatus, onClearSelect
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           text,
-          target: selection?.oid ?? null,
+          target: turnTarget,
           images: sent.map(({ mediaType, data }) => ({ mediaType, data })),
+          ...(comments ? { comments: comments.map((c) => c.id) } : {}),
         }),
         signal: controller.signal,
       });
@@ -144,6 +172,7 @@ export function ChatPanel({ target, selection, model, modelStatus, onClearSelect
       let ended = false;
       for await (const event of readEvents(res.body)) {
         if (event.type === "done" || event.type === "error") ended = true;
+        if (event.type === "comments") onCommentsChanged?.();
         updateAnswer(answerId, (a) => applyEvent(a, event));
       }
       if (!ended) {
@@ -159,6 +188,15 @@ export function ChatPanel({ target, selection, model, modelStatus, onClearSelect
   };
 
   const stop = () => abortRef.current?.abort();
+
+  useEffect(() => onRunningChange?.(running), [running]);
+
+  // "Apply" in the Comments tab: run one turn for those comments.
+  useEffect(() => {
+    if (!request || running || !target) return;
+    onRequestTaken?.();
+    void send(request.comments);
+  }, [request, running]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -206,7 +244,16 @@ export function ChatPanel({ target, selection, model, modelStatus, onClearSelect
                     {m.images.map((src, i) => <img key={i} src={src} alt={`Attached image ${i + 1}`} />)}
                   </div>
                 )}
-                <p>{m.text}</p>
+                {m.comments && (
+                  <ol className="msg-comments" aria-label="Comments to apply">
+                    {m.comments.map((c, i) => (
+                      <li key={i}>
+                        <span className="msg-target"><Icon name="target" size={12} />{c.oid}</span> {c.text}
+                      </li>
+                    ))}
+                  </ol>
+                )}
+                {m.text && <p>{m.text}</p>}
               </div>
             ) : m.kind === "assistant" ? (
               <AnswerView key={m.id} answer={m} />
@@ -363,6 +410,9 @@ function AnswerView({ answer: a }: { answer: Answer }) {
       {(a.files.length > 0 || a.usage) && (
         <p className="msg-meta">
           {a.files.length > 0 && <span>Changed {a.files.join(", ")}</span>}
+          {a.commentsDone !== undefined && (
+            <span>{a.commentsDone} comment{a.commentsDone === 1 ? "" : "s"} done</span>
+          )}
           {a.commit && <span title={a.commit}>Saved as {a.commit.slice(0, 7)}</span>}
           {a.usage && (
             <span title="Input, output and cached tokens">

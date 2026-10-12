@@ -6,6 +6,7 @@ import { parseConfig, type Config } from "../src/config.ts";
 import type { GenerateRequest, Provider, ProviderCapabilities } from "../src/providers/types.ts";
 import { createTurnHandler, getChat, type TurnStreamEvent } from "../src/server/turns.ts";
 import { readChat } from "../src/workspace/chat.ts";
+import { addComment, readComments, updateComment } from "../src/workspace/comments.ts";
 import { designDir } from "../src/workspace/paths.ts";
 
 const caps: ProviderCapabilities = { vision: true, toolUse: true, promptCache: "explicit", maxContextTokens: 200_000, editsFiles: false };
@@ -99,7 +100,7 @@ describe("POST turns", () => {
     await events(await post({ text: "Bigger", target: "title" }));
     expect(calls[0]!.provider).toBe("openai");
     expect(calls[0]!.req.model).toBe("small-model");
-    expect(calls[0]!.req.messages.at(-1)!.content[0]).toEqual({ type: "text", text: 'Target: data-oid="title". Bigger' });
+    expect(calls[0]!.req.messages.at(-1)!.content[0]).toEqual({ type: "text", text: 'Target: data-oid="title". Change only this element and the CSS rules for it, with small edits. Bigger' });
   });
 
   test("bad requests and unknown designs fail before any provider call", async () => {
@@ -206,7 +207,7 @@ describe("POST turns", () => {
     expect(texts).toEqual([
       "user: Make it blue",
       "assistant: Blue now.",
-      'user: Target: data-oid="title". Now bigger',
+      'user: Target: data-oid="title". Change only this element and the CSS rules for it, with small edits. Now bigger',
     ]);
 
     const res = await getChat(config.workspace, { project: "p", design: "d" });
@@ -313,6 +314,73 @@ describe("POST turns", () => {
     expect((await res.json()).error).toBe("anthropic:big-model cannot read images. Remove the images, or choose a model with vision in config.toml.");
     expect(calls).toHaveLength(0);
     // The design is not locked by the refused request.
-    expect((await post({ text: "no images" })).status).toBe(200);
+    const res2 = await post({ text: "no images" });
+    expect(res2.status).toBe(200);
+    // Read the turn to its end, so its commit does not land in the next test.
+    await events(res2);
+  });
+});
+
+describe("turns with comments", () => {
+  const comment = (oid: string, text: string) => addComment(config.workspace, "p", "d", { oid, text, version: null });
+  const writeDesign = (html: string) => Bun.write(join(designDir(config.workspace, "p", "d"), "index.html"), html);
+
+  test("applies the comments, and marks done only those whose element changed", async () => {
+    await writeDesign('<h1 data-oid="title">Hi</h1><p data-oid="lead">Text</p>');
+    const a = await comment("title", "Say hello");
+    const b = await comment("lead", "Shorter");
+    behave = async function* () {
+      yield { type: "edit", file: "index.html", oldText: ">Hi<", newText: ">Hello<" };
+      yield { type: "done" };
+    };
+    const evs = await events(await post({ comments: [a.id, b.id] }));
+    expect(calls[0]!.req.messages.at(-1)!.content[0]).toEqual({
+      type: "text",
+      text:
+        "Apply these comments. Each names one element by its data-oid. Change only these elements and the CSS rules for them, with small edits.\n" +
+        '1. data-oid="title": Say hello\n2. data-oid="lead": Shorter',
+    });
+    expect(evs.map((e) => e.type)).toEqual(["edit", "applied", "comments", "done", "commit"]);
+    expect(evs.find((e) => e.type === "comments")).toEqual({ type: "comments", done: [a.id] });
+    expect((await readComments(config.workspace, "p", "d")).map((c) => c.status)).toEqual(["done", "open"]);
+    expect(commits).toEqual(["p/d: Apply 2 comments"]);
+
+    const [user, answer] = await readChat(config.workspace, "p", "d");
+    expect(user).toMatchObject({ text: "", comments: [{ id: a.id, oid: "title", text: "Say hello" }, { id: b.id, oid: "lead", text: "Shorter" }] });
+    expect(answer).toMatchObject({ status: "done", commentsDone: [a.id] });
+  });
+
+  test("a CSS rule that names the element marks its comment done; text goes after the comments", async () => {
+    await Bun.write(join(designDir(config.workspace, "p", "d"), "styles.css"), '[data-oid="title"] { color: red; }');
+    const a = await comment("title", "Blue");
+    behave = async function* () {
+      yield { type: "edit", file: "styles.css", oldText: "red", newText: "blue" };
+      yield { type: "done" };
+    };
+    const evs = await events(await post({ text: "Keep it calm", comments: [a.id] }));
+    expect((calls[0]!.req.messages.at(-1)!.content[0] as { text: string }).text).toEndWith('1. data-oid="title": Blue\n\nKeep it calm');
+    expect(evs.find((e) => e.type === "comments")).toEqual({ type: "comments", done: [a.id] });
+    expect(commits).toEqual(["p/d: Keep it calm"]);
+  });
+
+  test("done, missing and detached comments and bad lists are refused before any provider call", async () => {
+    const done = await comment("title", "x");
+    await updateComment(config.workspace, "p", "d", done.id, { status: "done" });
+    const gone = await comment("title", "y");
+    await writeDesign('<h2 data-oid="other">Hi</h2>');
+    const cases: [unknown, string][] = [
+      [{ comments: [done.id] }, 'The comment on "title" is done already.'],
+      [{ comments: [crypto.randomUUID()] }, "A comment of this turn does not exist. Load the comments again."],
+      [{ comments: [gone.id] }, 'The element "title" of a comment is not in the design now.'],
+      [{ comments: ["x"] }, "comments must be a list of at most 50 comment ids."],
+      [{ comments: "x" }, "comments must be a list of at most 50 comment ids."],
+      [{ comments: [] }, "text must be a non-empty string."],
+    ];
+    for (const [body, error] of cases) {
+      const res = await post(body);
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe(error);
+    }
+    expect(calls).toHaveLength(0);
   });
 });

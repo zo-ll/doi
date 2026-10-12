@@ -3,14 +3,18 @@ import type { CommentView, Load } from "../api.ts";
 import type { Selection } from "./ChatPanel.tsx";
 import { Icon } from "./Icon.tsx";
 
-export function CommentsPanel({ comments, selection, onSelect, onAdd, onStatus, onRemove, onRetry }: {
+export function CommentsPanel({ comments, selection, running, onSelect, onAdd, onStatus, onRemove, onRetry, onApply }: {
   comments: Load<CommentView[]>;
   selection: Selection | null;
+  /** A turn runs in the chat; no new one can start. */
+  running: boolean;
   onSelect: (oid: string) => void;
   onAdd: (oid: string, text: string) => Promise<void>;
   onStatus: (id: string, status: "open" | "done") => Promise<void>;
   onRemove: (id: string) => Promise<void>;
   onRetry: () => void;
+  /** Runs one turn in the chat for these comments. */
+  onApply: (comments: CommentView[]) => void;
 }) {
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
@@ -38,6 +42,8 @@ export function CommentsPanel({ comments, selection, onSelect, onAdd, onStatus, 
 
   const list = comments.state === "ready" ? comments.data : [];
   const open = list.filter((c) => c.status === "open").length;
+  // A detached comment has no element to change.
+  const applicable = list.filter((c) => c.status === "open" && !c.detached);
 
   return (
     <div className="comments">
@@ -58,9 +64,22 @@ export function CommentsPanel({ comments, selection, onSelect, onAdd, onStatus, 
           </div>
         )}
         {list.length > 0 && (
-          <p className="comments-count muted">
-            {open} open · {list.length - open} done
-          </p>
+          <div className="comments-bar">
+            <p className="comments-count muted">
+              {open} open · {list.length - open} done
+            </p>
+            {applicable.length > 0 && (
+              <button
+                className="btn btn-secondary"
+                disabled={running || busy}
+                onClick={() => onApply(applicable)}
+                title={running ? "Wait for the running turn to end" : "Run one turn for all open comments"}
+              >
+                <Icon name="sparkle" />
+                Apply all comments
+              </button>
+            )}
+          </div>
         )}
         {list.map((c, i) => (
           <article
@@ -81,6 +100,17 @@ export function CommentsPanel({ comments, selection, onSelect, onAdd, onStatus, 
               </button>
               {c.detached && <span className="badge badge-warning">Detached</span>}
               <span className="comment-actions">
+                {c.status === "open" && !c.detached && (
+                  <button
+                    className="icon-btn"
+                    disabled={running || busy}
+                    onClick={() => onApply([c])}
+                    aria-label={`Apply comment ${i + 1}`}
+                    title="Apply this comment"
+                  >
+                    <Icon name="sparkle" />
+                  </button>
+                )}
                 <button
                   className="icon-btn"
                   disabled={busy}

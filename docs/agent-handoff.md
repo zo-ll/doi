@@ -62,6 +62,7 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 | `src/frame/bridge.js` | Script in each design iframe. Sends `doi:ready`, `doi:select` (Shift-click = parent), `doi:clear` (Escape), and `doi:rects` (selected and hover boxes, on each animation frame while one is shown, only when they changed). Gets `doi:track { oid }` |
 | `src/workspace/comments.ts`, `src/server/comments.ts` | Comments per design in `<design>/.comments.json` (id, oid, text, status, version = last commit of the design). GET adds `detached` from the current HTML. One write at a time per file (`file-lock.ts`); a write does not create folders, so a renamed design gives 404 |
 | `src/web/comments.ts`, `src/web/components/CommentsPanel.tsx` | `useComments()` (loads again on each design change), `pinsOf()`, the Comments tab. Pins come from the bridge (`doi:track { pins }`, `doi:rects { pins }`) |
+| `src/generation/touched.ts` | `touchedOids()`: which elements a turn changed (own HTML, or a changed CSS rule that names a class, the id or the `data-oid`). A comment of the turn is done when its element changed |
 | `src/web/frame.ts` | `parseFrameMessage()`: checks each bridge message (the page runs its own scripts); `trackMessage()` |
 | `src/web/` | React UI (Bun HTML import, no Vite). All sizes and colors in `tokens.css`; only 1px hairlines are literal |
 | `src/providers/types.ts` | `Provider`, `GenerateRequest`, `GenerateEvent`, capabilities incl. `editsFiles` |
@@ -101,7 +102,7 @@ Done and closed: #1 CI, #13 app shell, #74 credentials and status, #60 Claude Co
 
 M1 is complete. The user chose to start M2 before the M1 gate (one real design), so the gate is still open.
 
-M2 done: #14 data-oid post-processing, #15 selection, #16 comments.
+M2 done: #14 data-oid post-processing, #15 selection, #16 comments, #17 targeted edits.
 
 Open only for a manual run with a real key (the user must set the key; do not read pi's credentials):
 - #2 Anthropic: `ANTHROPIC_API_KEY=... bun scripts/try-provider.ts anthropic:claude-haiku-5-5`
@@ -110,7 +111,7 @@ Open only for a manual run with a real key (the user must set the key; do not re
 
 Next, in this order (M2):
 
-1. #17 targeted edits (a turn with open comments sends their targets and asks for small edits; "Apply all comments"; a comment is done when the model edits its element), #18 canvas, #19 variants, #20 version history, #41 sandbox hardening.
+1. #18 canvas (pan, zoom, many frames), #19 variants, #20 version history, #41 sandbox hardening.
 2. Still open for the user: the M1 gate (one real design) and #2, #3, #72 (real API keys).
 
 After M1: M2 (precision), M3 (design systems), M4 (handoff), M5 (breadth). #75 (Sign in with ChatGPT) waits for a client ID from OpenAI.
@@ -126,6 +127,7 @@ After M1: M2 (precision), M3 (design systems), M4 (handoff), M5 (breadth). #75 (
 - The chat panel is keyed by the design in `App.tsx`. A design switch unmounts it and aborts its run, so no message of the old design can reach the new one.
 - A stopped CLI-backend turn can leave changed files, but it is stored with `files: []` and is not in the history.
 - Answers show Markdown as plain text.
+- Targeted edits: a turn body can carry `comments` (ids). The server checks that each is open and its element exists, then the user message lists them ("Apply these comments … 1. data-oid=…"). A selection adds "Change only this element and the CSS rules for it, with small edits." Only the comments sent with a turn can become done; a rule on a tag name only (`button {}`) does not count as a change of the element.
 - Comments are hidden files (`.comments.json`): `readDesignFiles` skips them, the watcher does not reload frames for them, and the design server returns 404 for dot files. They move with a design rename and go into the next turn commit. A CLI backend (`cwd` = design folder) can still read the file.
 - Selection: the app keeps only the selected `oid`. Each frame finds the element itself and draws it in its own layout; an element hidden in a frame draws nothing there. The selection is still cleared when the design files change (a turn).
 - Playwright cannot click into the scaled design iframes with locators (it reports that other elements get the click). Move the mouse to computed screen points instead: iframe box + element rect × zoom.

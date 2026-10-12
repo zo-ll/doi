@@ -1,10 +1,12 @@
 import type { Config, ProviderId } from "../config.ts";
 import { ApplyError, runTurn, type TurnEvent } from "../generation/apply.ts";
 import { assembleContext, capabilitiesFor, ContextTooLargeError, readDesignFiles } from "../generation/context.ts";
-import { fixDesignOids } from "../generation/oids.ts";
+import { designOids, fixDesignOids } from "../generation/oids.ts";
+import { touchedOids } from "../generation/touched.ts";
 import { SYSTEM_PROMPT } from "../generation/prompts.ts";
 import type { Provider } from "../providers/types.ts";
-import { appendChat, historyMessages, readChat } from "../workspace/chat.ts";
+import { appendChat, historyMessages, readChat, type TurnComment } from "../workspace/chat.ts";
+import { CommentError, readComments, updateComment } from "../workspace/comments.ts";
 import { designDir } from "../workspace/paths.ts";
 import { IMAGE_LIMITS, IMAGE_TYPES, isImageType, saveUploads, type ImageType } from "../workspace/uploads.ts";
 import type { DesignWatcher } from "../workspace/watch.ts";
@@ -27,6 +29,8 @@ export interface TurnBody {
   target: string | null;
   /** Images, already scaled by the browser to IMAGE_LIMITS. */
   images: { mediaType: ImageType; data: Uint8Array }[];
+  /** Ids of open comments to apply (#17). */
+  comments: string[];
 }
 
 /** Events on the stream: the turn events, an error event if the turn failed, then the commit. */
@@ -34,22 +38,29 @@ export type TurnStreamEvent =
   | TurnEvent
   | { type: "error"; kind: "context" | "apply" | "provider"; message: string }
   /** After `done`: the commit of the turn, or why it failed. The turn itself succeeded. */
-  | { type: "commit"; sha: string | null; error?: string };
+  | { type: "commit"; sha: string | null; error?: string }
+  /** After `applied`: the comments of this turn whose element the turn changed. They are done now. */
+  | { type: "comments"; done: string[] };
 
 const MAX_TEXT = 20_000;
+const MAX_COMMENTS = 50;
+const COMMENT_ID = /^[0-9a-f-]{36}$/;
 const OID = /^[A-Za-z0-9_-]{1,100}$/;
 
 function parseBody(raw: unknown): TurnBody | string {
   if (typeof raw !== "object" || raw === null) return "The body must be a JSON object.";
-  const { text, target, images } = raw as Record<string, unknown>;
-  if (typeof text !== "string" || !text.trim()) return "text must be a non-empty string.";
+  const { text = "", target, images, comments = [] } = raw as Record<string, unknown>;
+  if (!Array.isArray(comments) || comments.length > MAX_COMMENTS || !comments.every((c) => typeof c === "string" && COMMENT_ID.test(c))) {
+    return `comments must be a list of at most ${MAX_COMMENTS} comment ids.`;
+  }
+  if (typeof text !== "string" || (!text.trim() && !comments.length)) return "text must be a non-empty string.";
   if (text.length > MAX_TEXT) return `text must be at most ${MAX_TEXT} characters.`;
   if (target !== undefined && target !== null && (typeof target !== "string" || !OID.test(target))) {
     return "target must be a data-oid or null.";
   }
   const parsed = parseImages(images);
   if (typeof parsed === "string") return parsed;
-  return { text, target: (target as string | null | undefined) ?? null, images: parsed };
+  return { text, target: (target as string | null | undefined) ?? null, images: parsed, comments: [...new Set(comments as string[])] };
 }
 
 function parseImages(raw: unknown): TurnBody["images"] | string {
@@ -71,6 +82,20 @@ function parseImages(raw: unknown): TurnBody["images"] | string {
     out.push({ mediaType, data: new Uint8Array(bytes) });
   }
   return out;
+}
+
+/** The comments of a turn, in the order sent. Each must exist, be open and have its element in the design. */
+async function resolveComments(workspace: string, params: { project: string; design: string }, dir: string, ids: string[]): Promise<TurnComment[]> {
+  if (!ids.length) return [];
+  const all = await readComments(workspace, params.project, params.design);
+  const oids = await designOids(await readDesignFiles(dir));
+  return ids.map((id) => {
+    const c = all.find((x) => x.id === id);
+    if (!c) throw new CommentError("A comment of this turn does not exist. Load the comments again.", 400);
+    if (c.status !== "open") throw new CommentError(`The comment on "${c.oid}" is done already.`, 400);
+    if (!oids.has(c.oid)) throw new CommentError(`The element "${c.oid}" of a comment is not in the design now.`, 400);
+    return { id: c.id, oid: c.oid, text: c.text };
+  });
 }
 
 function errorEvent(e: unknown): TurnStreamEvent {
@@ -138,6 +163,14 @@ export function createTurnHandler(deps: TurnDeps) {
       );
     }
 
+    let comments: TurnComment[];
+    try {
+      comments = await resolveComments(deps.config.workspace, params, dir, body.comments);
+    } catch (e) {
+      if (e instanceof CommentError) return Response.json({ error: e.message }, { status: e.status });
+      throw e;
+    }
+
     const key = designKey(params.project, params.design);
     if (!locks.tryLock(key)) {
       return Response.json({ error: "A turn is already running for this design." }, { status: 409 });
@@ -147,7 +180,7 @@ export function createTurnHandler(deps: TurnDeps) {
     const abort = new AbortController();
     const onClientAbort = () => abort.abort();
     req.signal.addEventListener("abort", onClientAbort);
-    const turn = body;
+    const turn = { ...body, comments };
 
     const workspace = deps.config.workspace;
     const turnId = crypto.randomUUID();
@@ -162,6 +195,22 @@ export function createTurnHandler(deps: TurnDeps) {
         let status: "done" | "error" | "stopped" = "done";
         let error: string | undefined;
         let started = false;
+        let commentsDone: string[] = [];
+        // A comment is done when the turn changed its element. The file goes into the commit.
+        const markDone = async (list: TurnComment[], before: Awaited<ReturnType<typeof readDesignFiles>>) => {
+          const touched = await touchedOids(before, await readDesignFiles(dir), list.map((c) => c.oid));
+          const done: string[] = [];
+          for (const c of list.filter((c) => touched.has(c.oid))) {
+            try {
+              await updateComment(workspace, params.project, params.design, c.id, { status: "done" });
+              done.push(c.id);
+            } catch (e) {
+              // The user deleted it meanwhile; the other comments still count.
+              if (!(e instanceof CommentError)) throw e;
+            }
+          }
+          return done;
+        };
         try {
           // Read the history before this turn's own user line is in the file.
           const entries = await readChat(workspace, params.project, params.design);
@@ -174,6 +223,7 @@ export function createTurnHandler(deps: TurnDeps) {
             text: turn.text,
             target: turn.target,
             ...(images.length ? { images } : {}),
+            ...(turn.comments.length ? { comments: turn.comments } : {}),
           });
           started = true;
           const history = historyMessages(entries);
@@ -194,14 +244,20 @@ export function createTurnHandler(deps: TurnDeps) {
               usage.outputTokens += e.outputTokens;
               usage.cachedTokens += e.cachedTokens;
             }
+            let after: TurnStreamEvent | null = null;
             if (e.type === "applied") {
               // Each meaningful element keeps or gets a unique data-oid, before the commit.
               const fixed = await fixDesignOids(dir, before, await readDesignFiles(dir));
               e = { ...e, files: [...new Set([...e.files, ...fixed])] };
               e.files.forEach((f) => files.add(f));
+              if (turn.comments.length) {
+                commentsDone = await markDone(turn.comments, before);
+                after = { type: "comments", done: commentsDone };
+              }
             }
             if (e.type === "retry") text = ""; // the next attempt answers again
             send(e);
+            if (after) send(after);
           }
         } catch (e) {
           // An abort means the client is gone or stopped the turn: nobody reads an error event.
@@ -227,13 +283,15 @@ export function createTurnHandler(deps: TurnDeps) {
               usage,
               files: [...files],
               ...(error ? { error } : {}),
+              ...(commentsDone.length ? { commentsDone } : {}),
               prompt: SYSTEM_PROMPT.version,
             }).catch((e) => console.error("Could not write chat.jsonl:", e));
           }
           // Only a completed turn that changed files is a version. A failed turn makes no commit.
           if (status === "done" && files.size > 0 && deps.commit) {
             try {
-              send({ type: "commit", sha: await deps.commit(params.project, params.design, turn.text) });
+              const message = turn.text.trim() || `Apply ${turn.comments.length} comment${turn.comments.length === 1 ? "" : "s"}`;
+              send({ type: "commit", sha: await deps.commit(params.project, params.design, message) });
             } catch (e) {
               const message = e instanceof Error ? e.message : String(e);
               console.error("Could not commit the turn:", message);
