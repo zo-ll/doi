@@ -10,7 +10,8 @@ import { appendChat, appendCommit, historyMessages, readChat, type TurnComment }
 import { CommentError, readComments, updateComment } from "../workspace/comments.ts";
 import { activeDesignSystem, formatDesignSystem } from "../workspace/design-systems.ts";
 import { designDir } from "../workspace/paths.ts";
-import { IMAGE_LIMITS, IMAGE_TYPES, isImageType, saveUploads, type ImageType } from "../workspace/uploads.ts";
+import { saveUploads, type ImageType } from "../workspace/uploads.ts";
+import { parseImages } from "./image-body.ts";
 import type { DesignWatcher } from "../workspace/watch.ts";
 import { designKey, DesignLocks } from "./locks.ts";
 
@@ -67,26 +68,6 @@ function parseBody(raw: unknown): TurnBody | string {
   return { text, target: (target as string | null | undefined) ?? null, images: parsed, comments: [...new Set(comments as string[])] };
 }
 
-function parseImages(raw: unknown): TurnBody["images"] | string {
-  if (raw === undefined || raw === null) return [];
-  if (!Array.isArray(raw)) return "images must be a list.";
-  if (raw.length > IMAGE_LIMITS.count) return `Send at most ${IMAGE_LIMITS.count} images in one message.`;
-  const out: TurnBody["images"] = [];
-  for (const img of raw) {
-    const { mediaType, data } = (img ?? {}) as Record<string, unknown>;
-    if (typeof mediaType !== "string" || !isImageType(mediaType)) {
-      return `Images must be ${Object.keys(IMAGE_TYPES).join(", ")}.`;
-    }
-    if (typeof data !== "string" || !data) return "Each image needs base64 data.";
-    const bytes = Buffer.from(data, "base64");
-    if (!bytes.length) return "An image is empty.";
-    if (bytes.length > IMAGE_LIMITS.bytes) {
-      return `An image is larger than ${Math.round(IMAGE_LIMITS.bytes / 1_000_000)} MB. The app scales images down; send the scaled image.`;
-    }
-    out.push({ mediaType, data: new Uint8Array(bytes) });
-  }
-  return out;
-}
 
 /** The comments of a turn, in the order sent. Each must exist, be open and have its element in the design. */
 async function resolveComments(workspace: string, params: { project: string; design: string }, dir: string, ids: string[]): Promise<TurnComment[]> {
