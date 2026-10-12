@@ -1,7 +1,7 @@
 import { mkdir, rename } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { chatFile } from "./chat.ts";
+import { chatFile, renameInChat } from "./chat.ts";
 import { assertName, designDir } from "./paths.ts";
 
 /** A workspace error with the HTTP status that fits it. */
@@ -109,22 +109,6 @@ export async function renameDesign(workspace: string, project: unknown, from: un
   if (existsSync(dst)) throw new WorkspaceError(409, `A design "${b}" already exists in "${p}".`);
   await rename(src, dst);
 
-  const chat = chatFile(workspace, p);
-  const file = Bun.file(chat);
-  if (await file.exists()) {
-    const lines = (await file.text()).split("\n").map((line) => {
-      if (!line.trim()) return line;
-      try {
-        const entry = JSON.parse(line);
-        return entry.design === a ? JSON.stringify({ ...entry, design: b }) : line;
-      } catch {
-        return line; // keep a bad line as it is
-      }
-    });
-    // Write a new file and move it over the old one, so a crash cannot leave half a chat.
-    const tmp = `${chat}.tmp`;
-    await Bun.write(tmp, lines.join("\n"));
-    await rename(tmp, chat);
-  }
-  return { paths: [src, dst, chat] };
+  await renameInChat(workspace, p, a, b);
+  return { paths: [src, dst, chatFile(workspace, p)] };
 }

@@ -1,4 +1,4 @@
-import { appendFile, mkdir } from "node:fs/promises";
+import { appendFile, mkdir, rename } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { ProviderId } from "../config.ts";
 import type { Message } from "../providers/types.ts";
@@ -35,10 +35,46 @@ export function chatFile(workspace: string, project: string): string {
   return join(workspace, "projects", project, "chat.jsonl");
 }
 
+// One write at a time for each chat file: a design rename rewrites the whole file, and an
+// append from a turn on another design must not land between its read and its replace.
+const chatQueues = new Map<string, Promise<unknown>>();
+function withChatLock<T>(path: string, job: () => Promise<T>): Promise<T> {
+  const run = (chatQueues.get(path) ?? Promise.resolve()).then(job, job);
+  const tail = run.catch(() => {});
+  chatQueues.set(path, tail);
+  void tail.then(() => {
+    if (chatQueues.get(path) === tail) chatQueues.delete(path);
+  });
+  return run;
+}
+
 export async function appendChat(workspace: string, project: string, entry: ChatEntry): Promise<void> {
   const path = chatFile(workspace, project);
-  await mkdir(dirname(path), { recursive: true });
-  await appendFile(path, JSON.stringify(entry) + "\n");
+  await withChatLock(path, async () => {
+    await mkdir(dirname(path), { recursive: true });
+    await appendFile(path, JSON.stringify(entry) + "\n");
+  });
+}
+
+/** Renames a design in the project's chat. The file is replaced whole, so a crash cannot leave half of it. */
+export async function renameInChat(workspace: string, project: string, from: string, to: string): Promise<void> {
+  const path = chatFile(workspace, project);
+  await withChatLock(path, async () => {
+    const file = Bun.file(path);
+    if (!(await file.exists())) return;
+    const lines = (await file.text()).split("\n").map((line) => {
+      if (!line.trim()) return line;
+      try {
+        const entry = JSON.parse(line);
+        return entry.design === from ? JSON.stringify({ ...entry, design: to }) : line;
+      } catch {
+        return line; // keep a bad line as it is
+      }
+    });
+    const tmp = `${path}.${crypto.randomUUID()}.tmp`;
+    await Bun.write(tmp, lines.join("\n"));
+    await rename(tmp, path);
+  });
 }
 
 /** The entries of one design, oldest first. A bad line (a crash during a write) is skipped. */

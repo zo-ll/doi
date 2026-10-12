@@ -121,4 +121,23 @@ describe("projects API", () => {
     expect(slugify("Café Menu 2")).toBe("cafe-menu-2");
     expect(slugify("--A--B--")).toBe("a-b");
   });
+
+  test("renames and chat appends at the same time keep every chat line", async () => {
+    await postProject(deps, json("POST", { name: "Shop" }));
+    const at = "2026-10-12T00:00:00.000Z";
+    const designs = ["a", "b", "c", "d"];
+    for (const d of designs) {
+      await postDesign(deps, json("POST", { id: d }), { project: "shop" });
+      await appendChat(deps.workspace, "shop", { role: "user", turn: `t-${d}`, design: d, at, text: d, target: null });
+    }
+    const results = await Promise.all([
+      ...designs.map((d) => patchDesign(deps, json("PATCH", { id: `${d}-new` }), { project: "shop", design: d })),
+      ...Array.from({ length: 20 }, (_, i) =>
+        appendChat(deps.workspace, "shop", { role: "user", turn: `x${i}`, design: "home", at, text: String(i), target: null }),
+      ),
+    ]);
+    expect(results.slice(0, designs.length).map((r) => (r as Response).status)).toEqual([200, 200, 200, 200]);
+    for (const d of designs) expect((await readChat(deps.workspace, "shop", `${d}-new`)).map((e) => e.turn)).toEqual([`t-${d}`]);
+    expect(await readChat(deps.workspace, "shop", "home")).toHaveLength(20);
+  });
 });
