@@ -45,8 +45,8 @@ describe("listProjects", () => {
     await Bun.write(join(ws, "projects/other/designs/landing/index.html"), "<html></html>");
 
     expect(await listProjects(ws)).toEqual([
-      { id: "other", name: "other", designs: ["landing"] },
-      { id: "sample", name: "Sample", designs: ["home"] },
+      { id: "other", name: "other", designs: ["landing"], designSystem: null },
+      { id: "sample", name: "Sample", designs: ["home"], designSystem: null },
     ]);
   });
 
@@ -56,7 +56,7 @@ describe("listProjects", () => {
     await Bun.write(join(ws, "projects/broken/project.json"), "{ not json");
     await Bun.write(join(ws, "projects/broken/designs/home/index.html"), "<html></html>");
 
-    expect(await listProjects(ws)).toEqual([{ id: "broken", name: "broken", designs: ["home"] }]);
+    expect(await listProjects(ws)).toEqual([{ id: "broken", name: "broken", designs: ["home"], designSystem: null }]);
   });
 
   test("returns an empty list for a missing workspace", async () => {

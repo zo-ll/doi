@@ -57,6 +57,12 @@
   --pin-size: 20px;
   --menu-w: 240px;
   --menu-w-wide: 480px;
+  --dialog-w: 1080px;
+  --dialog-h: 760px;
+  --swatch-w: 140px;
+  --swatch-h: 44px;
+  --token-name-w: 180px;
+  --preview-h: 360px;
   --ring-w: 3px;
 
   /* Motion */
@@ -90,6 +96,7 @@
   --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px rgba(90, 84, 224, 0.45);
   --shadow-frame: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.06);
   --shadow-float: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.08);
+  --backdrop: rgba(20, 20, 18, 0.32);
   --skeleton: #ececea;
   --skeleton-shine: #f6f6f4;
 
@@ -123,6 +130,7 @@
     --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px rgba(123, 117, 242, 0.55);
     --shadow-frame: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 8px 24px rgba(0, 0, 0, 0.4);
     --shadow-float: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 4px 16px rgba(0, 0, 0, 0.5);
+    --backdrop: rgba(0, 0, 0, 0.55);
     --skeleton: #222225;
     --skeleton-shine: #2a2a2e;
 

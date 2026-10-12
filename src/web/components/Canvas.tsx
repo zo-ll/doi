@@ -490,6 +490,8 @@ export function Canvas({
     if (!active) return;
     const handle = (e: KeyboardEvent, down: boolean) => {
       if (typing(e.target) || (e.target instanceof HTMLButtonElement && e.key === " ")) return;
+      // A dialog over the canvas has the keys.
+      if (document.querySelector('[aria-modal="true"]')) return;
       if (onKey(e.key, down, e.shiftKey, e.ctrlKey || e.metaKey)) e.preventDefault();
     };
     const keydown = (e: KeyboardEvent) => handle(e, true);

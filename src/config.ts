@@ -23,6 +23,8 @@ export interface Config {
   providers: Partial<Record<ProviderId, ProviderConfig>>;
   models: Record<ModelTask, ModelRef>;
   harness: { default: HarnessId };
+  /** Link that opens a file in the user's editor; {path} is the absolute path. */
+  editorUrl: string;
 }
 
 export const PROVIDERS: readonly ProviderId[] = [
@@ -72,6 +74,7 @@ const DEFAULTS = {
     extract: "anthropic:claude-haiku-5-5",
   },
   harness: "claude-code",
+  editorUrl: "vscode://file{path}",
 } as const;
 
 export function parseConfig(raw: Record<string, any>, baseDir = process.cwd()): Config {
@@ -90,6 +93,7 @@ export function parseConfig(raw: Record<string, any>, baseDir = process.cwd()): 
       extract: parseModelRef(models.extract),
     },
     harness: { default: harness },
+    editorUrl: String(raw.editor_url ?? DEFAULTS.editorUrl),
   };
 }
 

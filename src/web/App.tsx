@@ -4,6 +4,7 @@ import { Canvas } from "./components/Canvas.tsx";
 import { ChatPanel, type CommentRequest, type Selection } from "./components/ChatPanel.tsx";
 import { CommentsPanel } from "./components/CommentsPanel.tsx";
 import { HistoryPanel } from "./components/HistoryPanel.tsx";
+import { DesignSystemDialog } from "./components/DesignSystemDialog.tsx";
 import { useHistory } from "./history.ts";
 import { pinsOf, useComments } from "./comments.ts";
 import { useVariants } from "./variants.ts";
@@ -54,6 +55,7 @@ export function App() {
   const [selection, setSelection] = useState<Selection | null>(null);
   const clearSelection = useCallback(() => setSelection(null), []);
   const [tab, setTab] = useState<"chat" | "comments" | "history">("chat");
+  const [dsOpen, setDsOpen] = useState(false);
   const [request, setRequest] = useState<CommentRequest | null>(null);
   const [running, setRunning] = useState(false);
   const requestKey = useRef(0);
@@ -120,12 +122,27 @@ export function App() {
   const generateStatus =
     generate && providers.state === "ready" ? (providers.data.find((p) => p.id === generate.provider) ?? null) : null;
 
-  const projectName =
-    active && projects.state === "ready" ? (projects.data.find((p) => p.id === active.project)?.name ?? active.project) : null;
+  const activeProject = active && projects.state === "ready" ? (projects.data.find((p) => p.id === active.project) ?? null) : null;
+  const projectName = active ? (activeProject?.name ?? active.project) : null;
 
   return (
     <div className="app">
-      <TopBar project={projectName} design={active?.design ?? null} config={config} harnesses={harnesses} />
+      <TopBar
+        project={projectName}
+        design={active?.design ?? null}
+        config={config}
+        harnesses={harnesses}
+        designSystem={activeProject ? activeProject.designSystem : undefined}
+        onDesignSystem={() => setDsOpen(true)}
+      />
+      {dsOpen && activeProject && (
+        <DesignSystemDialog
+          project={activeProject}
+          editorUrl={config.state === "ready" ? config.data.editorUrl : "vscode://file{path}"}
+          onClose={() => setDsOpen(false)}
+          onChanged={retryProjects}
+        />
+      )}
       <Sidebar
         projects={projects}
         active={active}

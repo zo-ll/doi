@@ -9,8 +9,11 @@ const HARNESS_LABEL: Record<string, string> = {
   aider: "Aider",
 };
 
-export function TopBar({ project, design, config, harnesses }: {
+export function TopBar({ project, design, config, harnesses, designSystem, onDesignSystem }: {
   project: string | null;
+  /** The project's design system; undefined without a project. */
+  designSystem?: string | null;
+  onDesignSystem?: () => void;
   design: string | null;
   config: Load<AppConfig>;
   harnesses: Load<Harnesses>;
@@ -34,6 +37,12 @@ export function TopBar({ project, design, config, harnesses }: {
         )}
       </div>
       <div className="topbar-end">
+        {project && designSystem !== undefined && (
+          <button className="btn btn-secondary" onClick={onDesignSystem} title="Choose or import the design system of this project">
+            <Icon name="palette" size={14} />
+            {designSystem ?? "No design system"}
+          </button>
+        )}
         {harnessId && (
           <span
             className="pill"

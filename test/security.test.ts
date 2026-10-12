@@ -102,6 +102,9 @@ describe("the server", () => {
     await Bun.write(join(ds, "components.html"), "<button class=b>x</button><style>.b { color: red; }</style>");
     const comps = await fetch(`${base}/ds/brand/components.css`);
     expect([comps.status, comps.headers.get("content-type"), await comps.text()]).toEqual([200, "text/css; charset=utf-8", ".b { color: red; }\n"]);
+    const preview = await fetch(`${base}/ds/brand/preview.html`);
+    expect(preview.headers.get("content-security-policy")).toBe(PAGE_CSP);
+    expect(await preview.text()).toContain("<button class=b>x</button>");
   });
 });
 

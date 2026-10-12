@@ -70,6 +70,7 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 | `src/workspace/history.ts`, `src/server/history.ts`, `src/web/history.ts`, `HistoryPanel.tsx` | Version history: `designLog()` (git log of the design folder), `designFilesAt()`/`designFileAt()` (from git), `restoreDesign()` (page files as at a commit, comments stay; the caller commits). `GET …/history` adds the model from the chat's commit lines. `POST …/history/:sha/restore` accepts only commits in the design's log. Old pages are served at `/version/<p>/<d>/<sha>/` with the bridge |
 | `src/workspace/design-systems.ts`, `src/generation/ds-link.ts` | Design systems in `design-systems/<name>/`: `tokens.css`, `components.html` (+ optional `components.css`, else its `<style>` blocks), `rules.md`, `fonts/`, `screenshots/`; all optional. `project.json` → `designSystem`. `formatDesignSystem()` goes into the stable system part (after the system prompt). Files are served at `/ds/<name>/…` (with `PAGE_CSP`); `/ds/<name>/components.css` falls back to the styles of components.html. After each turn and variant, `linkDesignSystem()` makes every HTML page link tokens.css and components.css before its own first stylesheet |
 | `src/generation/repo-scan.ts`, `src/server/design-systems.ts`, `src/generation/prompts/extract-v0.md` | Import from a repo: `scanRepo()` picks Tailwind/theme/token configs, stylesheets with the most tokens and main components (git repos: `git ls-files --cached --others --exclude-standard`, read only; else a walk), skips build and dot folders, links and secret-looking files; 12k per file, 100k total. `POST /api/design-systems/import { name, repo }` streams `sources`, the turn events, then `imported` or `error`. `streamExtraction()` runs the extract model with `EXTRACT_PROMPT` into a hidden `design-systems/.import-*` folder, keeps only tokens.css, components.css, components.html and rules.md, needs tokens.css, renames to `design-systems/<name>/` and commits. `extractProvider()` and `claim()` are shared with the screenshots import: `POST /api/design-systems/import-screenshots { name, images, notes? }` (1–5 images, parsed by `server/image-body.ts` like turn images; the extract model needs vision) keeps the images in `screenshots/` (written after the model ran) |
+| `src/web/components/DesignSystemDialog.tsx` | Design system UI (top bar button): list, "Use for <project>" / "Stop using" (`PUT /api/projects/:project/design-system`, commits project.json), details from `GET /api/design-systems/:name` (tokens grouped by `parseTokens()` with `var()` resolved: colors, type, spacing, radius, shadows), the components at `/ds/<name>/preview.html`, rules, files with editor links (`editor_url` in config.toml, default `vscode://file{path}`), and both import forms with streamed progress |
 | `src/web/frame.ts` | `parseFrameMessage()`: checks each bridge message (the page runs its own scripts); `trackMessage()` |
 | `src/web/` | React UI (Bun HTML import, no Vite). All sizes and colors in `tokens.css`; only 1px hairlines are literal |
 | `src/providers/types.ts` | `Provider`, `GenerateRequest`, `GenerateEvent`, capabilities incl. `editsFiles` |
@@ -109,7 +110,7 @@ Done and closed: #1 CI, #13 app shell, #74 credentials and status, #60 Claude Co
 
 M1 is complete. The user chose to start M2 before the M1 gate (one real design), so the gate is still open.
 
-M3 done: #42 design system format and loader, #43 import from a repo, #44 import from screenshots.
+M3 is complete: #42 design system format and loader, #43 import from a repo, #44 import from screenshots, #45 design system UI.
 
 M2 is complete: #14 data-oid post-processing, #15 selection, #16 comments, #17 targeted edits, #18 canvas, #19 variants, #20 version history, #41 sandbox hardening.
 
@@ -120,7 +121,7 @@ Open only for a manual run with a real key (the user must set the key; do not re
 
 Next, in this order (M2):
 
-1. M3: #45 design system UI (select per project, show tokens and components). The M1 gate (one real design) is still open.
+1. M4 (handoff): look at the M4 milestone issues on GitHub. Ask the user before M4 starts; the M1 gate (one real design) is still open. M4 export must copy or inline the `/ds/<name>/` files that pages link.
 2. Still open for the user: the M1 gate (one real design) and #2, #3, #72 (real API keys).
 
 After M1: M2 (precision), M3 (design systems), M4 (handoff), M5 (breadth). #75 (Sign in with ChatGPT) waits for a client ID from OpenAI.

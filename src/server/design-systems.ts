@@ -1,13 +1,16 @@
 import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { basename, isAbsolute, join, resolve } from "node:path";
+import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Config, ProviderId } from "../config.ts";
 import { ApplyError, runTurn, type TurnEvent } from "../generation/apply.ts";
 import { capabilitiesFor } from "../generation/context.ts";
 import { EXTRACT_PROMPT } from "../generation/prompts.ts";
 import { formatSources, scanRepo } from "../generation/repo-scan.ts";
 import type { ContentPart, Provider } from "../providers/types.ts";
-import { designSystemDir, designSystemsDir } from "../workspace/design-systems.ts";
+import { designSystemDir, designSystemsDir, loadDesignSystem, parseTokens, type Token } from "../workspace/design-systems.ts";
+import { updateProjectMeta } from "../workspace/layout.ts";
+import { assertName } from "../workspace/paths.ts";
+import { projectFile } from "../workspace/project-file.ts";
 import { IMAGE_TYPES } from "../workspace/image-limits.ts";
 import { parseImages } from "./image-body.ts";
 import type { DesignLocks } from "./locks.ts";
@@ -240,3 +243,77 @@ export async function importFromScreenshots(deps: ImportDeps, req: Request, serv
 }
 
 export { claim, extractProvider, streamExtraction };
+
+/** A design system as the UI shows it. */
+export interface DesignSystemView {
+  name: string;
+  /** The folder on disk, for "open in the editor". */
+  dir: string;
+  /** The files of the design system, as paths in its folder. */
+  files: string[];
+  tokens: Token[];
+  fonts: string[];
+  screenshots: string[];
+  rules: string | null;
+  hasComponents: boolean;
+}
+
+/** GET /api/design-systems/:name */
+export async function getDesignSystem(workspace: string, name: string): Promise<Response> {
+  let ds;
+  try {
+    ds = await loadDesignSystem(workspace, name);
+  } catch (e) {
+    return fail((e as Error).message);
+  }
+  if (!ds) return fail("Design system not found.", 404);
+  const dir = designSystemDir(workspace, name);
+  const files = (await readdir(dir, { recursive: true, withFileTypes: true }))
+    .filter((e) => e.isFile() && !e.name.startsWith("."))
+    .map((e) => relative(dir, join(e.parentPath, e.name)).split(sep).join("/"))
+    .filter((p) => !p.split("/").some((part) => part.startsWith(".")))
+    .sort();
+  return Response.json({
+    name,
+    dir,
+    files,
+    tokens: ds.tokens ? parseTokens(ds.tokens) : [],
+    fonts: ds.fonts,
+    screenshots: ds.screenshots,
+    rules: ds.rules,
+    hasComponents: ds.components !== null,
+  } satisfies DesignSystemView);
+}
+
+/**
+ * PUT /api/projects/:project/design-system { name }: the design system of a project, or null
+ * for none. The next turn uses it; the change is a commit of project.json.
+ */
+export async function putProjectDesignSystem(
+  deps: Pick<ImportDeps, "config" | "commit">,
+  req: Request,
+  params: { project: string },
+): Promise<Response> {
+  const workspace = deps.config.workspace;
+  try {
+    assertName("project", params.project);
+  } catch (e) {
+    return fail((e as Error).message);
+  }
+  if (!existsSync(projectFile(workspace, params.project))) return fail("Project not found.", 404);
+  let name: unknown;
+  try {
+    name = ((await req.json()) as { name?: unknown }).name;
+  } catch {
+    return fail("The body must be JSON.");
+  }
+  if (name !== null && (typeof name !== "string" || !NAME.test(name))) return fail("name must be a design system name or null.");
+  if (name !== null && !(await loadDesignSystem(workspace, name as string))) return fail(`No design system "${name}".`, 404);
+  await updateProjectMeta(workspace, params.project, (meta) => ({ ...meta, designSystem: name }));
+  try {
+    const commit = await deps.commit([projectFile(workspace, params.project)], name ? `Use design system ${name}` : "Use no design system");
+    return Response.json({ name, commit });
+  } catch (e) {
+    return Response.json({ name, commit: null, commitError: e instanceof Error ? e.message : String(e) });
+  }
+}

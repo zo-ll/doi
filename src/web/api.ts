@@ -6,11 +6,14 @@ export type { TurnStreamEvent } from "../server/turns.ts";
 export type { CommentView } from "../server/comments.ts";
 export type { VariantSetView, VariantStreamEvent } from "../server/variants.ts";
 export type { VersionView } from "../server/history.ts";
+export type { DesignSystemView, ImportStreamEvent } from "../server/design-systems.ts";
 
 export interface AppConfig {
   models: Record<"generate" | "edit" | "extract", { provider: string; model: string }>;
   harness: { default: string };
   workspace: string;
+  /** Link that opens a file in the user's editor; {path} is the absolute path. */
+  editorUrl: string;
 }
 
 export type Harnesses = Record<string, boolean>;
