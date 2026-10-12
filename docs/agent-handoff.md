@@ -74,6 +74,7 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 | `src/harnesses/` | Coding-agent CLIs for handoff (M4); `asProvider()` for the two subscription CLIs |
 | `src/generation/prompts.ts`, `prompts/system-v0.md` | System prompt as a versioned file (`SYSTEM_PROMPT`). A new version is a new file |
 | `src/generation/context.ts` | `assembleContext()`: request order, history trimming, size check; `readDesignFiles()` |
+| `src/generation/oids.ts` | `fixOids()`: after each turn, adds missing `data-oid`s, restores dropped ones (same tag, text and key attributes), and makes them unique in the design. Uses `HTMLRewriter`, so only changed start tags are written again |
 | `src/generation/apply.ts` | `applyChanges()` (all or none, rollback) and `runTurn()` (retry once, then full rewrite; skips `editsFiles` providers) |
 | `src/server/turns.ts` | `GET .../chat` and `POST .../turns`: one turn per design (409 while one runs), SSE events, abort on disconnect. `target` set → `models.edit`, else `models.generate` |
 | `src/workspace/chat.ts` | `projects/<project>/chat.jsonl`: one line per message, with `design`, `turn`, status, provider, model, usage, files, prompt version. `historyMessages()` keeps only completed turns |
@@ -95,15 +96,19 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 
 Done and closed: #1 CI, #13 app shell, #74 credentials and status, #60 Claude Code backend, #73 Codex backend, #4 system prompt v0, #5 context assembler, #6 edit applier, #7 generation endpoint, #8 chat history, #10 live reload, #11 git history, #12 projects, #9 image input.
 
+M1 is complete. The user chose to start M2 before the M1 gate (one real design), so the gate is still open.
+
+M2 done: #14 data-oid post-processing.
+
 Open only for a manual run with a real key (the user must set the key; do not read pi's credentials):
 - #2 Anthropic: `ANTHROPIC_API_KEY=... bun scripts/try-provider.ts anthropic:claude-haiku-5-5`
 - #3 OpenAI (PR #80 merged): `OPENAI_API_KEY=... bun scripts/try-provider.ts openai:<model>`
 - #72 OpenCode Go: run one model of each format, for example `glm-5.3`, `claude-haiku-5-5`, `gpt-6-luna`. This also confirms the image-support assumption in `supportsVision()`.
 
-Next, in this order (M1):
+Next, in this order (M2):
 
-1. **M1 gate (the user):** use the tool for one real design before M2, as the design doc says. Open items that need the user: #2, #3, #72 (real API keys).
-2. Then M2 (precision): look at the M2 milestone issues on GitHub.
+1. #15 selection (hover, scroll, resize, Escape, Shift-click), then #16 comments, #17 targeted edits, #18 canvas, #19 variants, #20 version history, #41 sandbox hardening.
+2. Still open for the user: the M1 gate (one real design) and #2, #3, #72 (real API keys).
 
 After M1: M2 (precision), M3 (design systems), M4 (handoff), M5 (breadth). #75 (Sign in with ChatGPT) waits for a client ID from OpenAI.
 
@@ -118,6 +123,7 @@ After M1: M2 (precision), M3 (design systems), M4 (handoff), M5 (breadth). #75 (
 - The chat panel is keyed by the design in `App.tsx`. A design switch unmounts it and aborts its run, so no message of the old design can reach the new one.
 - A stopped CLI-backend turn can leave changed files, but it is stored with `files: []` and is not in the history.
 - Answers show Markdown as plain text.
+- data-oid post-processing: an id the model changed on purpose stays changed (comments on the old id lose their element). New ids are `<tag>-<first three words>`, with `-2`, `-3` for repeats. Elements inside `svg` and `template` get no id.
 - A design rename can race with the watcher event of the old path; the frames may show a 404 for a moment before they load the new name.
 - The last open design is in `localStorage` (`doi:last-design`).
 - Old images are not sent again in the history (about 1600 tokens each per turn); the history says "(N images attached to this message.)".

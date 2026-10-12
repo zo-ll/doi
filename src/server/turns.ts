@@ -1,6 +1,7 @@
 import type { Config, ProviderId } from "../config.ts";
 import { ApplyError, runTurn, type TurnEvent } from "../generation/apply.ts";
 import { assembleContext, capabilitiesFor, ContextTooLargeError, readDesignFiles } from "../generation/context.ts";
+import { fixDesignOids } from "../generation/oids.ts";
 import { SYSTEM_PROMPT } from "../generation/prompts.ts";
 import type { Provider } from "../providers/types.ts";
 import { appendChat, historyMessages, readChat } from "../workspace/chat.ts";
@@ -176,23 +177,29 @@ export function createTurnHandler(deps: TurnDeps) {
           });
           started = true;
           const history = historyMessages(entries);
+          const before = await readDesignFiles(dir);
           const context = assembleContext({
             systemPrompt: SYSTEM_PROMPT.text,
             designSystem: null, // M3
-            files: await readDesignFiles(dir),
+            files: before,
             history,
             turn,
             capabilities: capabilitiesFor(provider, ref.model),
           });
           const request = { model: ref.model, system: context.system, messages: context.messages, signal: abort.signal, cwd: dir };
-          for await (const e of runTurn(provider, request, { ...params, workspace })) {
+          for await (let e of runTurn(provider, request, { ...params, workspace })) {
             if (e.type === "text") text += e.delta;
             if (e.type === "usage") {
               usage.inputTokens += e.inputTokens;
               usage.outputTokens += e.outputTokens;
               usage.cachedTokens += e.cachedTokens;
             }
-            if (e.type === "applied") e.files.forEach((f) => files.add(f));
+            if (e.type === "applied") {
+              // Each meaningful element keeps or gets a unique data-oid, before the commit.
+              const fixed = await fixDesignOids(dir, before, await readDesignFiles(dir));
+              e = { ...e, files: [...new Set([...e.files, ...fixed])] };
+              e.files.forEach((f) => files.add(f));
+            }
             if (e.type === "retry") text = ""; // the next attempt answers again
             send(e);
           }
