@@ -25,6 +25,8 @@ export interface GenerateRequest {
   system: string[];
   messages: Message[];
   signal?: AbortSignal;
+  /** The design folder. Required by providers with `editsFiles`, which work in it directly. */
+  cwd?: string;
 }
 
 export type GenerateEvent =
