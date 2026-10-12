@@ -141,10 +141,9 @@ export function createClaudeCode(_config: Config, spawn: Spawn = bunSpawn): Prov
       // A private temporary folder, not the design folder: a file there would show in the canvas and in git.
       const tmp = await mkdtemp(join(tmpdir(), "doi-claude-"));
       const systemFile = join(tmp, "system.md");
-      await writeFile(systemFile, req.system.join("\n\n"), { mode: 0o600 });
-
       let proc: Proc;
       try {
+        await writeFile(systemFile, req.system.join("\n\n"), { mode: 0o600 });
         proc = spawn(["claude", ...claudeArgs(req.model, systemFile)], req.cwd);
       } catch (e) {
         await rm(tmp, { recursive: true, force: true });
