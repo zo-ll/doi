@@ -47,7 +47,7 @@ const server = Bun.serve({
     "/api/harnesses": async () => Response.json(await detectHarnesses()),
     "/api/providers": async () => Response.json(await providerStatus(config)),
     "/api/projects": async () => Response.json(await listProjects(config.workspace)),
-    "/api/projects/:project/designs/:design/turns": { POST: (req) => runTurnRequest(req, req.params) },
+    "/api/projects/:project/designs/:design/turns": { POST: (req, srv) => runTurnRequest(req, req.params, srv) },
     "/__doi/bridge.js": () => new Response(bridge, { headers: { "content-type": "text/javascript" } }),
   },
   fetch(req) {

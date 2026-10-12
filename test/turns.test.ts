@@ -47,7 +47,8 @@ beforeEach(async () => {
   });
   server = Bun.serve({
     port: 0,
-    routes: { "/api/projects/:project/designs/:design/turns": { POST: (req) => handler(req, req.params) } },
+    idleTimeout: 1, // seconds; the default is 10
+    routes: { "/api/projects/:project/designs/:design/turns": { POST: (req, srv) => handler(req, req.params, srv) } },
   });
 });
 
@@ -160,4 +161,15 @@ describe("POST turns", () => {
     }
     expect(status).toBe(200);
   });
+
+  test("a quiet turn is not cut by the server idle timeout", async () => {
+    behave = async function* () {
+      yield { type: "text", delta: "thinking" };
+      await Bun.sleep(5_000); // Bun closed the socket after about 4 s with idleTimeout 1
+      yield { type: "text", delta: " done" };
+      yield { type: "done" };
+    };
+    const evs = await events(await post({ text: "slow" }));
+    expect(evs.map((e) => e.type)).toEqual(["text", "text", "applied", "done"]);
+  }, 15_000);
 });

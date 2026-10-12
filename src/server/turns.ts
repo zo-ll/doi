@@ -50,7 +50,11 @@ const sse = (e: TurnStreamEvent) => `event: ${e.type}\ndata: ${JSON.stringify(e)
 export function createTurnHandler(deps: TurnDeps) {
   const running = new Set<string>();
 
-  return async (req: Request, params: { project: string; design: string }): Promise<Response> => {
+  return async (
+    req: Request,
+    params: { project: string; design: string },
+    server?: Pick<Bun.Server<unknown>, "timeout">,
+  ): Promise<Response> => {
     let dir: string;
     try {
       dir = designDir(deps.config.workspace, params.project, params.design);
@@ -116,6 +120,9 @@ export function createTurnHandler(deps: TurnDeps) {
       },
     });
 
+    // A model can be quiet for longer than Bun's idle timeout (10 s), for example while it
+    // writes a long tool call. The stream ends with the turn, so this request has no timeout.
+    server?.timeout(req, 0);
     return new Response(stream, {
       headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache" },
     });
