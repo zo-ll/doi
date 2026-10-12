@@ -1,6 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { extname, join, relative, sep } from "node:path";
 import type { ContentPart, Message, Provider, ProviderCapabilities } from "../providers/types.ts";
+import { userText } from "../workspace/chat.ts";
 
 export interface DesignFile {
   /** Path relative to the design folder, with "/" separators. */
@@ -71,8 +72,7 @@ export function formatFiles(files: DesignFile[]): string {
 
 /** The new user message. The target uses the same form as the example in the system prompt. */
 export function turnMessage(turn: Turn): Message {
-  const text = turn.target ? `Target: data-oid="${turn.target}". ${turn.text}` : turn.text;
-  const content: ContentPart[] = [{ type: "text", text }];
+  const content: ContentPart[] = [{ type: "text", text: userText(turn.text, turn.target ?? null) }];
   for (const img of turn.images ?? []) content.push({ type: "image", mediaType: img.mediaType, data: img.data });
   return { role: "user", content };
 }

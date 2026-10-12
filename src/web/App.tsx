@@ -26,6 +26,12 @@ export function App() {
   const [providers] = useLoad<ProviderStatus[]>("/api/providers");
   const [active, setActive] = useState<Active | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
+  // Bumped after a turn changed files; the canvas reloads its frames. #10 adds a file watcher.
+  const [revision, setRevision] = useState(0);
+  const onChanged = useCallback(() => {
+    setRevision((n) => n + 1);
+    setSelection(null); // the old rect may not match the new layout
+  }, []);
 
   // Open the first design when the project list arrives. #12 adds "reopen the last design".
   useEffect(() => {
@@ -65,13 +71,15 @@ export function App() {
         onRetry={retryProjects}
       />
       <ChatPanel
+        key={active ? `${active.project}/${active.design}` : ""}
         target={active}
         selection={selection}
         model={generate?.model ?? null}
         modelStatus={generateStatus}
         onClearSelection={() => setSelection(null)}
+        onChanged={onChanged}
       />
-      <Canvas active={active} selection={selection} onSelect={setSelection} />
+      <Canvas active={active} revision={revision} selection={selection} onSelect={setSelection} />
     </div>
   );
 }

@@ -151,7 +151,8 @@ describe("runTurn", () => {
   test("CLI backends are not applied again", async () => {
     const { provider, requests } = scripted([[bad]], true);
     const events = await run(provider);
-    expect(events.map((e) => e.type)).toEqual(["edit", "done"]);
+    expect(events.map((e) => e.type)).toEqual(["edit", "applied", "done"]);
+    expect(events.find((e) => e.type === "applied")).toEqual({ type: "applied", files: ["styles.css"] });
     expect(requests).toHaveLength(1);
     expect(await read("styles.css")).toBe(CSS);
   });

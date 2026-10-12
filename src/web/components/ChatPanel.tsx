@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { turnUrl, type ProviderStatus } from "../api.ts";
+import { chatUrl, getJSON, turnUrl, type ChatEntry, type ProviderStatus } from "../api.ts";
+import { applyEvent, formatTokens, fromEntries, newAnswer, readEvents, type Answer, type ChatMessage } from "../chat.ts";
 import type { Active } from "./Sidebar.tsx";
 import { Icon } from "./Icon.tsx";
 
@@ -10,12 +11,7 @@ export interface Selection {
   frame: string;
 }
 
-type Message =
-  | { id: number; kind: "user"; text: string; target?: string }
-  | { id: number; kind: "error"; text: string }
-  | { id: number; kind: "info"; text: string };
-
-type NewMessage = Message extends infer M ? (M extends Message ? Omit<M, "id"> : never) : never;
+type NewMessage = ChatMessage extends infer M ? (M extends ChatMessage ? Omit<M, "id"> : never) : never;
 
 const SUGGESTIONS = [
   "A pricing page with three plans and a FAQ",
@@ -25,7 +21,11 @@ const SUGGESTIONS = [
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
-export function ChatPanel({ target, selection, model, modelStatus, onClearSelection }: {
+/**
+ * The chat of one design. App mounts it with key = the design, so a design switch starts a
+ * new panel: a run of the old design is aborted, and its messages cannot reach the new one.
+ */
+export function ChatPanel({ target, selection, model, modelStatus, onClearSelection, onChanged }: {
   /** The open design; null disables the composer. */
   target: Active | null;
   selection: Selection | null;
@@ -33,10 +33,12 @@ export function ChatPanel({ target, selection, model, modelStatus, onClearSelect
   /** Status of the provider behind `model`; null while it loads. */
   modelStatus: ProviderStatus | null;
   onClearSelection: () => void;
+  /** Called after a turn changed design files, so the canvas can reload. */
+  onChanged: () => void;
 }) {
   const disabled = target === null;
   const [draft, setDraft] = useState("");
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [running, setRunning] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -56,7 +58,24 @@ export function ChatPanel({ target, selection, model, modelStatus, onClearSelect
   }, [messages]);
 
   const push = (m: NewMessage) =>
-    setMessages((list) => [...list, { ...m, id: nextId.current++ } as Message]);
+    setMessages((list) => [...list, { ...m, id: nextId.current++ } as ChatMessage]);
+
+  const updateAnswer = (id: number, f: (a: Answer) => Answer) =>
+    setMessages((list) => list.map((m) => (m.id === id && m.kind === "assistant" ? f(m) : m)));
+
+  // Load the stored chat. Messages sent before it arrives stay after it.
+  useEffect(() => {
+    if (!target) return;
+    let live = true;
+    getJSON<ChatEntry[]>(chatUrl(target.project, target.design))
+      .then((entries) => {
+        if (live) setMessages((list) => [...fromEntries(entries, () => nextId.current++), ...list]);
+      })
+      .catch((e: unknown) => {
+        if (live) push({ kind: "error", text: `The chat history could not load: ${e instanceof Error ? e.message : String(e)}` });
+      });
+    return () => { live = false; };
+  }, [target?.project, target?.design]);
 
   // Stop a running request when the panel unmounts or the design changes.
   useEffect(() => () => abortRef.current?.abort(), [target?.project, target?.design]);
@@ -64,12 +83,15 @@ export function ChatPanel({ target, selection, model, modelStatus, onClearSelect
   const send = async () => {
     const text = draft.trim();
     if (!text || running || !target) return;
-    push({ kind: "user", text, target: selection?.oid });
+    push({ kind: "user", text, ...(selection ? { target: selection.oid } : {}) });
+    const answerId = nextId.current++;
+    setMessages((list) => [...list, newAnswer(answerId)]);
     setDraft("");
 
     const controller = new AbortController();
     abortRef.current = controller;
     setRunning(true);
+    let changed = false;
     try {
       const res = await fetch(turnUrl(target.project, target.design), {
         method: "POST",
@@ -77,18 +99,28 @@ export function ChatPanel({ target, selection, model, modelStatus, onClearSelect
         body: JSON.stringify({ text, target: selection?.oid ?? null }),
         signal: controller.signal,
       });
-      if (res.status === 404) {
-        push({ kind: "error", text: "Generation is not available yet. See issues #7 and #8." });
-      } else if (!res.ok) {
-        push({ kind: "error", text: `The request failed: ${res.status} ${res.statusText}` });
+      if (!res.ok || !res.body) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        const error = body?.error ?? `The request failed: ${res.status} ${res.statusText}`;
+        updateAnswer(answerId, (a) => ({ ...a, status: "error", error }));
+        return;
       }
-      // #7 and #8 replace this with the streamed answer.
+      let ended = false;
+      for await (const event of readEvents(res.body)) {
+        if (event.type === "done" || event.type === "error") ended = true;
+        if (event.type === "applied" && event.files.length > 0) changed = true;
+        updateAnswer(answerId, (a) => applyEvent(a, event));
+      }
+      if (!ended) {
+        updateAnswer(answerId, (a) => ({ ...a, status: "error", error: "The connection closed before the turn ended." }));
+      }
     } catch (e) {
-      if (controller.signal.aborted) push({ kind: "info", text: "Stopped." });
-      else push({ kind: "error", text: `The request failed: ${e instanceof Error ? e.message : String(e)}` });
+      if (controller.signal.aborted) updateAnswer(answerId, (a) => ({ ...a, status: "stopped" }));
+      else updateAnswer(answerId, (a) => ({ ...a, status: "error", error: `The request failed: ${e instanceof Error ? e.message : String(e)}` }));
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
       setRunning(false);
+      if (changed) onChanged();
     }
   };
 
@@ -140,6 +172,8 @@ export function ChatPanel({ target, selection, model, modelStatus, onClearSelect
                 {m.target && <span className="msg-target"><Icon name="target" size={12} />{m.target}</span>}
                 <p>{m.text}</p>
               </div>
+            ) : m.kind === "assistant" ? (
+              <AnswerView key={m.id} answer={m} />
             ) : m.kind === "error" ? (
               <div key={m.id} className="notice notice-danger" role="alert">
                 <Icon name="alert" />
@@ -215,5 +249,34 @@ export function ChatPanel({ target, selection, model, modelStatus, onClearSelect
         </div>
       </div>
     </section>
+  );
+}
+
+function AnswerView({ answer: a }: { answer: Answer }) {
+  return (
+    <div className="msg msg-assistant">
+      {a.text && <p>{a.text}</p>}
+      {a.retries > 0 && a.status === "running" && (
+        <p className="msg-info">Some changes did not match. Trying again ({a.retries})…</p>
+      )}
+      {a.status === "error" && (
+        <div className="notice notice-danger" role="alert">
+          <Icon name="alert" />
+          <p className="notice-text">{a.error}</p>
+        </div>
+      )}
+      {a.status === "stopped" && <p className="msg-info">Stopped.</p>}
+      {(a.files.length > 0 || a.usage) && (
+        <p className="msg-meta">
+          {a.files.length > 0 && <span>Changed {a.files.join(", ")}</span>}
+          {a.usage && (
+            <span title="Input, output and cached tokens">
+              {formatTokens(a.usage.inputTokens)} in · {formatTokens(a.usage.outputTokens)} out
+              {a.usage.cachedTokens > 0 && ` · ${formatTokens(a.usage.cachedTokens)} cached`}
+            </span>
+          )}
+        </p>
+      )}
+    </div>
   );
 }

@@ -4,7 +4,7 @@ import { detectHarnesses } from "../harnesses/registry.ts";
 import { getProvider } from "../providers/registry.ts";
 import { providerStatus } from "../providers/status.ts";
 import { designFile, ensureWorkspace, listProjects } from "../workspace/paths.ts";
-import { createTurnHandler } from "./turns.ts";
+import { createTurnHandler, getChat } from "./turns.ts";
 
 const config = await loadConfig();
 await ensureWorkspace(config.workspace);
@@ -30,10 +30,12 @@ async function serveDesign(url: URL): Promise<Response> {
 
   const file = Bun.file(path);
   if (!(await file.exists())) return new Response("Not found", { status: 404 });
-  if (!path.endsWith(".html")) return new Response(file);
+  // Turns change these files in place, so the browser must not reuse an old copy.
+  const noStore = { "cache-control": "no-store" };
+  if (!path.endsWith(".html")) return new Response(file, { headers: noStore });
 
   const html = (await file.text()).replace("</body>", `${BRIDGE_TAG}\n</body>`);
-  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
+  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", ...noStore } });
 }
 
 const server = Bun.serve({
@@ -47,6 +49,7 @@ const server = Bun.serve({
     "/api/harnesses": async () => Response.json(await detectHarnesses()),
     "/api/providers": async () => Response.json(await providerStatus(config)),
     "/api/projects": async () => Response.json(await listProjects(config.workspace)),
+    "/api/projects/:project/designs/:design/chat": (req) => getChat(config.workspace, req.params),
     "/api/projects/:project/designs/:design/turns": { POST: (req, srv) => runTurnRequest(req, req.params, srv) },
     "/__doi/bridge.js": () => new Response(bridge, { headers: { "content-type": "text/javascript" } }),
   },

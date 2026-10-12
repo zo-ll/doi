@@ -1,6 +1,8 @@
 // The server owns the API types; type-only imports add nothing to the UI bundle.
 export type { ProjectSummary } from "../workspace/paths.ts";
 export type { ProviderStatus } from "../providers/status.ts";
+export type { ChatEntry, Usage } from "../workspace/chat.ts";
+export type { TurnStreamEvent } from "../server/turns.ts";
 
 export interface AppConfig {
   models: Record<"generate" | "edit" | "extract", { provider: string; model: string }>;
@@ -26,4 +28,9 @@ export function designUrl(project: string, design: string): string {
 /** Generation endpoint for one design (#7). */
 export function turnUrl(project: string, design: string): string {
   return `/api/projects/${project}/designs/${design}/turns`;
+}
+
+/** Stored chat of one design (#8). */
+export function chatUrl(project: string, design: string): string {
+  return `/api/projects/${project}/designs/${design}/chat`;
 }
