@@ -1,7 +1,7 @@
 import index from "../web/index.html";
 import { loadConfig } from "../config.ts";
 import { detectHarnesses } from "../harnesses/registry.ts";
-import { designFile, ensureWorkspace } from "../workspace/paths.ts";
+import { designFile, ensureWorkspace, listProjects } from "../workspace/paths.ts";
 
 const config = await loadConfig();
 await ensureWorkspace(config.workspace);
@@ -40,6 +40,7 @@ const server = Bun.serve({
     "/api/config": () =>
       Response.json({ models: config.models, harness: config.harness, workspace: config.workspace }),
     "/api/harnesses": async () => Response.json(await detectHarnesses()),
+    "/api/projects": async () => Response.json(await listProjects(config.workspace)),
     "/__doi/bridge.js": () => new Response(bridge, { headers: { "content-type": "text/javascript" } }),
   },
   fetch(req) {
