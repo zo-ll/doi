@@ -5,7 +5,9 @@ import { getProvider } from "../providers/registry.ts";
 import { providerStatus } from "../providers/status.ts";
 import { designFile, ensureWorkspace, listProjects } from "../workspace/paths.ts";
 import { designEvents, watchDesigns } from "../workspace/watch.ts";
-import { commitTurn, ensureRepo } from "../workspace/git.ts";
+import { commitPaths, commitTurn, ensureRepo } from "../workspace/git.ts";
+import { DesignLocks } from "./locks.ts";
+import { patchDesign, patchProject, postDesign, postProject } from "./projects.ts";
 import { createTurnHandler, getChat } from "./turns.ts";
 
 const config = await loadConfig();
@@ -14,8 +16,15 @@ await ensureWorkspace(config.workspace);
 await ensureRepo(config.workspace).catch((e) => console.error("Version history is off:", e instanceof Error ? e.message : e));
 
 const watcher = watchDesigns(config.workspace);
+const locks = new DesignLocks();
+const projectDeps = {
+  workspace: config.workspace,
+  locks,
+  commit: (paths: string[], message: string) => commitPaths(config.workspace, paths, message),
+};
 const runTurnRequest = createTurnHandler({
   config,
+  locks,
   getProvider,
   watcher,
   commit: (project, design, prompt) => commitTurn(config.workspace, project, design, prompt),
@@ -59,7 +68,13 @@ const server = Bun.serve({
     "/api/harnesses": async () => Response.json(await detectHarnesses()),
     "/api/providers": async () => Response.json(await providerStatus(config)),
     "/api/events": (req, srv) => designEvents(watcher, req, srv),
-    "/api/projects": async () => Response.json(await listProjects(config.workspace)),
+    "/api/projects": {
+      GET: async () => Response.json(await listProjects(config.workspace)),
+      POST: (req) => postProject(projectDeps, req),
+    },
+    "/api/projects/:project": { PATCH: (req) => patchProject(projectDeps, req, req.params) },
+    "/api/projects/:project/designs": { POST: (req) => postDesign(projectDeps, req, req.params) },
+    "/api/projects/:project/designs/:design": { PATCH: (req) => patchDesign(projectDeps, req, req.params) },
     "/api/projects/:project/designs/:design/chat": (req) => getChat(config.workspace, req.params),
     "/api/projects/:project/designs/:design/turns": { POST: (req, srv) => runTurnRequest(req, req.params, srv) },
     "/__doi/bridge.js": () => new Response(bridge, { headers: { "content-type": "text/javascript" } }),

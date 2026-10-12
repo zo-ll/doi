@@ -6,6 +6,7 @@ import type { Provider } from "../providers/types.ts";
 import { appendChat, historyMessages, readChat } from "../workspace/chat.ts";
 import { designDir } from "../workspace/paths.ts";
 import type { DesignWatcher } from "../workspace/watch.ts";
+import { designKey, DesignLocks } from "./locks.ts";
 
 export interface TurnDeps {
   config: Config;
@@ -14,6 +15,8 @@ export interface TurnDeps {
   watcher?: Pick<DesignWatcher, "hold" | "release">;
   /** Commits a completed turn (#11). Returns the commit id, or null when nothing changed. */
   commit?: (project: string, design: string, prompt: string) => Promise<string | null>;
+  /** Shared with the design rename, so a design cannot move while a turn runs on it. */
+  locks?: DesignLocks;
 }
 
 export interface TurnBody {
@@ -69,7 +72,7 @@ export async function getChat(workspace: string, params: { project: string; desi
  * Each turn is stored in the project's chat.jsonl; completed turns are the history of the next.
  */
 export function createTurnHandler(deps: TurnDeps) {
-  const running = new Set<string>();
+  const locks = deps.locks ?? new DesignLocks();
 
   return async (
     req: Request,
@@ -94,11 +97,10 @@ export function createTurnHandler(deps: TurnDeps) {
     }
     if (typeof body === "string") return Response.json({ error: body }, { status: 400 });
 
-    const key = `${params.project}/${params.design}`;
-    if (running.has(key)) {
+    const key = designKey(params.project, params.design);
+    if (!locks.tryLock(key)) {
       return Response.json({ error: "A turn is already running for this design." }, { status: 409 });
     }
-    running.add(key);
     deps.watcher?.hold(params);
 
     const ref = body.target ? deps.config.models.edit : deps.config.models.generate;
@@ -191,7 +193,7 @@ export function createTurnHandler(deps: TurnDeps) {
               send({ type: "commit", sha: null, error: message });
             }
           }
-          running.delete(key);
+          locks.unlock(key);
           deps.watcher?.release(params);
           req.signal.removeEventListener("abort", onClientAbort);
           try {
