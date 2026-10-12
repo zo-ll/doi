@@ -91,8 +91,10 @@ function Frame({ id, src, label, width, height, zoom, selection, onSelect }: {
   );
 }
 
-export function Canvas({ active, selection, onSelect }: {
+export function Canvas({ active, revision, selection, onSelect }: {
   active: Active | null;
+  /** Changes when the design files changed; the frames load again. */
+  revision: number;
   selection: Selection | null;
   onSelect: (s: Selection) => void;
 }) {
@@ -115,7 +117,7 @@ export function Canvas({ active, selection, onSelect }: {
     );
   }
 
-  const src = designUrl(active.project, active.design);
+  const src = `${designUrl(active.project, active.design)}?v=${revision}`;
   return (
     <main className="canvas" aria-label="Canvas">
       <div className="canvas-scroll">

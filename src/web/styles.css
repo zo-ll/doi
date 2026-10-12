@@ -322,6 +322,20 @@ button { font: inherit; color: inherit; }
 }
 
 .msg-info { align-self: center; font-size: var(--text-xs); color: var(--text-tertiary); }
+.msg-assistant {
+  align-self: stretch;
+  display: grid;
+  gap: var(--space-2);
+  white-space: pre-wrap;
+}
+.msg-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  white-space: normal;
+}
 .msg-pending {
   display: flex;
   align-items: center;

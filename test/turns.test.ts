@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseConfig, type Config } from "../src/config.ts";
 import type { GenerateRequest, Provider, ProviderCapabilities } from "../src/providers/types.ts";
-import { createTurnHandler, type TurnStreamEvent } from "../src/server/turns.ts";
+import { createTurnHandler, getChat, type TurnStreamEvent } from "../src/server/turns.ts";
+import { readChat } from "../src/workspace/chat.ts";
 import { designDir } from "../src/workspace/paths.ts";
 
 const caps: ProviderCapabilities = { vision: true, toolUse: true, promptCache: "explicit", maxContextTokens: 200_000, editsFiles: false };
@@ -160,6 +161,8 @@ describe("POST turns", () => {
       if (status === 409) await Bun.sleep(10);
     }
     expect(status).toBe(200);
+    const stored = (await readChat(config.workspace, "p", "d")).find((e) => e.role === "assistant");
+    expect(stored).toMatchObject({ status: "stopped", text: "working" });
   });
 
   test("a quiet turn is not cut by the server idle timeout", async () => {
@@ -172,4 +175,46 @@ describe("POST turns", () => {
     const evs = await events(await post({ text: "slow" }));
     expect(evs.map((e) => e.type)).toEqual(["text", "text", "applied", "done"]);
   }, 15_000);
+
+  test("each turn is stored, and completed turns are the history of the next", async () => {
+    await events(await post({ text: "Make it blue" }));
+    let entries = await readChat(config.workspace, "p", "d");
+    expect(entries.map((e) => e.role)).toEqual(["user", "assistant"]);
+    expect(entries[1]).toMatchObject({
+      status: "done",
+      text: "Blue now.",
+      provider: "anthropic",
+      model: "big-model",
+      files: ["styles.css"],
+      usage: { inputTokens: 10, outputTokens: 5, cachedTokens: 0 },
+      prompt: "v0",
+    });
+
+    await events(await post({ text: "Now bigger", target: "title" }));
+    const texts = calls[1]!.req.messages.map((m) => `${m.role}: ${(m.content[0] as { text: string }).text}`);
+    expect(texts).toEqual([
+      "user: Make it blue",
+      "assistant: Blue now.\n\n(Changed files: styles.css)",
+      'user: Target: data-oid="title". Now bigger',
+    ]);
+
+    const res = await getChat(config.workspace, { project: "p", design: "d" });
+    entries = await res.json();
+    expect(entries).toHaveLength(4);
+    expect((await getChat(config.workspace, { project: "p", design: "Bad" })).status).toBe(400);
+  });
+
+  test("failed and stopped turns are stored with their status", async () => {
+    behave = async function* () {
+      throw new Error("rate limit");
+    };
+    await events(await post({ text: "x" }));
+    capabilities = { ...caps, maxContextTokens: 1_000 };
+    await events(await post({ text: "y" }));
+    const entries = await readChat(config.workspace, "p", "d");
+    expect(entries.filter((e) => e.role === "assistant")).toMatchObject([
+      { status: "error", error: "rate limit" },
+      { status: "error", error: expect.stringContaining("tokens") },
+    ]);
+  });
 });

@@ -132,11 +132,20 @@ function attemptSummary(text: string, changes: FileChange[]): Message {
 /**
  * Runs one turn and applies its changes. If a change fails, nothing is applied and the model
  * gets the errors one time. After a second failure, it must rewrite the failing files whole.
- * Providers with `editsFiles` change the files themselves, so their events only pass through.
+ * Providers with `editsFiles` change the files themselves: their events pass through, and
+ * `applied` lists the files they reported. Every completed turn ends with `applied` and `done`.
  */
 export async function* runTurn(provider: Provider, req: GenerateRequest, ref: DesignRef): AsyncGenerator<TurnEvent> {
   if (provider.capabilities.editsFiles) {
-    for await (const e of provider.generate(req)) yield e;
+    // The CLI already changed the files. Its edit and write events say which ones.
+    const files = new Set<string>();
+    for await (const e of provider.generate(req)) {
+      if (e.type === "done") continue;
+      if (e.type === "edit" || e.type === "write") files.add(e.file);
+      yield e;
+    }
+    yield { type: "applied", files: [...files] };
+    yield { type: "done" };
     return;
   }
 
