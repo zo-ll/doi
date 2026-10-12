@@ -1,5 +1,6 @@
 // The server owns the API types; type-only imports add nothing to the UI bundle.
 export type { ProjectSummary } from "../workspace/paths.ts";
+export type { ProviderStatus } from "../providers/status.ts";
 
 export interface AppConfig {
   models: Record<"generate" | "edit" | "extract", { provider: string; model: string }>;

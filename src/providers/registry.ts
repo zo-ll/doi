@@ -6,8 +6,12 @@ import { createOpenAI } from "./openai.ts";
 const factories: Partial<Record<ProviderId, (config: Config) => Provider>> = {
   anthropic: createAnthropic,
   openai: createOpenAI,
-  // M5: google, openrouter, ollama
+  // #72 opencode-go, #60 claude-code, #73 codex; M5: google, openrouter, ollama
 };
+
+export function isImplemented(id: ProviderId): boolean {
+  return id in factories;
+}
 
 export function getProvider(id: ProviderId, config: Config): Provider {
   const factory = factories[id];

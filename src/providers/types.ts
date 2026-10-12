@@ -6,6 +6,8 @@ export interface ProviderCapabilities {
   toolUse: boolean;
   promptCache: "explicit" | "automatic" | "none";
   maxContextTokens: number;
+  /** true for CLI backends that edit the design files themselves; the edit applier skips them. */
+  editsFiles: boolean;
 }
 
 export type ContentPart =

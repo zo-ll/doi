@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { turnUrl } from "../api.ts";
+import { turnUrl, type ProviderStatus } from "../api.ts";
 import type { Active } from "./Sidebar.tsx";
 import { Icon } from "./Icon.tsx";
 
@@ -25,11 +25,13 @@ const SUGGESTIONS = [
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
-export function ChatPanel({ target, selection, model, onClearSelection }: {
+export function ChatPanel({ target, selection, model, modelStatus, onClearSelection }: {
   /** The open design; null disables the composer. */
   target: Active | null;
   selection: Selection | null;
   model: string | null;
+  /** Status of the provider behind `model`; null while it loads. */
+  modelStatus: ProviderStatus | null;
   onClearSelection: () => void;
 }) {
   const disabled = target === null;
@@ -103,6 +105,13 @@ export function ChatPanel({ target, selection, model, onClearSelection }: {
   };
 
   const canSend = draft.trim().length > 0 && !disabled;
+  const modelReady = modelStatus ? modelStatus.ready && modelStatus.implemented : false;
+  const modelProblem =
+    modelStatus && !modelReady
+      ? !modelStatus.implemented
+        ? `The ${modelStatus.id} provider is not available yet`
+        : modelStatus.detail
+      : null;
 
   return (
     <section className="chat" aria-label="Chat">
@@ -150,6 +159,14 @@ export function ChatPanel({ target, selection, model, onClearSelection }: {
       </div>
 
       <div className="composer-wrap">
+        {modelProblem && (
+          <p className="composer-warning" role="status">
+            <Icon name="alert" size={14} />
+            <span>
+              {modelProblem}. <span className="muted">Or change the model in config.toml.</span>
+            </span>
+          </p>
+        )}
         <div className={`composer ${disabled ? "is-disabled" : ""}`}>
           {selection && (
             <div className="composer-context">
@@ -177,7 +194,12 @@ export function ChatPanel({ target, selection, model, onClearSelection }: {
             <button className="icon-btn" disabled title="Image input arrives with #9" aria-label="Attach image">
               <Icon name="attach" />
             </button>
-            {model && <span className="composer-model truncate">{model}</span>}
+            {model && (
+              <span className="composer-model truncate" title={modelStatus?.detail}>
+                <span className={`status-dot ${modelStatus ? (modelReady ? "is-on" : "is-off") : ""}`} />
+                {model}
+              </span>
+            )}
             {running ? (
               <button className="btn btn-secondary" onClick={stop} title="Stop (Esc)">
                 <Icon name="stop" size={14} />

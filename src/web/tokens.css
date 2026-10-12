@@ -80,6 +80,8 @@
   --accent-soft: rgba(90, 84, 224, 0.1);
   --accent-soft-text: #4640c4;
   --success: #2f9e5b;
+  --warning: #b7791f;
+  --warning-soft: rgba(214, 158, 46, 0.12);
   --danger: #cf3b3b;
   --danger-soft: rgba(207, 59, 59, 0.08);
   --danger-border: rgba(207, 59, 59, 0.25);
@@ -111,6 +113,8 @@
     --accent-soft: rgba(123, 117, 242, 0.16);
     --accent-soft-text: #b3afff;
     --success: #4cc27b;
+    --warning: #e3b341;
+    --warning-soft: rgba(227, 179, 65, 0.12);
     --danger: #f06767;
     --danger-soft: rgba(240, 103, 103, 0.1);
     --danger-border: rgba(240, 103, 103, 0.3);
