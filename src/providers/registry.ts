@@ -8,7 +8,7 @@ import { createOpenCodeGo } from "./opencode-go.ts";
 
 const factories: Partial<Record<ProviderId, (config: Config) => Provider>> = {
   anthropic: createAnthropic,
-  openai: createOpenAI,
+  openai: (config) => createOpenAI(config),
   "opencode-go": (config) => createOpenCodeGo(config),
   "claude-code": (config) => createClaudeCode(config),
   codex: (config) => createCodex(config),
