@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
 import { chromium } from "playwright-core";
 import { allowedRequest, renderPdf, renderPngs } from "../src/export/render.ts";
 
@@ -26,8 +25,15 @@ describe("allowedRequest", () => {
   });
 });
 
-// The render tests need Chromium (`bun run install-browser`); CI installs it.
-const hasBrowser = existsSync(chromium.executablePath());
+// The render tests need Chromium (`bun run install-browser`). They skip without it, except in
+// CI, which installs it: there a missing browser must fail, not skip.
+const hasBrowser = await chromium.launch().then(
+  (b) => b.close().then(() => true),
+  () => false,
+);
+test.if(!!process.env.CI)("CI has Chromium for the render tests", () => {
+  expect(hasBrowser).toBe(true);
+});
 
 describe.skipIf(!hasBrowser)("render with Chromium", () => {
   let hits: string[] = [];
