@@ -8,10 +8,10 @@ const FORMATS: { id: ExportFormat; title: string; text: string }[] = [
   { id: "folder", title: "Folder (.zip)", text: "All pages and files, with the design system files they link." },
   { id: "page", title: "Single HTML file", text: "index.html with its CSS, scripts, images and fonts inline. Links to other pages do not work." },
   { id: "png", title: "PNG", text: "A picture of one frame, or a ZIP with one picture per frame." },
-  { id: "pdf", title: "PDF", text: "One page as wide as the frame and as high as the whole design." },
+  { id: "pdf", title: "PDF", text: "A deck gives one page per slide. Other designs give one page as wide as the frame and as high as the whole design." },
 ];
 
-/** Export of the open design (#46, #47): files, one HTML file, PNG or PDF. */
+/** Export of the open design (#46, #47, #48): files, one HTML file, PNG or PDF. */
 export function ExportDialog({ project, design, onClose }: { project: string; design: string; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const [choice, setChoice] = useState<ExportChoice>({ format: "folder", stripOids: false, frame: "all", scale: 2, fullPage: false });

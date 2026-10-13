@@ -18,6 +18,7 @@ export const PRESETS = [
   { label: "Mobile", width: 390, height: 844 },
   { label: "Laptop", width: 1024, height: 768 },
   { label: "Tablet", width: 768, height: 1024 },
+  { label: "Slide", width: 1920, height: 1080 },
 ] as const;
 
 /** Space between frames, in canvas pixels. */
@@ -29,6 +30,12 @@ export function defaultLayout(): Frame[] {
     { id: "desktop", ...desktop, x: 0, y: 0 },
     { id: "mobile", ...mobile, x: desktop.width + FRAME_GAP, y: 0 },
   ];
+}
+
+/** The layout of a slide deck: one 16:9 frame. */
+export function slideLayout(): Frame[] {
+  const slide = PRESETS[4];
+  return [{ id: "slide", ...slide, x: 0, y: 0 }];
 }
 
 const ID = /^[a-z0-9-]{1,40}$/;

@@ -18,13 +18,18 @@ function elements(html: string): { tag: string; oid: string | null }[] {
 // Elements that the prompt says carry no data-oid.
 const NO_OID = new Set(["html", "head", "meta", "link", "title", "body", "strong", "em"]);
 
-describe("system prompt v0", () => {
+describe("system prompt v1", () => {
   test("is a versioned file with the required rules", () => {
-    expect(SYSTEM_PROMPT.version).toBe("v0");
+    expect(SYSTEM_PROMPT.version).toBe("v1");
     for (const rule of ["index.html", "styles.css", "plain HTML and CSS", "data-oid", "Keep existing ids", "`edit`", "`write`"]) {
       expect(text).toContain(rule);
     }
     for (const topic of ["Spacing:", "Type:", "Contrast:", "Layout:"]) expect(text).toContain(topic);
+  });
+
+  test("tells how to mark the slides of a deck for the PDF export", () => {
+    expect(text).toContain("`data-slide`");
+    expect(text).toContain("1920 by 1080 px");
   });
 
   test("the example HTML follows the data-oid rules", () => {

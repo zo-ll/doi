@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chromium } from "playwright-core";
-import { allowedRequest, inspectRender, renderPdf, renderPngs } from "../src/export/render.ts";
+import { allowedRequest, inspectRender, prepareSlides, renderPdf, renderPngs, SLIDE_SELECTOR } from "../src/export/render.ts";
 
 /** Width and height from the IHDR chunk of a PNG. */
 const pngSize = (png: Buffer) => ({ width: png.readUInt32BE(16), height: png.readUInt32BE(20) });
@@ -74,6 +74,46 @@ describe.skipIf(!hasBrowser)("render with Chromium", () => {
     expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
     // 1 CSS pixel = 0.75 pt.
     expect(pdf.toString("latin1")).toMatch(/\/MediaBox \[0 0 600 1200\]/);
+  }, 60_000);
+
+  test("a deck gives one PDF page per slide, without the content around the slides", async () => {
+    const slide = (n: number) => `<section class="slide" data-slide><h1>Slide ${n}</h1><section data-slide>inner</section></section>`;
+    const html = page(`<style>
+      body { padding: 40px; background: #888 }
+      .deck { display: flex; flex-direction: column; gap: 48px; padding: 32px; border: 4px solid red }
+      .slide { width: 960px; height: 540px; padding: 64px; box-sizing: border-box; background: #fdd }
+      .hidden { display: none }
+    </style>
+    <header>Deck title</header>
+    <main class="deck">${slide(1)}${slide(2)}<p>between</p><div class="hidden">${slide(3)}</div></main>`);
+    const pdf = (await renderPdf(html, { width: 1920, height: 1080 })).toString("latin1");
+    // Three outer slides (the inner data-slide is part of its slide), each 960 × 540 px = 720 × 405 pt.
+    // Chromium rounds the page size a little (405 pt becomes 404.88 pt).
+    expect(pdf.match(/\/Type\s*\/Page\b/g)?.length).toBe(3);
+    const boxes = [...pdf.matchAll(/\/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]/g)].map((m) => [Number(m[1]), Number(m[2])]);
+    expect(boxes.length).toBe(3);
+    for (const [w, h] of boxes) {
+      expect(w).toBeCloseTo(720, 0);
+      expect(h).toBeCloseTo(405, 0);
+    }
+  }, 60_000);
+
+  test("in a deck, only the slides are visible, each at the first slide's size", async () => {
+    const html = page(`<style>.slide { width: 400px; height: 300px } .b { width: 200px }</style>
+      <h2>Title</h2><div class="slide" data-slide>A</div><p>between</p><div class="slide b" data-slide>B</div>`);
+    const seen = await inspectRender(html, { width: 800, height: 600 }, async (p) => {
+      await p.evaluate(prepareSlides, SLIDE_SELECTOR);
+      return p.evaluate(() =>
+        [...document.body.children].flatMap((e) => {
+          const box = e.getBoundingClientRect();
+          return box.width ? [{ text: (e as HTMLElement).innerText, width: box.width, height: box.height }] : [];
+        }),
+      );
+    });
+    expect(seen).toEqual([
+      { text: "A", width: 400, height: 300 },
+      { text: "B", width: 400, height: 300 },
+    ]);
   }, 60_000);
 
   test("the page cannot reach the network", async () => {

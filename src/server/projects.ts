@@ -60,11 +60,11 @@ export async function patchProject(deps: ProjectDeps, req: Request, params: Para
   }
 }
 
-/** POST /api/projects/:project/designs { id }: a new empty design. */
+/** POST /api/projects/:project/designs { id, kind?: "page" | "slides" }: a new empty design or deck. */
 export async function postDesign(deps: ProjectDeps, req: Request, params: Params): Promise<Response> {
   try {
     const b = await body(req);
-    const { paths } = await createDesign(deps.workspace, params.project, b.id);
+    const { paths } = await createDesign(deps.workspace, params.project, b.id, b.kind ?? "page");
     return Response.json({ id: b.id, ...(await commit(deps, paths, `Create design ${String(b.id)}`)) }, { status: 201 });
   } catch (e) {
     return fail(e);

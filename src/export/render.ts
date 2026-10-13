@@ -122,19 +122,67 @@ export function renderPngs(html: string, frames: Pick<Frame, "width" | "height">
   });
 }
 
+/** Slides are the outermost elements with `data-slide`. A deck makes one PDF page per slide. */
+export const SLIDE_SELECTOR = "[data-slide]";
+
 /**
- * A PDF of one frame: one page as wide as the frame and as high as the whole page (up to
- * PDF_MAX_HEIGHT), with backgrounds, in screen media.
+ * Prepares a deck for print in the page: only the slides stay, each at the size of the first
+ * slide, one slide per PDF page. The elements around the slides lose their own box (margin,
+ * padding, border, gap, position), and their other children are hidden, so a title or the
+ * space between slides on the canvas does not go into the PDF. Gives null when the page has
+ * no slides. Runs inside the page: it must not use anything from this module.
+ */
+export function prepareSlides(selector: string): { width: number; height: number; count: number } | null {
+  const slides = [...document.querySelectorAll<HTMLElement>(selector)].filter((e) => !e.parentElement?.closest(selector));
+  if (!slides.length) return null;
+  const set = (e: HTMLElement, props: Record<string, string>) => {
+    for (const [k, v] of Object.entries(props)) e.style.setProperty(k, v, "important");
+  };
+  for (const s of slides) if (getComputedStyle(s).display === "none") set(s, { display: "block" });
+  const box = slides[0]!.getBoundingClientRect();
+  const width = Math.round(box.width) || window.innerWidth;
+  const height = Math.round(box.height) || window.innerHeight;
+  const around = new Set<Element>();
+  for (const s of slides) for (let e = s.parentElement; e; e = e.parentElement) around.add(e);
+  const isSlide = new Set<Element>(slides);
+  for (const a of around) {
+    if (!(a instanceof HTMLElement)) continue;
+    set(a, {
+      display: "block", margin: "0", padding: "0", border: "0", gap: "0", width: "auto", height: "auto",
+      "min-height": "0", "max-height": "none", overflow: "visible", transform: "none", position: "static",
+    });
+    for (const c of a.children) if (c instanceof HTMLElement && !around.has(c) && !isSlide.has(c)) set(c, { display: "none" });
+  }
+  slides.forEach((s, i) =>
+    set(s, {
+      width: `${width}px`, height: `${height}px`, margin: "0", "box-sizing": "border-box", position: "relative", inset: "auto",
+      transform: "none", flex: "none", overflow: "hidden", "break-inside": "avoid", "break-after": i < slides.length - 1 ? "page" : "auto",
+    }),
+  );
+  return { width, height, count: slides.length };
+}
+
+const NO_MARGIN = { top: "0", right: "0", bottom: "0", left: "0" };
+
+/**
+ * A PDF of one frame. A deck (elements with `data-slide`) gives one page per slide, at the
+ * size of the first slide. Any other page gives one page as wide as the frame and as high as
+ * the whole page (up to PDF_MAX_HEIGHT). Both with backgrounds, in screen media.
  */
 export function renderPdf(html: string, frame: Pick<Frame, "width" | "height">): Promise<Buffer> {
   return withBrowser(async (browser) => {
     const page = await openPage(browser, html, frame, 1);
+    const deck = await page.evaluate(prepareSlides, SLIDE_SELECTOR);
+    if (deck) {
+      const side = (px: number) => `${Math.min(px, PDF_MAX_HEIGHT)}px`;
+      return page.pdf({ width: side(deck.width), height: side(deck.height), printBackground: true, margin: NO_MARGIN });
+    }
     const height = await page.evaluate(() => Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight ?? 0));
     return page.pdf({
       width: `${frame.width}px`,
       height: `${Math.min(Math.max(height, frame.height), PDF_MAX_HEIGHT)}px`,
       printBackground: true,
-      margin: { top: "0", right: "0", bottom: "0", left: "0" },
+      margin: NO_MARGIN,
     });
   });
 }
