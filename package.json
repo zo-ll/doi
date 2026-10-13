@@ -6,13 +6,15 @@
     "dev": "bun --hot src/server/index.ts",
     "start": "NODE_ENV=production bun src/server/index.ts",
     "test": "bun test",
-    "typecheck": "bun check"
+    "typecheck": "bun check",
+    "install-browser": "playwright-core install chromium-headless-shell"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.78",
     "@ai-sdk/openai": "^4.0.91",
     "@ai-sdk/openai-compatible": "^3.0.67",
     "ai": "^7.0.137",
+    "playwright-core": "1.63.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "zod": "^4.6.6"

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { exportFolder, exportPage, hoistImports, resolveRef, wrapImport } from "../src/export/html.ts";
 import { zip } from "../src/export/zip.ts";
 import { getExport, REPORT_HEADER } from "../src/server/export.ts";
-import { exportUrl, fileNameOf, parseReport } from "../src/web/export.ts";
+import { exportUrl, fallbackName, fileNameOf, parseReport, type ExportChoice } from "../src/web/export.ts";
 import { designSystemDir } from "../src/workspace/design-systems.ts";
 import { designDir } from "../src/workspace/paths.ts";
 
@@ -260,7 +260,7 @@ describe("GET …/export", () => {
   });
 
   test("checks the query and the design", async () => {
-    expect((await get("?format=pdf")).status).toBe(400);
+    expect((await get("?format=gif")).status).toBe(400);
     expect((await get("?oids=maybe")).status).toBe(400);
     expect((await get("", { project: "p", design: "Bad Name" })).status).toBe(400);
     expect((await get("", { project: "p", design: "none" })).status).toBe(404);
@@ -268,10 +268,64 @@ describe("GET …/export", () => {
   });
 });
 
+describe("GET …/export as PNG and PDF", () => {
+  const calls: { kind: string; frames: { width: number; height: number }[]; options?: unknown; html: string }[] = [];
+  const fake = {
+    renderPngs: async (html: string, frames: { width: number; height: number }[], options: unknown) => {
+      calls.push({ kind: "png", frames, options, html });
+      return frames.map((_, i) => Buffer.from(`png${i}`));
+    },
+    renderPdf: async (html: string, frame: { width: number; height: number }) => {
+      calls.push({ kind: "pdf", frames: [frame], html });
+      return Buffer.from("%PDF-");
+    },
+  };
+  const get = (query: string) =>
+    getExport(ws, new Request(`http://127.0.0.1/api/projects/p/designs/d/export${query}`), { project: "p", design: "d" }, fake);
+
+  test("renders one frame, all frames as a ZIP, or a PDF of the first frame", async () => {
+    calls.length = 0;
+    const one = await get("?format=png&frame=mobile&scale=1&full=1");
+    expect(one.headers.get("content-type")).toBe("image/png");
+    expect(one.headers.get("content-disposition")).toBe('attachment; filename="d-mobile.png"');
+    expect(await one.text()).toBe("png0");
+    expect(calls[0]!.frames).toEqual([expect.objectContaining({ id: "mobile", width: 390, height: 844 })]);
+    expect(calls[0]!.options).toEqual({ scale: 1, fullPage: true });
+    // The renderer gets the self-contained page.
+    expect(calls[0]!.html).toContain(":root { --ink: #111; }");
+
+    const all = await get("?format=png");
+    expect(all.headers.get("content-disposition")).toBe('attachment; filename="d-png.zip"');
+    expect(calls[1]!.frames.map((f) => f.width)).toEqual([1440, 390]);
+    expect(calls[1]!.options).toEqual({ scale: 2, fullPage: false });
+    const out = await mkdtemp(join(tmpdir(), "doi-zip-"));
+    await Bun.write(join(out, "p.zip"), await all.arrayBuffer());
+    expect(Bun.spawnSync(["unzip", "-Z1", join(out, "p.zip")]).stdout.toString().trim().split("\n")).toEqual(["d-desktop.png", "d-mobile.png"]);
+
+    const pdf = await get("?format=pdf");
+    expect(pdf.headers.get("content-type")).toBe("application/pdf");
+    expect(pdf.headers.get("content-disposition")).toBe('attachment; filename="d-desktop.pdf"');
+    expect(calls[2]!.frames).toEqual([expect.objectContaining({ id: "desktop" })]);
+  });
+
+  test("checks frame, scale and full", async () => {
+    expect((await get("?format=png&frame=watch")).status).toBe(404);
+    expect((await get("?format=pdf&frame=all")).status).toBe(404);
+    expect((await get("?format=png&scale=3")).status).toBe(400);
+    expect((await get("?format=png&full=yes")).status).toBe(400);
+  });
+});
+
 describe("export UI helpers", () => {
   test("builds the URL and reads the response headers", () => {
-    expect(exportUrl("p", "d", "page", true)).toBe("/api/projects/p/designs/d/export?format=page&oids=strip");
-    expect(exportUrl("p", "d", "folder", false)).toBe("/api/projects/p/designs/d/export?format=folder&oids=keep");
+    const choice: ExportChoice = { format: "page", stripOids: true, frame: "all", scale: 2, fullPage: false };
+    expect(exportUrl("p", "d", choice)).toBe("/api/projects/p/designs/d/export?format=page&oids=strip");
+    expect(exportUrl("p", "d", { ...choice, format: "folder", stripOids: false })).toBe("/api/projects/p/designs/d/export?format=folder&oids=keep");
+    expect(exportUrl("p", "d", { ...choice, format: "png", fullPage: true })).toBe("/api/projects/p/designs/d/export?format=png&frame=all&scale=2&full=1");
+    expect(exportUrl("p", "d", { ...choice, format: "pdf", frame: "mobile" })).toBe("/api/projects/p/designs/d/export?format=pdf&frame=mobile");
+    expect(fallbackName("d", { ...choice, format: "png" })).toBe("d-png.zip");
+    expect(fallbackName("d", { ...choice, format: "png", frame: "mobile" })).toBe("d-mobile.png");
+    expect(fallbackName("d", { ...choice, format: "pdf", frame: "desktop" })).toBe("d-desktop.pdf");
     expect(fileNameOf('attachment; filename="d.zip"', "x")).toBe("d.zip");
     expect(fileNameOf(null, "x.html")).toBe("x.html");
     const header = encodeURIComponent(JSON.stringify({ missing: ["ä.png"], warnings: ["w", 3] }));

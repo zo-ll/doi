@@ -15,5 +15,7 @@ jobs:
         with:
           bun-version: 1.4.3
       - run: bun install --frozen-lockfile
+      # Chromium for the PNG and PDF export tests.
+      - run: bun run install-browser --with-deps
       - run: bun test
       - run: bun check

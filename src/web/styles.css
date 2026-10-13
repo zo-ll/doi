@@ -972,4 +972,16 @@ button { font: inherit; color: inherit; }
 .export-result { display: grid; gap: var(--space-2); font-size: var(--text-sm); }
 .export-result > p { display: flex; align-items: center; gap: var(--space-1-5); }
 .export-result code { font-family: var(--font-mono); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.export-options { display: grid; gap: var(--space-3); }
+.export-field { display: grid; gap: var(--space-1); font-size: var(--text-sm); font-weight: var(--weight-medium); }
+.export-field select {
+  height: var(--control-h);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 400;
+}
 .export-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
