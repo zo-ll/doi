@@ -113,11 +113,12 @@ describe("HANDOFF.md draft", () => {
       @font-face { --e: 7; }
       :root { --f: "a;b{c}"; .nested { --a: 8; } --g: 9; }
       /* :root { --a: 10; } */`;
+    // --a: 1 stays: :root beats the later html.
     expect([...rootTokens(css)]).toEqual([
+      ["--a", "1"],
       ["--b", 'url("data:x;base64,AA}")'],
       ["--font", '"Inter", system-ui'],
       ["--logo", "url(logo.png)"],
-      ["--a", "2"],
       ["--f", '"a;b{c}"'],
       ["--g", "9"],
     ]);
@@ -133,6 +134,11 @@ describe("HANDOFF.md draft", () => {
     expect(value("@layer b, a; @layer a { :root { --a: 1 } } @layer b { :root { --a: 2 } }")).toBe("1");
     expect(value("@layer a { :root { --a: 1 } @layer inner { :root { --a: 2 } } }")).toBe("1");
     expect(value("@layer { :root { --a: 1 } } @layer { :root { --a: 2 } }")).toBe("2");
+    // :root (0,1,0) beats html (0,0,1), also when html comes later.
+    expect(value(":root { --a: 1 } html { --a: 2 }")).toBe("1");
+    expect(value("html { --a: 1 } :root { --a: 2 } html { --a: 3 }")).toBe("2");
+    expect(value("html, :root { --a: 1 } :root { --a: 2 }")).toBe("2");
+    expect(value("html { --a: 1 } html { --a: 2 }")).toBe("2");
     // Important: the reverse. A layer beats outside, an earlier layer beats a later one.
     expect(value(":root { --a: 2 !important } @layer base { :root { --a: 1 !important } }")).toBe("1");
     expect(value("@layer a { :root { --a: 1 !important } } @layer b { :root { --a: 2 !important } }")).toBe("1");

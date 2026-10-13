@@ -92,10 +92,12 @@ interface Rank {
   important: boolean;
   /** The layer path as the order of each layer among its siblings; [] is unlayered. */
   layers: number[];
+  /** 10 for `:root` (a pseudo-class), 1 for `html` (a type selector). */
+  specificity: number;
   order: number;
 }
 
-/** True when `a` beats `b` in the cascade (CSS Cascade 5: importance, layers, order). */
+/** True when `a` beats `b` in the cascade (CSS Cascade 5: importance, layers, specificity, order). */
 function beats(a: Rank, b: Rank): boolean {
   if (a.important !== b.important) return a.important;
   for (let i = 0; ; i++) {
@@ -107,15 +109,17 @@ function beats(a: Rank, b: Rank): boolean {
     const aWins = x === undefined ? true : y === undefined ? false : x > y;
     return a.important ? !aWins : aWins;
   }
+  if (a.specificity !== b.specificity) return a.specificity > b.specificity;
   return a.order > b.order;
 }
 
 /**
  * The custom properties on `:root` or `html` in the CSS, as the cascade gives them: an
  * important declaration beats a normal one, a declaration outside a layer beats one in a
- * layer (the reverse for important ones), a later layer beats an earlier one, and then a later
- * declaration wins. Declarations in conditional at-rules (`@media`, `@supports`, …) do not
- * count. Specificity is not compared: `:root` and `html` are the only selectors that count.
+ * layer (the reverse for important ones), a later layer beats an earlier one, `:root` beats
+ * `html`, and then a later declaration wins. Declarations in conditional at-rules (`@media`, `@supports`, …) do not
+ * count. `:root` beats `html` (specificity). Only these two selectors count, so other forms
+ * (`:root:root`, `html:root`) are not read.
  */
 export function rootTokens(css: string): Map<string, string> {
   const masked = maskCss(css);
@@ -141,14 +145,17 @@ export function rootTokens(css: string): Map<string, string> {
   const apply = (from: number, to: number) => {
     const top = stack.at(-1);
     if (!top || stack.some((b) => CONDITIONAL.test(b.prelude))) return;
-    if (!top.prelude.split(",").some((part) => ROOT_SELECTOR.test(part.trim()))) return;
+    const parts = top.prelude.split(",").map((part) => part.trim());
+    if (!parts.some((part) => ROOT_SELECTOR.test(part))) return;
+    // In a list, the matching selector with the highest specificity counts.
+    const specificity = parts.some((part) => /^:root$/i.test(part)) ? 10 : 1;
     const layers = layerIndex(top.layer);
     for (const m of masked.slice(from, to).matchAll(/(--[A-Za-z0-9_-]+)\s*:([^;]*)/g)) {
       const at = from + m.index! + m[0].length - m[2]!.length;
       let value = css.slice(at, at + m[2]!.length).trim();
       const important = /!\s*important\s*$/i.test(value);
       if (important) value = value.replace(/\s*!\s*important\s*$/i, "");
-      const rank = { important, layers, order: order++ };
+      const rank = { important, layers, specificity, order: order++ };
       const before = won.get(m[1]!);
       if (!before || beats(rank, before.rank)) {
         won.delete(m[1]!);
