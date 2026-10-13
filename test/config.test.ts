@@ -22,7 +22,7 @@ describe("parseConfig", () => {
     const config = parseConfig({}, "/tmp/doi");
     expect(config.workspace).toBe("/tmp/doi/workspace");
     expect(config.harness.default).toBe("claude-code");
-    expect(config.models.edit.provider).toBe("anthropic");
+    expect(config.models.edit.provider).toBe("claude-code");
   });
 
   test("reads TOML values", () => {

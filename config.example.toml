@@ -1,4 +1,9 @@
 # Copy to config.toml. All keys are optional.
+#
+# The default models use subscriptions through the official CLIs:
+#   claude-code:<model>  Claude subscription through `claude -p` (log in with `claude`)
+#   codex:<model>        ChatGPT plan through `codex exec` (log in with `codex login`)
+# These need no API key. The API providers below are optional.
 
 workspace = "./workspace"
 port = 4317
@@ -19,9 +24,13 @@ api_key_env = "OPENCODE_API_KEY"
 base_url = "http://localhost:11434"
 
 [models]
-generate = "anthropic:claude-opus-5-5"   # full designs
-edit     = "anthropic:claude-sonnet-5-5" # small targeted edits
-extract  = "anthropic:claude-haiku-5-5"  # design system extraction
+generate = "claude-code:claude-opus-5-5"   # full designs
+edit     = "claude-code:claude-sonnet-5-5" # small targeted edits
+extract  = "claude-code:claude-haiku-5-5"  # design system extraction (needs vision for the screenshot import)
+# With a ChatGPT plan instead, for example:
+# generate = "codex:default"   # "default" uses the model from the Codex config
+# With an API key, for example:
+# generate = "anthropic:claude-opus-5-5"
 
 [harness]
 default = "claude-code"
