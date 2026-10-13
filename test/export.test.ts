@@ -151,6 +151,9 @@ describe("wrapImport", () => {
     expect(hoistImports(".a{}")).toBe(".a{}");
     const commented = '.a{}\n/* legacy: @import "reset.css"; */\n';
     expect(hoistImports(commented)).toBe(commented);
+    // "/*" in a string is not a comment, and "*/" in a comment ends it.
+    expect(hoistImports('.a{content:"/*"}\n@import url("https://x.test/a.css");\n')).toBe('@import url("https://x.test/a.css");\n.a{content:"/*"}\n\n');
+    expect(hoistImports("/* ' */\n@import url(\"https://x.test/a.css\");\n")).toBe('@import url("https://x.test/a.css");\n/* \' */\n\n');
   });
 
   test("a commented @import is not inlined", async () => {

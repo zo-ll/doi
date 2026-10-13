@@ -157,7 +157,19 @@ export function wrapImport(css: string, conditions: string): string {
 
 /** A test if a position of a stylesheet is inside a comment. */
 function commentTest(css: string): (index: number) => boolean {
-  const ranges = [...css.matchAll(/\/\*[\s\S]*?(?:\*\/|$)/g)].map((m) => [m.index!, m.index! + m[0].length] as const);
+  // A scan, not a regex: "/*" inside a quoted string does not start a comment.
+  const ranges: [number, number][] = [];
+  for (let i = 0; i < css.length; i++) {
+    const c = css[i];
+    if (c === '"' || c === "'") {
+      for (i++; i < css.length && css[i] !== c && css[i] !== "\n"; i++) if (css[i] === "\\") i++;
+    } else if (c === "/" && css[i + 1] === "*") {
+      const end = css.indexOf("*/", i + 2);
+      const stop = end < 0 ? css.length : end + 2;
+      ranges.push([i, stop]);
+      i = stop - 1;
+    }
+  }
   return (index) => ranges.some(([start, end]) => index >= start && index < end);
 }
 
