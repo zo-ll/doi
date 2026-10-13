@@ -8,7 +8,9 @@ Agents working on the repo: start with [docs/agent-handoff.md](docs/agent-handof
 
 ## Status
 
-In progress (M1). The app shell, element selection, provider status, the Anthropic and OpenCode Go adapters, and the Claude Code and Codex subscription backends work. The generation loop (endpoint, edit applier, history) is next. See [docs/agent-handoff.md](docs/agent-handoff.md).
+In progress (M4, handoff). The core loop (M1), precision tools (M2) and design systems (M3) work. See [docs/agent-handoff.md](docs/agent-handoff.md).
+
+doi uses your subscriptions through the official CLIs by default: `claude-code:<model>` (`claude -p`) and `codex:<model>` (`codex exec`). Log in to the CLI first. API keys are optional; see `config.example.toml`.
 
 ## Run
 
@@ -34,7 +36,7 @@ bun check
 | `src/server/` | `Bun.serve` routes, design file serving, bridge injection |
 | `src/web/` | React UI (HTML import, no Vite): chat panel and canvas |
 | `src/frame/bridge.js` | Script injected into each design iframe for selection |
-| `src/providers/` | `Provider` interface and adapters (Anthropic, OpenAI stubs) |
+| `src/providers/` | `Provider` interface, API adapters (Anthropic, OpenAI, OpenCode Go) and the CLI backends (Claude Code, Codex) |
 | `src/harnesses/` | `Harness` interface, CLI adapters, handoff |
 | `src/workspace/` | Workspace layout and safe path helpers |
 | `src/mcp/` | MCP server (M4) |

@@ -69,9 +69,9 @@ const DEFAULTS = {
   workspace: "./workspace",
   port: 4317,
   models: {
-    generate: "anthropic:claude-opus-5-5",
-    edit: "anthropic:claude-sonnet-5-5",
-    extract: "anthropic:claude-haiku-5-5",
+    generate: "claude-code:claude-opus-5-5",
+    edit: "claude-code:claude-sonnet-5-5",
+    extract: "claude-code:claude-haiku-5-5",
   },
   harness: "claude-code",
   editorUrl: "vscode://file{path}",
