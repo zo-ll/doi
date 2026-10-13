@@ -9,11 +9,13 @@ const HARNESS_LABEL: Record<string, string> = {
   aider: "Aider",
 };
 
-export function TopBar({ project, design, config, harnesses, designSystem, onDesignSystem }: {
+export function TopBar({ project, design, config, harnesses, designSystem, onDesignSystem, onExport }: {
   project: string | null;
   /** The project's design system; undefined without a project. */
   designSystem?: string | null;
   onDesignSystem?: () => void;
+  /** Opens the export dialog; undefined without an open design. */
+  onExport?: () => void;
   design: string | null;
   config: Load<AppConfig>;
   harnesses: Load<Harnesses>;
@@ -51,6 +53,12 @@ export function TopBar({ project, design, config, harnesses, designSystem, onDes
             <span className={`status-dot ${harnessFound === false ? "is-off" : harnessFound ? "is-on" : ""}`} />
             {HARNESS_LABEL[harnessId] ?? harnessId}
           </span>
+        )}
+        {onExport && (
+          <button className="btn btn-secondary" onClick={onExport} title="Download the design as a folder or one HTML file">
+            <Icon name="download" size={14} />
+            Export
+          </button>
         )}
         <button className="btn btn-secondary" disabled title="Handoff arrives in M4">
           <Icon name="handoff" size={14} />

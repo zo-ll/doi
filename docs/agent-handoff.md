@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-10-13, CLI backends are the default models. Tests: 242 pass. M1, M2 and M3 are done. `bun check`: no errors.
+Last update: 2026-10-13, after #46 HTML export. Tests: 256 pass. M1, M2 and M3 are done. `bun check`: no errors.
 
 ## 1. What doi is
 
@@ -71,6 +71,7 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 | `src/workspace/design-systems.ts`, `src/generation/ds-link.ts` | Design systems in `design-systems/<name>/`: `tokens.css`, `components.html` (+ optional `components.css`, else its `<style>` blocks), `rules.md`, `fonts/`, `screenshots/`; all optional. `project.json` → `designSystem`. `formatDesignSystem()` goes into the stable system part (after the system prompt). Files are served at `/ds/<name>/…` (with `PAGE_CSP`); `/ds/<name>/components.css` falls back to the styles of components.html. After each turn and variant, `linkDesignSystem()` makes every HTML page link tokens.css and components.css before its own first stylesheet |
 | `src/generation/repo-scan.ts`, `src/server/design-systems.ts`, `src/generation/prompts/extract-v0.md` | Import from a repo: `scanRepo()` picks Tailwind/theme/token configs, stylesheets with the most tokens and main components (git repos: `git ls-files --cached --others --exclude-standard`, read only; else a walk), skips build and dot folders, links and secret-looking files; 12k per file, 100k total. `POST /api/design-systems/import { name, repo }` streams `sources`, the turn events, then `imported` or `error`. `streamExtraction()` runs the extract model with `EXTRACT_PROMPT` into a hidden `design-systems/.import-*` folder, keeps only tokens.css, components.css, components.html and rules.md, needs tokens.css, renames to `design-systems/<name>/` and commits. `extractProvider()` and `claim()` are shared with the screenshots import: `POST /api/design-systems/import-screenshots { name, images, notes? }` (1–5 images, parsed by `server/image-body.ts` like turn images; the extract model needs vision) keeps the images in `screenshots/` (written after the model ran) |
 | `src/web/components/DesignSystemDialog.tsx` | Design system UI (top bar button): list, "Use for <project>" / "Stop using" (`PUT /api/projects/:project/design-system`, commits project.json), details from `GET /api/design-systems/:name` (tokens grouped by `parseTokens()` with `var()` resolved: colors, type, spacing, radius, shadows), the components at `/ds/<name>/preview.html`, rules, files with editor links (`editor_url` in config.toml, default `vscode://file{path}`), and both import forms with streamed progress |
+| `src/export/html.ts`, `src/export/zip.ts`, `src/server/export.ts`, `src/web/export.ts`, `ExportDialog.tsx` | HTML export (#46). `exportFolder()`: the design's files (no hidden files) and every design system file they link, at `design-system/<name>/` (with the fonts from tokens.css; components.css falls back to components.html's styles); `/ds/` links become relative. `exportPage()`: one page with stylesheets (and `@import`s) in `<style>`, scripts inline (`</script` escaped), images, fonts and media as `data:` URLs; other sites stay links. Both report missing files and, with `stripOids`, a warning when CSS or scripts use `data-oid`. `GET …/export?format=folder\|page&oids=keep\|strip&page=` gives a ZIP (`<design>/…`, own writer, deflate) or an HTML download; the report is in `x-doi-export-report` (URI-encoded JSON). Top bar → Export |
 | `src/web/frame.ts` | `parseFrameMessage()`: checks each bridge message (the page runs its own scripts); `trackMessage()` |
 | `src/web/` | React UI (Bun HTML import, no Vite). All sizes and colors in `tokens.css`; only 1px hairlines are literal |
 | `src/providers/types.ts` | `Provider`, `GenerateRequest`, `GenerateEvent`, capabilities incl. `editsFiles` |
@@ -120,7 +121,7 @@ Still open for a manual run: #72 OpenCode Go, only if the user has an OpenCode G
 
 Next, in this order:
 
-1. M4 (handoff): the M4 milestone issues on GitHub, from #46 HTML export. The user said to continue with M4. M4 export must copy or inline the `/ds/<name>/` files that pages link.
+1. M4 (handoff): the M4 milestone issues on GitHub. #46 HTML export is done; next is #47 PNG and PDF export with Playwright. The user said to continue with M4. Every export and the handoff bundle (#49) must copy or inline the `/ds/<name>/` files that pages link: reuse `exportFolder()`/`exportPage()` from `src/export/html.ts`.
 2. Still open for the user: the M1 gate (one real design), and #72 if they have an OpenCode Go key.
 
 After M1: M2 (precision), M3 (design systems), M4 (handoff), M5 (breadth). #75 (Sign in with ChatGPT) waits for a client ID from OpenAI.
@@ -152,4 +153,5 @@ After M1: M2 (precision), M3 (design systems), M4 (handoff), M5 (breadth). #75 (
 - The last open design is in `localStorage` (`doi:last-design`).
 - Old images are not sent again in the history (about 1600 tokens each per turn); the history says "(N images attached to this message.)".
 - Bun's `toMatchObject` with `expect.stringMatching` inside an array changed the received object in a test. Read values before such a match.
+- HTML export: a design with its own top-level `design-system/` folder gets 409 (the export path of the design system files). The single file exports one page (index.html by default; the API takes `page`, the UI does not offer it yet). A `<script type="module">` that imports other local files is inlined without them. An `<a href>` or `<iframe>` to another page stays a relative link and does not work in the single file (a warning says so). The export reads the files as they are on disk; a turn that runs at the same time can give a mixed state.
 - `.gitignore` uses `/workspace` (root only). A bare `workspace` rule once hid `src/workspace/`.

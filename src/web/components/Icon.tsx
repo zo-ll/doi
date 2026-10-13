@@ -19,6 +19,7 @@ const PATHS = {
   history: "M2.5 8a5.5 5.5 0 1 0 1.6-3.9M2.5 2.5v2.5H5M8 5v3l2 1.5",
   arrange: "M2.5 4h4v8h-4zM9.5 4h4v5h-4z",
   undo: "M5.5 4L3 6.5 5.5 9M3 6.5h6.5a3 3 0 0 1 0 6H7",
+  download: "M8 2.5v8M4.5 7L8 10.5 11.5 7M3 13.5h10",
   trash: "M3.5 4.5h9M6.5 4.5V3h3v1.5M5 4.5l.5 8.5h5l.5-8.5",
 } as const;
 

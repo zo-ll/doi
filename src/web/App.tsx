@@ -9,6 +9,7 @@ import { useHistory } from "./history.ts";
 import { pinsOf, useComments } from "./comments.ts";
 import { useVariants } from "./variants.ts";
 import { Sidebar, type Active } from "./components/Sidebar.tsx";
+import { ExportDialog } from "./components/ExportDialog.tsx";
 import { TopBar } from "./components/TopBar.tsx";
 
 const LAST_DESIGN = "doi:last-design";
@@ -56,6 +57,7 @@ export function App() {
   const clearSelection = useCallback(() => setSelection(null), []);
   const [tab, setTab] = useState<"chat" | "comments" | "history">("chat");
   const [dsOpen, setDsOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [request, setRequest] = useState<CommentRequest | null>(null);
   const [running, setRunning] = useState(false);
   const requestKey = useRef(0);
@@ -134,7 +136,11 @@ export function App() {
         harnesses={harnesses}
         designSystem={activeProject ? activeProject.designSystem : undefined}
         onDesignSystem={() => setDsOpen(true)}
+        onExport={active ? () => setExportOpen(true) : undefined}
       />
+      {exportOpen && active && (
+        <ExportDialog project={active.project} design={active.design} onClose={() => setExportOpen(false)} />
+      )}
       {dsOpen && activeProject && (
         <DesignSystemDialog
           project={activeProject}
