@@ -11,7 +11,7 @@ export interface Active {
 type Editing =
   | { kind: "new-project" }
   | { kind: "rename-project"; project: string }
-  | { kind: "new-design"; project: string }
+  | { kind: "new-design"; project: string; slides: boolean }
   | { kind: "rename-design"; project: string; design: string };
 
 const NAME_HINT = "a-z, 0-9 and -";
@@ -90,8 +90,8 @@ export function Sidebar({ projects, active, workspace, onOpen, onRetry, onChange
     close();
     onChanged();
   };
-  const createDesign = async (project: string, id: string) => {
-    await sendJSON("POST", `/api/projects/${project}/designs`, { id });
+  const createDesign = async (project: string, id: string, slides: boolean) => {
+    await sendJSON("POST", `/api/projects/${project}/designs`, { id, kind: slides ? "slides" : "page" });
     close();
     onChanged({ project, design: id });
   };
@@ -170,13 +170,21 @@ export function Sidebar({ projects, active, workspace, onOpen, onRetry, onChange
                     className="icon-btn tree-action"
                     title="New design"
                     aria-label={`New design in ${p.name}`}
-                    onClick={() => setEditing({ kind: "new-design", project: p.id })}
+                    onClick={() => setEditing({ kind: "new-design", project: p.id, slides: false })}
                   >
                     <Icon name="plus" size={14} />
                   </button>
+                  <button
+                    className="icon-btn tree-action"
+                    title="New slide deck"
+                    aria-label={`New slide deck in ${p.name}`}
+                    onClick={() => setEditing({ kind: "new-design", project: p.id, slides: true })}
+                  >
+                    <Icon name="slides" size={14} />
+                  </button>
                 </div>
               )}
-              {p.designs.length === 0 && !is({ kind: "new-design", project: p.id }) && (
+              {p.designs.length === 0 && !(editing?.kind === "new-design" && editing.project === p.id) && (
                 <div className="tree-row tree-design muted">No designs</div>
               )}
               {p.designs.map((d) => {
@@ -209,13 +217,14 @@ export function Sidebar({ projects, active, workspace, onOpen, onRetry, onChange
                   </button>
                 );
               })}
-              {is({ kind: "new-design", project: p.id }) && (
+              {editing?.kind === "new-design" && editing.project === p.id && (
                 <div className="tree-indent">
                   <InlineInput
+                    key={String(editing.slides)}
                     initial=""
-                    label={`New design name in ${p.name}`}
+                    label={editing.slides ? `New slide deck name in ${p.name}` : `New design name in ${p.name}`}
                     placeholder={NAME_HINT}
-                    onSubmit={(id) => createDesign(p.id, id)}
+                    onSubmit={(id) => createDesign(p.id, id, editing.slides)}
                     onCancel={close}
                   />
                 </div>

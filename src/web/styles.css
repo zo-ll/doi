@@ -244,6 +244,7 @@ button { font: inherit; color: inherit; }
 .tree-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tree-project .tree-label { flex: 1; }
 .tree-action { margin-left: auto; opacity: 0; }
+.tree-action + .tree-action { margin-left: 0; }
 .tree-project:hover .tree-action,
 .tree-action:focus-visible { opacity: 1; }
 .tree-indent { padding-left: var(--tree-indent); }

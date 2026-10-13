@@ -8,6 +8,7 @@ import { patchDesign, patchProject, postDesign, postProject, type ProjectDeps } 
 import { appendChat, readChat } from "../src/workspace/chat.ts";
 import { listProjects, designDir } from "../src/workspace/paths.ts";
 import { slugify } from "../src/workspace/projects.ts";
+import { readLayout, slideLayout } from "../src/workspace/layout.ts";
 
 let deps: ProjectDeps;
 let commits: { paths: string[]; message: string }[];
@@ -68,6 +69,23 @@ describe("projects API", () => {
     expect((await postDesign(deps, json("POST", { id: "../x" }), { project: "shop" })).status).toBe(400);
     expect((await postDesign(deps, json("POST", { id: "a" }), { project: "none" })).status).toBe(404);
     expect((await listProjects(deps.workspace))[0]!.designs).toEqual(["home", "pricing"]);
+  });
+
+  test("a slide deck starts with one slide and the Slide frame", async () => {
+    await postProject(deps, json("POST", { name: "Shop" }));
+    expect((await postDesign(deps, json("POST", { id: "pitch", kind: "slides" }), { project: "shop" })).status).toBe(201);
+    const dir = designDir(deps.workspace, "shop", "pitch");
+    expect(await Bun.file(join(dir, "index.html")).text()).toContain('<section class="slide" data-slide data-oid="slide-1">');
+    expect(await Bun.file(join(dir, "styles.css")).text()).toContain("height: 1080px");
+    expect(await readLayout(deps.workspace, "shop", "pitch")).toEqual(slideLayout());
+    expect(slideLayout()).toEqual([{ id: "slide", label: "Slide", width: 1920, height: 1080, x: 0, y: 0 }]);
+    // The layout is in project.json, so the commit has it too.
+    expect(commits.at(-1)).toEqual({ paths: ["projects/shop/designs/pitch", "projects/shop/project.json"], message: "Create design pitch" });
+    // A page keeps the default layout, and an unknown kind is refused.
+    await postDesign(deps, json("POST", { id: "about", kind: "page" }), { project: "shop" });
+    expect((await readLayout(deps.workspace, "shop", "about")).map((f) => f.id)).toEqual(["desktop", "mobile"]);
+    expect((await postDesign(deps, json("POST", { id: "x", kind: "poster" }), { project: "shop" })).status).toBe(400);
+    expect(existsSync(designDir(deps.workspace, "shop", "x"))).toBe(false);
   });
 
   test("renaming a design moves its folder and its chat", async () => {
