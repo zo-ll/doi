@@ -98,6 +98,32 @@ describe.skipIf(!hasBrowser)("render with Chromium", () => {
     }
   }, 60_000);
 
+  test("a deck PDF ignores hidden, zoomed, transformed and vertical wrappers and bare text, and keeps vertical slides", async () => {
+    const slides = '<div class="slide" data-slide>A</div> text <div class="slide" data-slide>B</div> more text ';
+    const css = ".slide { width: 960px; height: 540px; background: #fdd }";
+    for (const wrapper of [
+      "display: none",
+      "transform: scale(0.5)",
+      "scale: 0.5",
+      "zoom: 0.5",
+      "writing-mode: vertical-rl",
+      "display: grid; grid-template-columns: 1fr 1fr; padding: 20px",
+      "columns: 2",
+      // A slide's own writing mode stays.
+      "--own: 1",
+    ]) {
+      const own = wrapper === "--own: 1" ? ".slide { writing-mode: vertical-rl }" : "";
+      const html = page(`<style>${css} ${own}</style><div style="${wrapper}">bare ${slides}</div>`);
+      const pdf = (await renderPdf(html, { width: 1440, height: 900 })).toString("latin1");
+      const boxes = [...pdf.matchAll(/\/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]/g)].map((m) => [Number(m[1]), Number(m[2])]);
+      expect({ wrapper, pages: boxes.length }).toEqual({ wrapper, pages: 2 });
+      for (const [w, h] of boxes) {
+        expect(w).toBeCloseTo(720, 0);
+        expect(h).toBeCloseTo(405, 0);
+      }
+    }
+  }, 120_000);
+
   test("in a deck, only the slides are visible, each at the first slide's size", async () => {
     const html = page(`<style>.slide { width: 400px; height: 300px } .b { width: 200px }</style>
       <h2>Title</h2><div class="slide" data-slide>A</div><p>between</p><div class="slide b" data-slide>B</div>`);

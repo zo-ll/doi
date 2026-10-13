@@ -128,8 +128,9 @@ export const SLIDE_SELECTOR = "[data-slide]";
 /**
  * Prepares a deck for print in the page: only the slides stay, each at the size of the first
  * slide, one slide per PDF page. The elements around the slides lose their own box (margin,
- * padding, border, gap, position), and their other children are hidden, so a title or the
- * space between slides on the canvas does not go into the PDF. Gives null when the page has
+ * padding, border, gap, position, transform, zoom, writing mode), their other children are
+ * hidden and their bare text is removed, so a title, text or the space between slides on the
+ * canvas does not go into the PDF. Gives null when the page has
  * no slides. Runs inside the page: it must not use anything from this module.
  */
 export function prepareSlides(selector: string): { width: number; height: number; count: number } | null {
@@ -138,10 +139,12 @@ export function prepareSlides(selector: string): { width: number; height: number
   const set = (e: HTMLElement, props: Record<string, string>) => {
     for (const [k, v] of Object.entries(props)) e.style.setProperty(k, v, "important");
   };
-  for (const s of slides) if (getComputedStyle(s).display === "none") set(s, { display: "block" });
-  const box = slides[0]!.getBoundingClientRect();
-  const width = Math.round(box.width) || window.innerWidth;
-  const height = Math.round(box.height) || window.innerHeight;
+  // A slide keeps a writing mode that it sets itself. One that it only inherits from the elements
+  // around it goes away with theirs.
+  const modes = slides.map((s) => {
+    const own = getComputedStyle(s).writingMode;
+    return s.parentElement && getComputedStyle(s.parentElement).writingMode === own ? "" : own;
+  });
   const around = new Set<Element>();
   for (const s of slides) for (let e = s.parentElement; e; e = e.parentElement) around.add(e);
   const isSlide = new Set<Element>(slides);
@@ -149,14 +152,33 @@ export function prepareSlides(selector: string): { width: number; height: number
     if (!(a instanceof HTMLElement)) continue;
     set(a, {
       display: "block", margin: "0", padding: "0", border: "0", gap: "0", width: "auto", height: "auto",
-      "min-height": "0", "max-height": "none", overflow: "visible", transform: "none", position: "static",
+      "min-height": "0", "max-height": "none", overflow: "visible", position: "static", columns: "auto",
+      transform: "none", translate: "none", rotate: "none", scale: "none", zoom: "1", "writing-mode": "horizontal-tb",
     });
-    for (const c of a.children) if (c instanceof HTMLElement && !around.has(c) && !isSlide.has(c)) set(c, { display: "none" });
+    for (const c of [...a.childNodes]) {
+      // Bare text between slides would make a line box, and so a page of its own.
+      if (c.nodeType === Node.TEXT_NODE) c.remove();
+      else if ((c instanceof HTMLElement || c instanceof SVGElement) && !around.has(c) && !isSlide.has(c)) set(c as HTMLElement, { display: "none" });
+    }
   }
+  slides.forEach((s, i) => {
+    if (getComputedStyle(s).display === "none") set(s, { display: "block" });
+    if (modes[i]) set(s, { "writing-mode": modes[i]! });
+    // A float, because Chromium adds an empty page after a slide in another writing mode
+    // that is in normal flow. Each float clears the one before, so it starts a new page.
+    set(s, {
+      margin: "0", "box-sizing": "border-box", position: "relative", inset: "auto", flex: "none", float: "left", clear: "both",
+      transform: "none", translate: "none", rotate: "none", scale: "none", zoom: "1",
+    });
+  });
+  // Measure only now: before, a hidden, zoomed or transformed wrapper changes the first slide's box.
+  const box = slides[0]!.getBoundingClientRect();
+  const width = Math.round(box.width) || window.innerWidth;
+  const height = Math.round(box.height) || window.innerHeight;
   slides.forEach((s, i) =>
     set(s, {
-      width: `${width}px`, height: `${height}px`, margin: "0", "box-sizing": "border-box", position: "relative", inset: "auto",
-      transform: "none", flex: "none", overflow: "hidden", "break-inside": "avoid", "break-after": i < slides.length - 1 ? "page" : "auto",
+      width: `${width}px`, height: `${height}px`, overflow: "hidden",
+      "break-inside": "avoid", "break-after": i < slides.length - 1 ? "page" : "auto",
     }),
   );
   return { width, height, count: slides.length };
