@@ -103,24 +103,39 @@ describe("HANDOFF.md draft", () => {
     expect((await bundleTokens(ws, "shop", "home"))?.css).toBe('/* The tokens of the design system "brand", from doi. */\n:root {\n  --ink: #222;\n}\n');
   });
 
-  test("rootTokens follows the cascade order and skips other selectors and conditional rules", () => {
+  test("rootTokens keeps values as written and skips other selectors and conditional rules", () => {
     const css = `
-      :root { --a: 1; --b: url("data:x;base64,AA}") }
-      html, .x { --a: 2 !important; }
+      :root { --a: 1; --b: url("data:x;base64,AA}"); --font: "Inter", system-ui; --logo: url(logo.png) }
+      html, .x { --a: 2; }
       .card { --a: 3; }
-      @layer base { :root { --c: 4; } }
       @media (min-width: 1px) { :root { --a: 5; } }
       @supports (display: grid) { :root { --d: 6; } }
       @font-face { --e: 7; }
       :root { --f: "a;b{c}"; .nested { --a: 8; } --g: 9; }
       /* :root { --a: 10; } */`;
     expect([...rootTokens(css)]).toEqual([
-      ["--b", "url()"],
+      ["--b", 'url("data:x;base64,AA}")'],
+      ["--font", '"Inter", system-ui'],
+      ["--logo", "url(logo.png)"],
       ["--a", "2"],
-      ["--c", "4"],
-      ["--f", '""'],
+      ["--f", '"a;b{c}"'],
       ["--g", "9"],
     ]);
+  });
+
+  test("rootTokens follows importance and layers as the cascade does", () => {
+    const value = (css: string) => rootTokens(css).get("--a");
+    expect(value(":root { --a: 1 !important } :root { --a: 2 }")).toBe("1");
+    expect(value(":root { --a: 1 !important } :root { --a: 2 ! important }")).toBe("2");
+    // Outside a layer beats inside, a later layer beats an earlier one, a statement sets the order.
+    expect(value(":root { --a: 2 } @layer base { :root { --a: 1 } }")).toBe("2");
+    expect(value("@layer a { :root { --a: 1 } } @layer b { :root { --a: 2 } } @layer a { :root { --a: 3 } }")).toBe("2");
+    expect(value("@layer b, a; @layer a { :root { --a: 1 } } @layer b { :root { --a: 2 } }")).toBe("1");
+    expect(value("@layer a { :root { --a: 1 } @layer inner { :root { --a: 2 } } }")).toBe("1");
+    expect(value("@layer { :root { --a: 1 } } @layer { :root { --a: 2 } }")).toBe("2");
+    // Important: the reverse. A layer beats outside, an earlier layer beats a later one.
+    expect(value(":root { --a: 2 !important } @layer base { :root { --a: 1 !important } }")).toBe("1");
+    expect(value("@layer a { :root { --a: 1 !important } } @layer b { :root { --a: 2 !important } }")).toBe("1");
   });
 
   test("screenshot names are safe and unique per page and frame", () => {

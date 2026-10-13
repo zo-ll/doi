@@ -76,40 +76,112 @@ const CONDITIONAL = /^@(media|supports|container|scope|starting-style|document)\
 const ROOT_SELECTOR = /^(:root|html)$/i;
 
 /**
- * The custom properties on `:root` or `html` in the CSS, as the cascade gives them: a later
+ * The same text with comments, strings and url() values blanked out (same length), so braces
+ * and semicolons in them do not count. Values are read from the original text at the same places.
+ */
+function maskCss(css: string): string {
+  const blank = (m: string) => " ".repeat(m.length);
+  return css
+    .replace(/\/\*[\s\S]*?\*\//g, blank)
+    .replace(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/g, (m) => m[0] + " ".repeat(m.length - 2) + m[0])
+    .replace(/url\(\s*[^)"'\s][^)]*\)/gi, (m) => "url(" + " ".repeat(m.length - 5) + ")");
+}
+
+/** Which of two declarations wins: by importance, then by layer, then by order. */
+interface Rank {
+  important: boolean;
+  /** The layer path as the order of each layer among its siblings; [] is unlayered. */
+  layers: number[];
+  order: number;
+}
+
+/** True when `a` beats `b` in the cascade (CSS Cascade 5: importance, layers, order). */
+function beats(a: Rank, b: Rank): boolean {
+  if (a.important !== b.important) return a.important;
+  for (let i = 0; ; i++) {
+    const x = a.layers[i];
+    const y = b.layers[i];
+    if (x === undefined && y === undefined) break;
+    if (x === y) continue;
+    // Normal: the declaration outside a layer, or in the later layer, wins. Important: the reverse.
+    const aWins = x === undefined ? true : y === undefined ? false : x > y;
+    return a.important ? !aWins : aWins;
+  }
+  return a.order > b.order;
+}
+
+/**
+ * The custom properties on `:root` or `html` in the CSS, as the cascade gives them: an
+ * important declaration beats a normal one, a declaration outside a layer beats one in a
+ * layer (the reverse for important ones), a later layer beats an earlier one, and then a later
  * declaration wins. Declarations in conditional at-rules (`@media`, `@supports`, …) do not
- * count; `@layer` blocks do.
+ * count. Specificity is not compared: `:root` and `html` are the only selectors that count.
  */
 export function rootTokens(css: string): Map<string, string> {
-  // url() values can hold ";" (data: URLs) and strings can hold braces: neither is a token.
-  const text = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/url\([^)]*\)/gi, "url()").replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""');
-  const tokens = new Map<string, string>();
-  const stack: string[] = [];
-  const apply = (decls: string) => {
-    const top = stack.at(-1);
-    if (!top || stack.some((p) => CONDITIONAL.test(p))) return;
-    if (!top.split(",").some((part) => ROOT_SELECTOR.test(part.trim()))) return;
-    for (const m of decls.matchAll(/(--[A-Za-z0-9_-]+)\s*:\s*([^;]+?)\s*(?:!important\s*)?(?=;|$)/g)) {
-      tokens.delete(m[1]!);
-      tokens.set(m[1]!, m[2]!.trim());
+  const masked = maskCss(css);
+  const won = new Map<string, { value: string; rank: Rank }>();
+  /** The order of each layer path among its siblings, by first sight. */
+  const layerOrder = new Map<string, number>();
+  const stack: { prelude: string; layer: string[] }[] = [];
+  let order = 0;
+
+  const layerIndex = (path: string[]): number[] =>
+    path.map((_, i) => {
+      const key = path.slice(0, i + 1).join(".");
+      if (!layerOrder.has(key)) layerOrder.set(key, layerOrder.size);
+      return layerOrder.get(key)!;
+    });
+  /** Notes the layers of `@layer a, b;` statements in a segment, in order. */
+  const layerStatements = (from: number, to: number) => {
+    const parent = stack.at(-1)?.layer ?? [];
+    for (const m of masked.slice(from, to).matchAll(/@layer\s+([^;{]+);/gi)) {
+      for (const name of m[1]!.split(",")) layerIndex([...parent, ...name.trim().split(".")]);
     }
   };
+  const apply = (from: number, to: number) => {
+    const top = stack.at(-1);
+    if (!top || stack.some((b) => CONDITIONAL.test(b.prelude))) return;
+    if (!top.prelude.split(",").some((part) => ROOT_SELECTOR.test(part.trim()))) return;
+    const layers = layerIndex(top.layer);
+    for (const m of masked.slice(from, to).matchAll(/(--[A-Za-z0-9_-]+)\s*:([^;]*)/g)) {
+      const at = from + m.index! + m[0].length - m[2]!.length;
+      let value = css.slice(at, at + m[2]!.length).trim();
+      const important = /!\s*important\s*$/i.test(value);
+      if (important) value = value.replace(/\s*!\s*important\s*$/i, "");
+      const rank = { important, layers, order: order++ };
+      const before = won.get(m[1]!);
+      if (!before || beats(rank, before.rank)) {
+        won.delete(m[1]!);
+        won.set(m[1]!, { value, rank });
+      }
+    }
+  };
+
   let start = 0;
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] === "{") {
+  let anonymous = 0;
+  for (let i = 0; i < masked.length; i++) {
+    if (masked[i] === "{") {
       // Before a nested rule: the declarations up to the last ";" belong to the outer rule.
-      const segment = text.slice(start, i);
-      const cut = segment.lastIndexOf(";");
-      apply(segment.slice(0, cut + 1));
-      stack.push(segment.slice(cut + 1).trim());
+      const cut = masked.lastIndexOf(";", i - 1);
+      const split = cut >= start ? cut + 1 : start;
+      layerStatements(start, split);
+      apply(start, split);
+      const prelude = masked.slice(split, i).trim();
+      const parent = stack.at(-1)?.layer ?? [];
+      const layer = /^@layer\b/i.test(prelude)
+        ? [...parent, ...(prelude.slice(6).trim() || `#anonymous-${anonymous++}`).split(".")]
+        : parent;
+      stack.push({ prelude, layer });
       start = i + 1;
-    } else if (text[i] === "}") {
-      apply(text.slice(start, i));
+    } else if (masked[i] === "}") {
+      layerStatements(start, i);
+      apply(start, i);
       stack.pop();
       start = i + 1;
     }
   }
-  return tokens;
+  layerStatements(start, masked.length);
+  return new Map([...won].map(([name, v]) => [name, v.value]));
 }
 
 /**
