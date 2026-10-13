@@ -1,16 +1,41 @@
 // HTML export (#46) without React: the request URL, the report header and the download.
 import { REPORT_HEADER } from "../export/report.ts";
 
-export type ExportFormat = "folder" | "page";
+export type ExportFormat = "folder" | "page" | "png" | "pdf";
 
 export interface ExportReport {
   missing: string[];
   warnings: string[];
 }
 
-export function exportUrl(project: string, design: string, format: ExportFormat, stripOids: boolean): string {
-  const query = new URLSearchParams({ format, oids: stripOids ? "strip" : "keep" });
+export interface ExportChoice {
+  format: ExportFormat;
+  stripOids: boolean;
+  /** PNG and PDF: a frame id, or "all" (PNG only). */
+  frame: string;
+  /** PNG: 1 or 2 device pixels per CSS pixel. */
+  scale: 1 | 2;
+  /** PNG: the whole page height, not only the frame. */
+  fullPage: boolean;
+}
+
+export function exportUrl(project: string, design: string, choice: ExportChoice): string {
+  const query = new URLSearchParams({ format: choice.format });
+  if (choice.format === "folder" || choice.format === "page") query.set("oids", choice.stripOids ? "strip" : "keep");
+  if (choice.format === "png" || choice.format === "pdf") query.set("frame", choice.frame);
+  if (choice.format === "png") {
+    query.set("scale", String(choice.scale));
+    query.set("full", choice.fullPage ? "1" : "0");
+  }
   return `/api/projects/${project}/designs/${design}/export?${query}`;
+}
+
+/** The file name to use when the response has none. */
+export function fallbackName(design: string, choice: ExportChoice): string {
+  if (choice.format === "folder") return `${design}.zip`;
+  if (choice.format === "page") return `${design}.html`;
+  if (choice.format === "pdf") return `${design}-${choice.frame}.pdf`;
+  return choice.frame === "all" ? `${design}-png.zip` : `${design}-${choice.frame}.png`;
 }
 
 /** The report of an export response. A missing or broken header gives an empty report. */
