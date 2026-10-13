@@ -11,6 +11,7 @@ import { commitPaths, commitTurn, designFileAt, designVersion, ensureRepo, isSha
 import { uploadFile } from "../workspace/uploads.ts";
 import { deleteCommentRoute, getComments, patchComment, postComment } from "./comments.ts";
 import { getDesignSystem, importFromRepo, importFromScreenshots, putProjectDesignSystem } from "./design-systems.ts";
+import { getExport } from "./export.ts";
 import { getHistory, restoreVersion } from "./history.ts";
 import { getLayout, putLayout } from "./layout.ts";
 import { createVariantHandlers } from "./variants.ts";
@@ -224,6 +225,7 @@ export async function startServer(config: Config, options: { port?: number; deve
       },
       "/api/projects/:project/designs/:design/variants/:set/pick": { POST: (req) => variants.pick(req, req.params) },
       "/api/projects/:project/designs/:design/variants/:set": { DELETE: (req) => variants.discard(req.params) },
+      "/api/projects/:project/designs/:design/export": (req) => getExport(config.workspace, req, req.params),
       "/api/projects/:project/designs/:design/history": (req) => getHistory(historyDeps, req.params),
       "/api/projects/:project/designs/:design/history/:sha/restore": { POST: (req) => restoreVersion(historyDeps, req.params) },
       "/api/projects/:project/designs/:design/layout": {
