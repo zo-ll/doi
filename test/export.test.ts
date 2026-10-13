@@ -149,6 +149,15 @@ describe("wrapImport", () => {
   test("hoistImports moves the imports that stay to the start", () => {
     expect(hoistImports('.a{}\n@import url("https://x.test/a.css") print;\n.b{}')).toBe('@import url("https://x.test/a.css") print;\n.a{}\n\n.b{}');
     expect(hoistImports(".a{}")).toBe(".a{}");
+    const commented = '.a{}\n/* legacy: @import "reset.css"; */\n';
+    expect(hoistImports(commented)).toBe(commented);
+  });
+
+  test("a commented @import is not inlined", async () => {
+    await Bun.write(join(dir, "styles.css"), '/* @import "parts.css"; */\nbody {}\n');
+    const { html } = await exportPage(ws, "p", "d", { stripOids: false });
+    expect(html).toContain('/* @import "parts.css"; */');
+    expect(html).not.toContain(".part {");
   });
 });
 

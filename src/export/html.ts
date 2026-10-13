@@ -128,8 +128,11 @@ const CSS_IMPORT = /@import\s+(?:url\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s'"]*))\s*\
 
 /** The links in a stylesheet: url(…) values and @import strings. */
 function cssRefs(css: string): string[] {
-  const refs = [...css.matchAll(CSS_URL)].map((m) => m[1] ?? m[2] ?? m[3] ?? "");
-  for (const m of css.matchAll(CSS_IMPORT)) if (m[4] !== undefined || m[5] !== undefined) refs.push(m[4] ?? m[5]!);
+  const inComment = commentTest(css);
+  const refs = [...css.matchAll(CSS_URL)].filter((m) => !inComment(m.index!)).map((m) => m[1] ?? m[2] ?? m[3] ?? "");
+  for (const m of css.matchAll(CSS_IMPORT)) {
+    if (!inComment(m.index!) && (m[4] !== undefined || m[5] !== undefined)) refs.push(m[4] ?? m[5]!);
+  }
   return refs;
 }
 
@@ -152,13 +155,21 @@ export function wrapImport(css: string, conditions: string): string {
   return out;
 }
 
+/** A test if a position of a stylesheet is inside a comment. */
+function commentTest(css: string): (index: number) => boolean {
+  const ranges = [...css.matchAll(/\/\*[\s\S]*?(?:\*\/|$)/g)].map((m) => [m.index!, m.index! + m[0].length] as const);
+  return (index) => ranges.some(([start, end]) => index >= start && index < end);
+}
+
 /**
  * Moves the @import rules that stay (other sites) to the start of a stylesheet. After local
  * imports are inlined, they can follow other rules, and a browser ignores an @import there.
  */
 export function hoistImports(css: string): string {
   const kept: string[] = [];
-  const rest = css.replace(CSS_IMPORT, (rule) => {
+  const inComment = commentTest(css);
+  const rest = css.replace(CSS_IMPORT, (rule, ...args) => {
+    if (inComment(args.at(-2) as number)) return rule;
     kept.push(rule);
     return "";
   });
@@ -168,7 +179,9 @@ export function hoistImports(css: string): string {
 /** Replaces each link in a stylesheet for which `map` gives a new value. */
 function mapCss(css: string, map: (ref: string) => string | null): string {
   const links = /@import\s+(?:"([^"]*)"|'([^']*)')|url\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s'"]*))\s*\)/gi;
-  return css.replace(links, (all, a, b, c, d, e) => {
+  const inComment = commentTest(css);
+  return css.replace(links, (all, a, b, c, d, e, index: number) => {
+    if (inComment(index)) return all;
     const next = map(a ?? b ?? c ?? d ?? e ?? "");
     if (next === null) return all;
     return a !== undefined || b !== undefined ? `@import url(${JSON.stringify(next)})` : `url(${JSON.stringify(next)})`;
@@ -415,7 +428,9 @@ export async function exportPage(
     texts.push(css);
     let out = "";
     let last = 0;
+    const inComment = commentTest(css);
     for (const m of css.matchAll(CSS_IMPORT)) {
+      if (inComment(m.index!)) continue;
       const ref = resolveRef(m[1] ?? m[2] ?? m[3] ?? m[4] ?? m[5] ?? "", from);
       if (!ref || seen.includes(ref.path)) continue;
       const data = await read(ref.path);
