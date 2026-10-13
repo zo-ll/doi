@@ -77,7 +77,7 @@ export async function getExport(workspace: string, req: Request, params: Params,
   }
 }
 
-function download(body: BodyInit, type: string, filename: string, report: { missing: string[]; warnings: string[] }): Response {
+export function download(body: BodyInit, type: string, filename: string, report: { missing: string[]; warnings: string[] }): Response {
   return new Response(body, {
     headers: {
       "content-type": type,
