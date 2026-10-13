@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { exportFolder, exportPage, resolveRef } from "../src/export/html.ts";
+import { exportFolder, exportPage, hoistImports, resolveRef, wrapImport } from "../src/export/html.ts";
 import { zip } from "../src/export/zip.ts";
 import { getExport, REPORT_HEADER } from "../src/server/export.ts";
 import { exportUrl, fileNameOf, parseReport } from "../src/web/export.ts";
@@ -63,6 +63,9 @@ describe("resolveRef", () => {
     expect(resolveRef("img/a.png?v=1#x", "pages/index.html")).toEqual({ path: "pages/img/a.png", suffix: "?v=1#x", dsAbsolute: false });
     expect(resolveRef("/ds/brand/tokens.css", "pages/index.html")).toEqual({ path: "design-system/brand/tokens.css", suffix: "", dsAbsolute: true });
     expect(resolveRef("fonts/a.woff2", "design-system/brand/tokens.css")?.path).toBe("design-system/brand/fonts/a.woff2");
+    expect(resolveRef("img%20one.png", "index.html")?.path).toBe("img one.png");
+    // An encoded "/" is part of a name; it cannot make new folders.
+    expect(resolveRef("a%2fb%2f..%2f..%2fsecret.txt", "index.html")).toBeNull();
     for (const ref of ["https://x.test/a.png", "//x.test/a", "data:image/png;base64,AA", "#top", "/api/projects", "mailto:a@b.c", "", "dir/"]) {
       expect(resolveRef(ref, "index.html")).toBeNull();
     }
@@ -131,6 +134,24 @@ describe("exportFolder", () => {
   });
 });
 
+describe("wrapImport", () => {
+  test("wraps the CSS in the conditions of the @import", () => {
+    expect(wrapImport("a{}", "")).toBe("a{}");
+    expect(wrapImport("a{}", " print ")).toBe("@media print {\na{}\n}");
+    expect(wrapImport("a{}", "layer")).toBe("@layer {\na{}\n}");
+    expect(wrapImport("a{}", "layer(x.y)")).toBe("@layer x.y {\na{}\n}");
+    expect(wrapImport("a{}", "supports(display: grid)")).toBe("@supports (display: grid) {\na{}\n}");
+    expect(wrapImport("a{}", "supports(selector(a:has(b)))")).toBe("@supports selector(a:has(b)) {\na{}\n}");
+    expect(wrapImport("a{}", "supports((a: b) and (c: d))")).toBe("@supports (a: b) and (c: d) {\na{}\n}");
+    expect(wrapImport("a{}", "layered-screen")).toBe("@media layered-screen {\na{}\n}");
+  });
+
+  test("hoistImports moves the imports that stay to the start", () => {
+    expect(hoistImports('.a{}\n@import url("https://x.test/a.css") print;\n.b{}')).toBe('@import url("https://x.test/a.css") print;\n.a{}\n\n.b{}');
+    expect(hoistImports(".a{}")).toBe(".a{}");
+  });
+});
+
 describe("exportPage", () => {
   test("inlines stylesheets, imports, scripts, images and fonts", async () => {
     const { html, missing, warnings } = await exportPage(ws, "p", "d", { stripOids: false });
@@ -160,6 +181,18 @@ describe("exportPage", () => {
     expect(html).not.toContain("data-oid");
     await expect(exportPage(ws, "p", "d", { stripOids: false, page: "app.js" })).rejects.toThrow("no page");
     await expect(exportPage(ws, "p", "d", { stripOids: false, page: ".comments.json" })).rejects.toThrow("no page");
+  });
+
+  test("keeps the layer, supports and media conditions of an inlined @import", async () => {
+    await Bun.write(
+      join(dir, "styles.css"),
+      '@import "parts.css" layer(base) supports(display: grid) screen;\n@import url("https://fonts.googleapis.com/css2?family=Inter");\nbody {}\n',
+    );
+    const { html } = await exportPage(ws, "p", "d", { stripOids: false });
+    const sheet = html.slice(html.indexOf('<style media="screen">'));
+    // The import of another site stays first, so the browser still loads it.
+    expect(sheet).toMatch(/^<style media="screen">\n@import url\("https:\/\/fonts\.googleapis\.com/);
+    expect(sheet).toContain("@media screen {\n@supports (display: grid) {\n@layer base {\n.part { color: var(--ink); }");
   });
 
   test("an @import cycle stops", async () => {

@@ -109,7 +109,10 @@ export function resolveRef(ref: string, from: string): { path: string; suffix: s
   let path: string;
   try {
     url = new URL(r, BASE + from);
-    path = decodeURIComponent(url.pathname.slice(1));
+    // Decoded per segment: an encoded "/" (%2F) is part of a name, not a new folder.
+    const segments = url.pathname.slice(1).split("/").map(decodeURIComponent);
+    if (segments.some((part) => part.includes("/") || part.includes("\\"))) return null;
+    path = segments.join("/");
   } catch {
     return null;
   }
@@ -128,6 +131,38 @@ function cssRefs(css: string): string[] {
   const refs = [...css.matchAll(CSS_URL)].map((m) => m[1] ?? m[2] ?? m[3] ?? "");
   for (const m of css.matchAll(CSS_IMPORT)) if (m[4] !== undefined || m[5] !== undefined) refs.push(m[4] ?? m[5]!);
   return refs;
+}
+
+/**
+ * The CSS of an inlined @import with the conditions of the @import rule around it:
+ * `layer` / `layer(name)`, `supports(…)`, then a media query list.
+ */
+export function wrapImport(css: string, conditions: string): string {
+  const m = conditions.trim().match(/^(?:layer(?:\(\s*([^)]*?)\s*\))?(?![\w-]))?\s*(?:supports\(((?:[^()]|\((?:[^()]|\([^()]*\))*\))*)\))?\s*([\s\S]*)$/i)!;
+  const [, layer, supports, media] = m;
+  const hasLayer = /^layer(?![\w-])/i.test(conditions.trim());
+  let out = css;
+  if (hasLayer) out = `@layer${layer ? ` ${layer}` : ""} {\n${out}\n}`;
+  if (supports !== undefined) {
+    const cond = supports.trim();
+    // A plain declaration needs parentheses; a condition such as "selector(a)" or "(a) and (b)" has its own.
+    out = `@supports ${/^[\w-]+\s*:/.test(cond) ? `(${cond})` : cond} {\n${out}\n}`;
+  }
+  if (media?.trim()) out = `@media ${media.trim()} {\n${out}\n}`;
+  return out;
+}
+
+/**
+ * Moves the @import rules that stay (other sites) to the start of a stylesheet. After local
+ * imports are inlined, they can follow other rules, and a browser ignores an @import there.
+ */
+export function hoistImports(css: string): string {
+  const kept: string[] = [];
+  const rest = css.replace(CSS_IMPORT, (rule) => {
+    kept.push(rule);
+    return "";
+  });
+  return kept.length ? `${kept.join("\n")}\n${rest}` : css;
 }
 
 /** Replaces each link in a stylesheet for which `map` gives a new value. */
@@ -386,8 +421,7 @@ export async function exportPage(
       const data = await read(ref.path);
       if (!data) continue;
       const inner = await inlineCss(new TextDecoder().decode(data), ref.path, [...seen, ref.path]);
-      const media = m[6]!.trim();
-      out += css.slice(last, m.index) + (media ? `@media ${media} {\n${inner}\n}` : inner);
+      out += css.slice(last, m.index) + wrapImport(inner, m[6]!);
       last = m.index! + m[0].length;
     }
     out += css.slice(last);
@@ -418,14 +452,14 @@ export async function exportPage(
     const data = await read(ref.path);
     if (!data) continue;
     const text = () => new TextDecoder().decode(data);
-    if (kind === "stylesheet") sheets.set(value, await inlineCss(text(), ref.path, [ref.path]));
+    if (kind === "stylesheet") sheets.set(value, hoistImports(await inlineCss(text(), ref.path, [ref.path])));
     else if (kind === "script") {
       texts.push(text());
       scripts.set(value, text());
     } else assets.set(value, dataUrl(ref.path, data) + ref.suffix.replace(/^\?[^#]*/, ""));
   }
   const styles = new Map<string, string>();
-  for (const css of scan.css) if (!styles.has(css)) styles.set(css, await inlineCss(css, page, [page]));
+  for (const css of scan.css) if (!styles.has(css)) styles.set(css, hoistImports(await inlineCss(css, page, [page])));
 
   const out = await rewriteHtml(html, {
     ref: (_kind, value) => assets.get(value) ?? null,
