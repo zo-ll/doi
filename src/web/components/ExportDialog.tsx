@@ -34,18 +34,17 @@ export function ExportDialog({ project, design, onClose }: { project: string; de
       .catch((e: Error) => setError(e.message));
   }, [project, design]);
 
-  const pick = (format: ExportFormat) => {
-    // "All frames" is a PNG choice only; a PDF shows one frame.
-    const frame = format === "pdf" && choice.frame === "all" ? (frames?.[0]?.id ?? "all") : choice.frame;
-    set({ format, frame });
-  };
+  // "All frames" is a PNG choice only. A PDF shows one frame: the first one, also when the
+  // frames were not loaded yet when PDF was picked.
+  const frame = choice.format === "pdf" && choice.frame === "all" ? (frames?.[0]?.id ?? "all") : choice.frame;
+  const effective: ExportChoice = { ...choice, frame };
 
   const start = async () => {
     setRunning(true);
     setError(null);
     setDone(null);
     try {
-      setDone(await runExport(exportUrl(project, design, choice), fallbackName(design, choice)));
+      setDone(await runExport(exportUrl(project, design, effective), fallbackName(design, effective)));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -78,7 +77,7 @@ export function ExportDialog({ project, design, onClose }: { project: string; de
             <legend>Format</legend>
             {FORMATS.map((f) => (
               <label key={f.id} className="export-choice">
-                <input type="radio" name="format" checked={choice.format === f.id} onChange={() => pick(f.id)} />
+                <input type="radio" name="format" checked={choice.format === f.id} onChange={() => set({ format: f.id })} />
                 <span>
                   <span className="export-choice-title">{f.title}</span>
                   <span className="muted">{f.text}</span>
@@ -101,7 +100,7 @@ export function ExportDialog({ project, design, onClose }: { project: string; de
             <div className="export-options">
               <label className="export-field">
                 Frame
-                <select value={choice.frame} onChange={(e) => set({ frame: e.target.value })} disabled={!frames}>
+                <select value={frame} onChange={(e) => set({ frame: e.target.value })} disabled={!frames}>
                   {choice.format === "png" && <option value="all">All frames</option>}
                   {frames?.map((f) => (
                     <option key={f.id} value={f.id}>

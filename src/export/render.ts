@@ -38,7 +38,9 @@ export function allowedRequest(url: string): boolean {
 
 async function launch(): Promise<Browser> {
   try {
-    return await chromium.launch({ timeout: TIMEOUT_MS });
+    // WebRTC sends UDP that neither the route nor the CSP sees. Without a proxy, this policy
+    // gives WebRTC no UDP at all; the init script in openPage() also removes the API.
+    return await chromium.launch({ timeout: TIMEOUT_MS, args: ["--force-webrtc-ip-handling-policy=disable_non_proxied_udp"] });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     if (/Executable doesn't exist/i.test(message)) {
@@ -47,6 +49,11 @@ async function launch(): Promise<Browser> {
     throw e;
   }
 }
+
+/** Removes the WebRTC classes in every frame before the page's own scripts run. */
+const NO_WEBRTC = `for (const name of ["RTCPeerConnection", "webkitRTCPeerConnection", "RTCDataChannel", "RTCRtpSender", "RTCRtpReceiver", "RTCRtpTransceiver", "RTCIceCandidate", "RTCSessionDescription"]) {
+  try { Object.defineProperty(globalThis, name, { value: undefined, writable: false, configurable: false }); } catch {}
+}`;
 
 /** Opens `html` in a new page at the frame's size, with the network rules. */
 async function openPage(browser: Browser, html: string, frame: Pick<Frame, "width" | "height">, scale: number): Promise<Page> {
@@ -57,9 +64,16 @@ async function openPage(browser: Browser, html: string, frame: Pick<Frame, "widt
     acceptDownloads: false,
   });
   context.setDefaultTimeout(TIMEOUT_MS);
+  await context.addInitScript(NO_WEBRTC);
+  let served = false;
   await context.route("**/*", (route) => {
-    const url = route.request().url();
+    const request = route.request();
+    const url = request.url();
+    // The page loads once. A later navigation (a form, a refresh, a link) gets 204 No Content,
+    // and the browser keeps the page. (An aborted navigation shows Chromium's error page.)
+    if (request.isNavigationRequest() && (served || url !== PAGE_URL)) return route.fulfill({ status: 204 });
     if (url === PAGE_URL) {
+      served = true;
       return route.fulfill({
         status: 200,
         contentType: "text/html; charset=utf-8",
@@ -72,7 +86,10 @@ async function openPage(browser: Browser, html: string, frame: Pick<Frame, "widt
   await context.routeWebSocket(/.*/, (ws) => ws.close());
   const page = await context.newPage();
   await page.emulateMedia({ media: "screen" });
-  await page.goto(PAGE_URL, { waitUntil: "load" });
+  // A navigation that the page starts while it loads (a form, location.href) stops
+  // Playwright's wait for "load", so the wait is for the document's own state.
+  await page.goto(PAGE_URL, { waitUntil: "commit" });
+  await page.waitForFunction(() => document.readyState === "complete");
   // Web fonts load after the load event; a capture before that shows the fallback font.
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
   return page;
@@ -85,6 +102,11 @@ async function withBrowser<T>(fn: (browser: Browser) => Promise<T>): Promise<T> 
   } finally {
     await browser.close();
   }
+}
+
+/** Runs `fn` on the page as it renders, then closes the browser. For tests and checks. */
+export function inspectRender<T>(html: string, frame: Pick<Frame, "width" | "height">, fn: (page: Page) => Promise<T>): Promise<T> {
+  return withBrowser(async (browser) => fn(await openPage(browser, html, frame, 1)));
 }
 
 /** One PNG per frame, in order: the frame's viewport, or the whole page height. One browser for all. */

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chromium } from "playwright-core";
-import { allowedRequest, renderPdf, renderPngs } from "../src/export/render.ts";
+import { allowedRequest, inspectRender, renderPdf, renderPngs } from "../src/export/render.ts";
 
 /** Width and height from the IHDR chunk of a PNG. */
 const pngSize = (png: Buffer) => ({ width: png.readUInt32BE(16), height: png.readUInt32BE(20) });
@@ -92,4 +92,50 @@ describe.skipIf(!hasBrowser)("render with Chromium", () => {
     await renderPdf(html, { width: 300, height: 200 });
     expect(hits).toEqual([]);
   }, 60_000);
+
+  test("WebRTC cannot send UDP packets, not even from a new frame", async () => {
+    let packets = 0;
+    const udp = await Bun.udpSocket({ hostname: "127.0.0.1", socket: { data: () => void packets++ } });
+    const stun = `stun:127.0.0.1:${udp.port}`;
+    const html = page(`<script>
+      const open = (RTC) => {
+        try {
+          const pc = new RTC({ iceServers: [{ urls: "${stun}" }] });
+          pc.createDataChannel("x");
+          pc.createOffer().then((o) => pc.setLocalDescription(o));
+        } catch {}
+      };
+      open(window.RTCPeerConnection);
+      open(window.webkitRTCPeerConnection);
+      const f = document.createElement("iframe");
+      document.body.append(f);
+      open(f.contentWindow.RTCPeerConnection);
+    </script>`);
+    await renderPngs(html, [{ width: 300, height: 200 }], { scale: 1, fullPage: false });
+    await Bun.sleep(500);
+    udp.close();
+    expect(packets).toBe(0);
+  }, 60_000);
+
+  test("a page that submits a form or refreshes itself still renders", async () => {
+    const started = Date.now();
+    const form = page(`<form id="f" action="https://example.com/" method="post"><input name="a"></form><script>document.getElementById("f").submit()</script><p>form</p>`);
+    const refresh = `<!doctype html><html><head><meta http-equiv="refresh" content="0"></head><body><p>refresh</p></body></html>`;
+    const away = page(`<script>location.href = "https://example.com/"</script><p>away</p>`);
+    // Chromium stops parsing a page at a navigation that starts during the parse (a form
+    // submit, location.href), so the text after the script is not there. The URL shows that
+    // the page is still the first one, not Chromium's error page (chrome-error://).
+    for (const [html, text] of [[form, ""], [refresh, "refresh"], [away, ""]] as const) {
+      // The first page stays: not another site, not Chromium's error page.
+      const seen = await inspectRender(html, { width: 300, height: 200 }, async (p) => {
+        await Bun.sleep(300);
+        return { url: p.url(), text: (await p.innerText("body")).trim() };
+      });
+      expect(seen).toEqual({ url: "http://render.doi.invalid/", text });
+      const [png] = await renderPngs(html, [{ width: 300, height: 200 }], { scale: 1, fullPage: false });
+      expect(pngSize(png!)).toEqual({ width: 300, height: 200 });
+      expect((await renderPdf(html, { width: 300, height: 200 })).subarray(0, 5).toString()).toBe("%PDF-");
+    }
+    expect(Date.now() - started).toBeLessThan(20_000);
+  }, 120_000);
 });
