@@ -109,11 +109,19 @@ describe.skipIf(!hasBrowser)("render with Chromium", () => {
       "writing-mode: vertical-rl",
       "display: grid; grid-template-columns: 1fr 1fr; padding: 20px",
       "columns: 2",
+      "contain: strict",
+      "content-visibility: hidden",
       // A slide's own writing mode stays.
       "--own: 1",
     ]) {
       const own = wrapper === "--own: 1" ? ".slide { writing-mode: vertical-rl }" : "";
       const html = page(`<style>${css} ${own}</style><div style="${wrapper}">bare ${slides}</div>`);
+      await check(html, wrapper);
+    }
+    for (const open of ["", " open"]) {
+      await check(page(`<style>${css}</style><details${open}><summary>Deck</summary>${slides}</details>`), `details${open}`);
+    }
+    async function check(html: string, wrapper: string) {
       const pdf = (await renderPdf(html, { width: 1440, height: 900 })).toString("latin1");
       const boxes = [...pdf.matchAll(/\/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]/g)].map((m) => [Number(m[1]), Number(m[2])]);
       expect({ wrapper, pages: boxes.length }).toEqual({ wrapper, pages: 2 });

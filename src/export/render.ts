@@ -154,13 +154,19 @@ export function prepareSlides(selector: string): { width: number; height: number
       display: "block", margin: "0", padding: "0", border: "0", gap: "0", width: "auto", height: "auto",
       "min-height": "0", "max-height": "none", overflow: "visible", position: "static", columns: "auto",
       transform: "none", translate: "none", rotate: "none", scale: "none", zoom: "1", "writing-mode": "horizontal-tb",
+      contain: "none", "content-visibility": "visible",
     });
+    if (a instanceof HTMLDetailsElement) a.open = true;
     for (const c of [...a.childNodes]) {
       // Bare text between slides would make a line box, and so a page of its own.
       if (c.nodeType === Node.TEXT_NODE) c.remove();
       else if ((c instanceof HTMLElement || c instanceof SVGElement) && !around.has(c) && !isSlide.has(c)) set(c as HTMLElement, { display: "none" });
     }
   }
+  // The content box of an open details element has its own box and visibility.
+  const style = document.createElement("style");
+  style.textContent = "details::details-content { display: block !important; content-visibility: visible !important; margin: 0 !important; padding: 0 !important; border: 0 !important; }";
+  document.head.append(style);
   slides.forEach((s, i) => {
     if (getComputedStyle(s).display === "none") set(s, { display: "block" });
     if (modes[i]) set(s, { "writing-mode": modes[i]! });
