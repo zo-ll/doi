@@ -7,7 +7,7 @@ import { renderPngs } from "../export/render.ts";
 import type { ZipEntry } from "../export/zip.ts";
 import { readChat } from "../workspace/chat.ts";
 import { readComments } from "../workspace/comments.ts";
-import { activeDesignSystem, parseTokens } from "../workspace/design-systems.ts";
+import { activeDesignSystem } from "../workspace/design-systems.ts";
 import { readLayout } from "../workspace/layout.ts";
 import type { Frame } from "../workspace/frames.ts";
 import { designDir, listProjects } from "../workspace/paths.ts";
@@ -42,10 +42,17 @@ export interface Bundle {
   warnings: string[];
 }
 
-/** The screenshots of the bundle, by page and then by frame: `screenshots/<page>-<frame>.png`. */
+/**
+ * The screenshots of the bundle, by page and then by frame: `screenshots/<page>-<frame>.png`.
+ * Two pages with the same safe name ("a b.html", "a-b.html") get "-2", "-3" and so on.
+ */
 export function screenshotPlan(pages: string[], frames: Frame[]): Screenshot[] {
+  const stems = new Set<string>();
   return pages.flatMap((page) => {
-    const stem = page.replace(/\.html?$/i, "").replace(/[^A-Za-z0-9-]+/g, "-");
+    const base = page.replace(/\.html?$/i, "").replace(/[^A-Za-z0-9-]+/g, "-");
+    let stem = base;
+    for (let n = 2; stems.has(stem); n++) stem = `${base}-${n}`;
+    stems.add(stem);
     return frames.map((frame) => ({ page, frame, path: `screenshots/${stem}-${frame.id}.png` }));
   });
 }
@@ -57,32 +64,73 @@ async function designPages(workspace: string, project: string, design: string): 
   return (await readDesignFiles(dir)).map((f) => f.path).filter((p) => /\.html?$/i.test(p));
 }
 
-/**
- * tokens.css of the bundle: the custom properties of the project's design system, or else the
- * ones in the stylesheets of the design and of the design system files it links. Null when
- * there are none.
- */
-export async function bundleTokens(workspace: string, project: string, design: string): Promise<{ css: string; from: string } | null> {
-  const ds = await activeDesignSystem(workspace, project);
-  let from = `the design system "${ds?.name}"`;
-  let tokens = ds?.tokens ? parseTokens(ds.tokens) : [];
-  if (!tokens.length) {
-    from = "the stylesheets of the design";
-    const { files } = await exportFolder(workspace, project, design, { stripOids: false });
-    const css = files.flatMap((f) => (/\.css$/i.test(f.path) ? [new TextDecoder().decode(f.data)] : []));
-    tokens = parseTokens(css.join("\n"));
-  }
-  if (!tokens.length) return null;
-  const lines = tokens.map((t) => `  ${t.name}: ${t.value};`);
-  return { css: `/* The tokens of ${from}, from doi. */\n:root {\n${lines.join("\n")}\n}\n`, from };
-}
-
 const oneLine = (text: string, max: number) => {
   const flat = text.replace(/\s+/g, " ").trim();
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
 };
 /** Markdown inline code that a backtick in the value cannot end. */
 const code = (value: string) => `\`${value.replace(/`/g, "'")}\``;
+
+/** At-rules whose custom properties apply only in some cases (a dark scheme, a width). */
+const CONDITIONAL = /^@(media|supports|container|scope|starting-style|document)\b/i;
+const ROOT_SELECTOR = /^(:root|html)$/i;
+
+/**
+ * The custom properties on `:root` or `html` in the CSS, as the cascade gives them: a later
+ * declaration wins. Declarations in conditional at-rules (`@media`, `@supports`, …) do not
+ * count; `@layer` blocks do.
+ */
+export function rootTokens(css: string): Map<string, string> {
+  // url() values can hold ";" (data: URLs) and strings can hold braces: neither is a token.
+  const text = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/url\([^)]*\)/gi, "url()").replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""');
+  const tokens = new Map<string, string>();
+  const stack: string[] = [];
+  const apply = (decls: string) => {
+    const top = stack.at(-1);
+    if (!top || stack.some((p) => CONDITIONAL.test(p))) return;
+    if (!top.split(",").some((part) => ROOT_SELECTOR.test(part.trim()))) return;
+    for (const m of decls.matchAll(/(--[A-Za-z0-9_-]+)\s*:\s*([^;]+?)\s*(?:!important\s*)?(?=;|$)/g)) {
+      tokens.delete(m[1]!);
+      tokens.set(m[1]!, m[2]!.trim());
+    }
+  };
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "{") {
+      // Before a nested rule: the declarations up to the last ";" belong to the outer rule.
+      const segment = text.slice(start, i);
+      const cut = segment.lastIndexOf(";");
+      apply(segment.slice(0, cut + 1));
+      stack.push(segment.slice(cut + 1).trim());
+      start = i + 1;
+    } else if (text[i] === "}") {
+      apply(text.slice(start, i));
+      stack.pop();
+      start = i + 1;
+    }
+  }
+  return tokens;
+}
+
+/**
+ * tokens.css of the bundle: the custom properties of `:root` as index.html gets them, with its
+ * stylesheets in order (the design system files first, then the design's own). When the page
+ * sets none, the tokens of the project's design system. Null when there are none.
+ */
+export async function bundleTokens(workspace: string, project: string, design: string): Promise<{ css: string; from: string } | null> {
+  const page = await exportPage(workspace, project, design, { stripOids: false });
+  const styles = [...page.html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]!);
+  let tokens = [...rootTokens(styles.join("\n"))];
+  let from = "the stylesheets of index.html";
+  const ds = tokens.length ? null : await activeDesignSystem(workspace, project);
+  if (ds?.tokens) {
+    tokens = [...rootTokens(ds.tokens)];
+    from = `the design system "${ds.name}"`;
+  }
+  if (!tokens.length) return null;
+  const lines = tokens.map(([name, value]) => `  ${name}: ${value};`);
+  return { css: `/* The tokens of ${from}, from doi. */\n:root {\n${lines.join("\n")}\n}\n`, from };
+}
 
 /** HANDOFF.md as the template makes it: the user edits it before the run. */
 export async function draftHandoff(workspace: string, project: string, design: string): Promise<string> {
@@ -105,13 +153,14 @@ export async function draftHandoff(workspace: string, project: string, design: s
 
   const open = comments.filter((c) => c.status === "open");
   const values: Record<string, string> = {
-    project: projects.find((p) => p.id === project)?.name ?? project,
+    // One line each: a line break in a name must not start a new Markdown block.
+    project: oneLine(projects.find((p) => p.id === project)?.name ?? project, 200),
     design,
     requests: requests.length ? requests.join("\n") : "- None. The chat has no requests for this design.",
     pages: pages.map((p) => `  - ${code(`design/${p}`)}`).join("\n"),
     screenshots: screenshotPlan(pages, frames)
       .slice(0, MAX_SCREENSHOTS)
-      .map((s) => `  - ${code(s.path)}: ${code(s.page)} in the frame ${s.frame.label}, ${s.frame.width} × ${s.frame.height}`)
+      .map((s) => `  - ${code(s.path)}: ${code(s.page)} in the frame ${oneLine(s.frame.label, 100)}, ${s.frame.width} × ${s.frame.height}`)
       .join("\n"),
     tokens: tokens
       ? `${code("tokens.css")}: the tokens (CSS custom properties) of ${tokens.from}.`
