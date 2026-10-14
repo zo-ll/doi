@@ -95,14 +95,21 @@ export async function syncProjectRepo(deps: GithubDeps, req: Request, params: { 
 export async function deleteProjectRepo(deps: GithubDeps, params: { project: string }): Promise<Response> {
   const bad = await checkProject(deps.workspace, params.project);
   if (bad) return bad;
-  let name: string | null = null;
-  await updateProjectMeta(deps.workspace, params.project, (meta) => {
-    name = linkedRepo(meta)?.name ?? null;
-    const { repo: _drop, ...rest } = meta;
-    return rest;
-  });
-  if (name && !(await listProjects(deps.workspace)).some((p) => p.repo?.name.toLowerCase() === name!.toLowerCase())) {
-    await rm(cloneDir(deps.workspace, name), { recursive: true, force: true });
+  const meta = (await Bun.file(projectFile(deps.workspace, params.project)).json().catch(() => ({}))) as Record<string, unknown>;
+  const name = linkedRepo(meta)?.name ?? null;
+  // The same lock as a clone or an update: the clone must not go while one runs.
+  const key = name ? `repo:${name.toLowerCase()}` : null;
+  if (key && !deps.locks.tryLock(key)) return fail(`${name} is being cloned or updated now. Try again when it ends.`, 409);
+  try {
+    await updateProjectMeta(deps.workspace, params.project, (m) => {
+      const { repo: _drop, ...rest } = m;
+      return rest;
+    });
+    if (name && !(await listProjects(deps.workspace)).some((p) => p.repo?.name.toLowerCase() === name.toLowerCase())) {
+      await rm(cloneDir(deps.workspace, name), { recursive: true, force: true });
+    }
+  } finally {
+    if (key) deps.locks.unlock(key);
   }
   let commit: string | null = null;
   try {

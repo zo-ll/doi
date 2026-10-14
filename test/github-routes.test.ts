@@ -78,3 +78,27 @@ test("a repo gh cannot see, a bad name, a missing project and a running clone ar
   expect((await putProjectRepo(deps, put({ name: "me/app" }), { project: "shop" })).status).toBe(409);
   expect(calls.some((c) => c[2] === "clone")).toBe(false);
 });
+
+test('a hand-edited "owner/.." link is no link, and unlinking it deletes no clone', async () => {
+  const ws = await workspace();
+  await Bun.write(join(ws, ".repos/me/app/.git/HEAD"), "ref: refs/heads/main\n");
+  await Bun.write(join(ws, "projects/shop/project.json"), JSON.stringify({ name: "shop", repo: { name: "me/..", commit: "x" } }));
+  expect((await listProjects(ws)).find((p) => p.id === "shop")?.repo).toBeNull();
+  const { gh } = fakeGh();
+  await deleteProjectRepo({ workspace: ws, locks: new DesignLocks(), gh, commit: async () => null }, { project: "shop" });
+  expect(await Bun.file(join(ws, ".repos/me/app/.git/HEAD")).exists()).toBe(true);
+});
+
+test("unlink waits while the repo is cloned or updated", async () => {
+  const ws = await workspace();
+  const { gh } = fakeGh();
+  const locks = new DesignLocks();
+  const deps = { workspace: ws, locks, gh, commit: async () => null };
+  await putProjectRepo(deps, put({ name: "me/app" }), { project: "shop" });
+  locks.tryLock("repo:me/app");
+  expect((await deleteProjectRepo(deps, { project: "shop" })).status).toBe(409);
+  expect((await listProjects(ws)).find((p) => p.id === "shop")?.repo?.name).toBe("me/app");
+  expect(await Bun.file(join(ws, ".repos/me/app/.git/HEAD")).exists()).toBe(true);
+  locks.unlock("repo:me/app");
+  expect((await deleteProjectRepo(deps, { project: "shop" })).status).toBe(200);
+});

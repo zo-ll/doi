@@ -89,3 +89,12 @@ test("the clones are excluded from the workspace git, once", async () => {
   await excludeClones(ws);
   expect(await Bun.file(join(ws, ".git", "info", "exclude")).text()).toBe("# git ls-files --others --exclude-from=.git/info/exclude\n/.repos/\n");
 });
+
+test('"." and ".." are never a repo part: no folder at or above .repos', async () => {
+  for (const name of ["owner/..", "owner/.", "../x", "owner/../x"]) {
+    expect(() => cloneDir("/ws", name)).toThrow();
+    await expect(viewRepo(name, fake(() => ({})).deps)).rejects.toThrow("is not a repo name");
+  }
+  expect(cloneDir("/ws", "owner/.dotfiles")).toBe("/ws/.repos/owner/.dotfiles");
+  expect(cloneDir("/ws", "owner/a..b")).toBe("/ws/.repos/owner/a..b");
+});

@@ -44,7 +44,9 @@ export interface LinkedRepo {
   syncedAt: string;
 }
 
-const REPO = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
+/** "owner/repo" as GitHub allows it. The repo part is never "." or "..": it becomes a folder name. */
+export const REPO_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/(?!\.\.?$)[A-Za-z0-9._-]{1,100}$/;
+const REPO = REPO_NAME;
 
 /** The linked repo of a project, or null. */
 export async function projectRepo(workspace: string, project: string): Promise<LinkedRepo | null> {

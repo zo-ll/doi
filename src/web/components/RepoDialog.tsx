@@ -3,7 +3,7 @@ import { getJSON, sendJSON, type Load, type ProjectSummary } from "../api.ts";
 import type { GhStatus, RepoSummary } from "../../github/gh.ts";
 import { timeAgo } from "./HistoryPanel.tsx";
 
-const REPO_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
+const REPO_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/(?!\.\.?$)[A-Za-z0-9._-]{1,100}$/;
 
 /**
  * The app's code (#112): link one GitHub repo to the project through the gh CLI. The model

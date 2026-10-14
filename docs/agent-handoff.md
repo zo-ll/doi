@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-10-14, after the repo link (#112). Tests: 342 pass, 1 skip. M1, M2 and M3 are done. `bun check`: no errors.
+Last update: 2026-10-14, after the repo link (#112). Tests: 345 pass, 1 skip. M1, M2 and M3 are done. `bun check`: no errors.
 
 ## 1. What doi is
 

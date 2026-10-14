@@ -1,5 +1,6 @@
 import { mkdir, rm } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
+import { REPO_NAME } from "../workspace/paths.ts";
 
 /**
  * GitHub through the official `gh` CLI (#112). doi only runs `gh` commands; the CLI uses its
@@ -49,8 +50,7 @@ export class GhError extends Error {
   }
 }
 
-/** "owner/repo" as GitHub allows it. */
-export const REPO_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
+export { REPO_NAME };
 
 export interface GhStatus {
   installed: boolean;
@@ -114,7 +114,11 @@ export async function viewRepo(name: string, deps: GhDeps = ghDeps): Promise<Rep
 export function cloneDir(workspace: string, name: string): string {
   if (!REPO_NAME.test(name)) throw new GhError(`"${name}" is not a repo name.`, 400);
   const [owner, repo] = name.split("/") as [string, string];
-  return join(workspace, ".repos", owner.toLowerCase(), repo.toLowerCase());
+  const root = join(workspace, ".repos");
+  const dir = join(root, owner.toLowerCase(), repo.toLowerCase());
+  // Two levels under .repos, never .repos itself or above it.
+  if (relative(root, dir).split(sep).length !== 2 || relative(root, dir).startsWith("..")) throw new GhError(`"${name}" is not a repo name.`, 400);
+  return dir;
 }
 
 /**
