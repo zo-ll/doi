@@ -521,14 +521,13 @@ export function ChatPanel({
             <span className="spacer" />
             {current && (
               <button
-                className="model-chip"
+                className={`model-chip${chosen ? " is-chosen" : ""}`}
                 onClick={() => setModelMenu((o) => !o)}
                 aria-expanded={modelMenu}
                 title={`${current.provider}:${current.model} · ${chosen ? "chosen for this design" : `config.toml → ${currentTask}`}`}
               >
                 <span className={`dot ${TONE_DOT[current.tone]}`} />
                 <span className="truncate">{shortModel(current.model)}</span>
-                {(chosen || currentTask === "edit") && <span className="model-chip-task">· {chosen ? "chosen" : "edit"}</span>}
               </button>
             )}
             {running ? (

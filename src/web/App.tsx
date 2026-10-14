@@ -89,6 +89,8 @@ export function App() {
   /** Comments the user marked "apply": they go with the next turn. */
   const [applied, setApplied] = useState<AppliedComment[]>([]);
   const [running, setRunning] = useState(false);
+  /** Bumped to open the new-comment form (N, or the Comment tool). */
+  const [newComment, setNewComment] = useState(0);
   /** A full screen over the app: settings or usage. */
   const [screen, setScreen] = useState<null | "settings" | "usage">(null);
   const [page, setPage] = useState("index.html");
@@ -96,6 +98,9 @@ export function App() {
   const [revision, setRevision] = useState(0);
   const activeRef = useRef(active);
   activeRef.current = active;
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
+  const showSideRef = useRef<(tab: "comments" | "history") => void>(() => {});
 
   useEffect(() => {
     // EventSource connects again by itself after an error.
@@ -161,6 +166,12 @@ export function App() {
   const [chatEpoch, setChatEpoch] = useState(0);
   const commentList = comments.comments.state === "ready" ? comments.comments.data : [];
   const pins = useMemo(() => pinsOf(commentList), [commentList]);
+  // A comment that a turn marked done, or that someone deleted, leaves the next turn.
+  useEffect(() => {
+    if (comments.comments.state !== "ready") return;
+    const open = new Set(comments.comments.data.filter((c) => c.status === "open" && !c.detached).map((c) => c.id));
+    setApplied((now) => (now.every((c) => open.has(c.id)) ? now : now.filter((c) => open.has(c.id))));
+  }, [comments.comments]);
   const openComments = commentList.filter((c) => c.status === "open").length;
 
   const [pages] = useLoad<string[]>(active ? `/api/projects/${active.project}/designs/${active.design}/pages?r=${revision}` : null);
@@ -186,8 +197,14 @@ export function App() {
         setSelection(null);
         if (!document.querySelector('[aria-modal="true"]')) closePreview.current();
       }
-      if (!mod) return;
       const key = e.key.toLowerCase();
+      if (!mod && !e.altKey && key === "n" && !typing(e) && selectionRef.current) {
+        e.preventDefault();
+        showSideRef.current("comments");
+        setNewComment((k) => k + 1);
+        return;
+      }
+      if (!mod) return;
       const act: Record<string, () => void> = {
         p: toggleNav,
         "[": () => togglePanel("chat"),
@@ -222,6 +239,7 @@ export function App() {
     },
     [panels.side, togglePanel],
   );
+  showSideRef.current = showSide;
 
   return (
     <div className="app">
@@ -329,7 +347,10 @@ export function App() {
             setSelection({ oid });
             showSide("comments");
           }}
-          onComment={() => showSide("comments")}
+          onComment={() => {
+            showSide("comments");
+            setNewComment((k) => k + 1);
+          }}
           onOpenHistory={() => showSide("history")}
         />
         {!panels.chat && (
@@ -376,19 +397,18 @@ export function App() {
                 <CommentsPanel
                   comments={active ? comments.comments : { state: "ready", data: [] }}
                   selection={selection}
+                  newKey={newComment}
+                  applied={applied.map((c) => c.id)}
                   onSelect={(oid) => setSelection({ oid })}
                   onAdd={comments.add}
+                  onEdit={comments.edit}
                   onStatus={comments.setStatus}
                   onRemove={comments.remove}
                   onRetry={comments.reload}
-                  running={running}
-                  onApply={(list) => {
-                    // Numbers as in the Comments list: the position among all comments, from 1.
-                    const number = (id: string) => commentList.findIndex((c) => c.id === id) + 1;
-                    setApplied((now) => {
-                      const add = list.filter((c) => !now.some((x) => x.id === c.id)).map(({ id, oid, text }) => ({ id, oid, text, n: number(id) }));
-                      return [...now, ...add];
-                    });
+                  onToggleApply={(c, n) => {
+                    setApplied((now) =>
+                      now.some((x) => x.id === c.id) ? now.filter((x) => x.id !== c.id) : [...now, { id: c.id, oid: c.oid, text: c.text, n }],
+                    );
                     if (!panels.chat) togglePanel("chat"); // the chips show in the composer
                   }}
                 />

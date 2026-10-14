@@ -62,6 +62,7 @@ export function useComments(active: Active | null, revision: number) {
     reload,
     add: (oid: string, text: string) => change("POST", undefined, { oid, text }),
     setStatus: (id: string, status: "open" | "done") => change("PATCH", id, { status }),
+    edit: (id: string, text: string) => change("PATCH", id, { text }),
     remove: (id: string) => change("DELETE", id),
   };
 }
