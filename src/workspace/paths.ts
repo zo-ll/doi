@@ -32,6 +32,36 @@ export interface ProjectSummary {
   decks: string[];
   /** The selected design system, or null. */
   designSystem: string | null;
+  /** The linked GitHub repo (#112): the app the designs are for. */
+  repo: LinkedRepo | null;
+}
+
+export interface LinkedRepo {
+  /** "owner/repo" */
+  name: string;
+  /** The commit of the cache clone at the last sync. */
+  commit: string;
+  syncedAt: string;
+}
+
+const REPO = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
+
+/** The linked repo of a project, or null. */
+export async function projectRepo(workspace: string, project: string): Promise<LinkedRepo | null> {
+  assertName("project", project);
+  const file = Bun.file(join(workspace, "projects", project, "project.json"));
+  try {
+    return (await file.exists()) ? linkedRepo(await file.json()) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The repo in project.json, when it is valid. */
+export function linkedRepo(meta: Record<string, unknown>): LinkedRepo | null {
+  const r = meta.repo as Record<string, unknown> | null | undefined;
+  if (!r || typeof r.name !== "string" || !REPO.test(r.name)) return null;
+  return { name: r.name, commit: typeof r.commit === "string" ? r.commit : "", syncedAt: typeof r.syncedAt === "string" ? r.syncedAt : "" };
 }
 
 async function subdirs(dir: string): Promise<string[]> {
@@ -63,11 +93,13 @@ export async function listProjects(workspace: string): Promise<ProjectSummary[]>
     const meta = Bun.file(join(workspace, "projects", id, "project.json"));
     let name = id;
     let designSystem: string | null = null;
+    let repo: LinkedRepo | null = null;
     try {
       if (await meta.exists()) {
         const data = await meta.json();
         name = String(data.name ?? id);
         if (typeof data.designSystem === "string" && NAME.test(data.designSystem)) designSystem = data.designSystem;
+        repo = linkedRepo(data);
       }
     } catch {
       // A hand-edited project.json with bad JSON must not hide the other projects.
@@ -80,7 +112,7 @@ export async function listProjects(workspace: string): Promise<ProjectSummary[]>
       designs.push(design);
       if (SLIDE.test(await index.text())) decks.push(design);
     }
-    projects.push({ id, name, designs, decks, designSystem });
+    projects.push({ id, name, designs, decks, designSystem, repo });
   }
   return projects;
 }

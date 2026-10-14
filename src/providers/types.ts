@@ -27,6 +27,8 @@ export interface GenerateRequest {
   signal?: AbortSignal;
   /** The design folder. Required by providers with `editsFiles`, which work in it directly. */
   cwd?: string;
+  /** Folders that a provider with `editsFiles` may read too: the linked repo's clone (#112). */
+  readDirs?: string[];
 }
 
 export type GenerateEvent =

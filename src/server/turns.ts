@@ -11,6 +11,7 @@ import type { FileStat } from "../workspace/git.ts";
 import { CommentError, readComments, updateComment } from "../workspace/comments.ts";
 import { activeDesignSystem, formatDesignSystem } from "../workspace/design-systems.ts";
 import { designDir } from "../workspace/paths.ts";
+import { repoForTurn } from "../generation/repo-context.ts";
 import { saveUploads, type ImageType } from "../workspace/uploads.ts";
 import { parseImages } from "./image-body.ts";
 import type { DesignWatcher } from "../workspace/watch.ts";
@@ -242,15 +243,25 @@ export function createTurnHandler(deps: TurnDeps) {
           const history = historyMessages(entries);
           const before = await readDesignFiles(dir);
           const ds = await activeDesignSystem(workspace, params.project);
+          const readsFiles = provider.capabilities.editsFiles;
+          const repo = await repoForTurn(workspace, params.project, readsFiles);
           const context = assembleContext({
             systemPrompt: SYSTEM_PROMPT.text,
             designSystem: ds ? formatDesignSystem(ds) : null,
+            repo: repo?.text ?? null,
             files: before,
             history,
             turn,
             capabilities: capabilitiesFor(provider, ref.model),
           });
-          const request = { model: ref.model, system: context.system, messages: context.messages, signal: abort.signal, cwd: dir };
+          const request = {
+            model: ref.model,
+            system: context.system,
+            messages: context.messages,
+            signal: abort.signal,
+            cwd: dir,
+            ...(repo && readsFiles ? { readDirs: [repo.dir] } : {}),
+          };
           for await (let e of runTurn(provider, request, { ...params, workspace })) {
             if (e.type === "text") text += e.delta;
             if (e.type === "usage") {

@@ -23,6 +23,8 @@ export interface ContextInput {
   systemPrompt: string;
   /** The active design system as text. Empty until M3. */
   designSystem?: string | null;
+  /** The linked repo of the project as text (#112). */
+  repo?: string | null;
   files: DesignFile[];
   /** Earlier messages of this design, oldest first. */
   history: Message[];
@@ -93,6 +95,7 @@ export function assembleContext(input: ContextInput): AssembledContext {
 
   const system = [input.systemPrompt];
   if (input.designSystem?.trim()) system.push(input.designSystem);
+  if (input.repo?.trim()) system.push(input.repo);
   system.push(formatFiles(input.files));
 
   const last = turnMessage(turn);

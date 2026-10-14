@@ -20,7 +20,7 @@ async function workspace(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "doi-mcp-"));
   const dir = designDir(root, "shop", "home");
   await mkdir(join(dir, "img"), { recursive: true });
-  await Bun.write(join(root, "projects", "shop", "project.json"), JSON.stringify({ name: "The Shop", designSystem: "brand" }));
+  await Bun.write(join(root, "projects", "shop", "project.json"), JSON.stringify({ name: "The Shop", designSystem: "brand", repo: null }));
   await Bun.write(join(dir, "index.html"), '<html><body><h1 data-oid="hero">Home</h1></body></html>');
   await Bun.write(join(dir, "about.html"), '<html><body><p data-oid="about">About</p></body></html>');
   await Bun.write(join(dir, "styles.css"), "h1 { color: red; }");
@@ -62,7 +62,7 @@ describe("MCP tools", () => {
 
   test("list_designs", async () => {
     const r = parsed(await (await connect()).callTool({ name: "list_designs", arguments: {} }));
-    expect(r).toEqual({ projects: [{ id: "shop", name: "The Shop", designs: ["home"], decks: [], designSystem: "brand" }] });
+    expect(r).toEqual({ projects: [{ id: "shop", name: "The Shop", designs: ["home"], decks: [], designSystem: "brand", repo: null }] });
   });
 
   test("get_design gives files, pages, frames and requests", async () => {

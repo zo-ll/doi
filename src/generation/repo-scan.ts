@@ -80,11 +80,19 @@ async function walk(root: string): Promise<string[]> {
   return out;
 }
 
+/**
+ * The files of a repo that doi may read: git's files (or a walk), without built, vendored and
+ * dot folders, links, and files that can hold secrets.
+ */
+export async function repoFiles(root: string): Promise<string[]> {
+  return ((await gitFiles(root)) ?? (await walk(root))).filter((p) => !SECRET.test(p));
+}
+
 /** Picks the configs, the stylesheets with the most tokens and the main components. */
 export async function scanRepo(root: string): Promise<{ sources: Source[]; seen: number }> {
   const info = await lstat(root);
   if (!info.isDirectory()) throw new Error("The repo path is not a folder.");
-  const paths = ((await gitFiles(root)) ?? (await walk(root))).filter((p) => !SECRET.test(p));
+  const paths = await repoFiles(root);
 
   const read = async (path: string) => Bun.file(join(root, path)).text();
   const configs = paths.filter((p) => CONFIG.test(p));

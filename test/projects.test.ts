@@ -33,7 +33,7 @@ describe("projects API", () => {
     const res = await postProject(deps, json("POST", { name: "My Shop!" }));
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ id: "my-shop", design: "home" });
-    expect(await listProjects(deps.workspace)).toEqual([{ id: "my-shop", name: "My Shop!", designs: ["home"], decks: [], designSystem: null }]);
+    expect(await listProjects(deps.workspace)).toEqual([{ id: "my-shop", name: "My Shop!", designs: ["home"], decks: [], designSystem: null, repo: null }]);
     expect(await Bun.file(join(designDir(deps.workspace, "my-shop", "home"), "index.html")).text()).toContain('data-oid="main"');
     expect(commits).toEqual([
       { paths: ["projects/my-shop/project.json", "projects/my-shop/designs/home"], message: "Create project My Shop!" },
