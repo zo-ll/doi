@@ -43,7 +43,8 @@ export function checkRequest(req: Request, port: number): Response | null {
 
   const url = new URL(req.url);
   const changes = !["GET", "HEAD", "OPTIONS"].includes(req.method);
-  if (!url.pathname.startsWith("/api/") || !changes) return null;
+  // /mcp is the MCP endpoint (#54): the same checks as the API, so no web page can call its tools.
+  if (!(url.pathname.startsWith("/api/") || url.pathname === "/mcp") || !changes) return null;
 
   const origin = req.headers.get("origin");
   if (origin !== null && !hosts.some((h) => origin === `http://${h}`)) return fail(403, "Requests from other sites are not allowed.");

@@ -4,14 +4,18 @@ import { exportUrl, fallbackName, runExport, type ExportChoice, type ExportForma
 import type { Frame } from "../../workspace/frames.ts";
 import { Icon } from "./Icon.tsx";
 
-const FORMATS: { id: ExportFormat; title: string; text: string }[] = [
+/** "prompt" is not a file: it is the text for a coding agent (#53, #54). */
+type Choice = ExportFormat | "prompt";
+
+const FORMATS: { id: Choice; title: string; text: string }[] = [
   { id: "folder", title: "Folder (.zip)", text: "All pages and files, with the design system files they link." },
   { id: "page", title: "Single HTML file", text: "index.html with its CSS, scripts, images and fonts inline. Links to other pages do not work." },
   { id: "png", title: "PNG", text: "A picture of one frame, or a ZIP with one picture per frame." },
   { id: "pdf", title: "PDF", text: "A deck gives one page per slide. Other designs give one page as wide as the frame and as high as the whole design." },
+  { id: "prompt", title: "Prompt for a coding agent", text: "Paste it into any agent in your repo. The agent reads the design through the doi MCP server while doi runs." },
 ];
 
-/** Export of the open design (#46, #47, #48): files, one HTML file, PNG or PDF. */
+/** Export of the open design (#46, #47, #48): files, one HTML file, PNG or PDF, or the agent prompt. */
 export function ExportDialog({ project, design, onClose }: { project: string; design: string; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const [choice, setChoice] = useState<ExportChoice>({ format: "folder", stripOids: false, frame: "all", scale: 2, fullPage: false });
@@ -19,6 +23,9 @@ export function ExportDialog({ project, design, onClose }: { project: string; de
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<(ExportReport & { file: string }) | null>(null);
+  const [kind, setKind] = useState<Choice>("folder");
+  const [prompt, setPrompt] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const set = (patch: Partial<ExportChoice>) => setChoice((c) => ({ ...c, ...patch }));
 
   useEffect(() => {
@@ -52,7 +59,26 @@ export function ExportDialog({ project, design, onClose }: { project: string; de
     }
   };
 
-  const rendered = choice.format === "png" || choice.format === "pdf";
+  useEffect(() => {
+    if (kind !== "prompt" || prompt !== null) return;
+    getJSON<{ prompt: string }>(`/api/projects/${project}/designs/${design}/handoff/prompt`)
+      .then((r) => setPrompt(r.prompt))
+      .catch((e: Error) => setError(e.message));
+  }, [kind, prompt, project, design]);
+
+  const copy = async () => {
+    if (prompt === null) return;
+    setError(null);
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setCopied(true);
+    } catch {
+      setError("The browser did not allow the copy. Select the text and copy it.");
+    }
+  };
+
+  const isPrompt = kind === "prompt";
+  const rendered = !isPrompt && (choice.format === "png" || choice.format === "pdf");
 
   return (
     <div className="dialog-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -70,14 +96,25 @@ export function ExportDialog({ project, design, onClose }: { project: string; de
           className="export-form"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!running) void start();
+            if (isPrompt) void copy();
+            else if (!running) void start();
           }}
         >
           <fieldset className="export-choices">
             <legend>Format</legend>
             {FORMATS.map((f) => (
               <label key={f.id} className="export-choice">
-                <input type="radio" name="format" checked={choice.format === f.id} onChange={() => set({ format: f.id })} />
+                <input
+                  type="radio"
+                  name="format"
+                  checked={kind === f.id}
+                  onChange={() => {
+                    setKind(f.id);
+                    setError(null);
+                    setCopied(false);
+                    if (f.id !== "prompt") set({ format: f.id });
+                  }}
+                />
                 <span>
                   <span className="export-choice-title">{f.title}</span>
                   <span className="muted">{f.text}</span>
@@ -86,7 +123,23 @@ export function ExportDialog({ project, design, onClose }: { project: string; de
             ))}
           </fieldset>
 
-          {!rendered && (
+          {isPrompt && (
+            <label className="export-field">
+              Prompt
+              <textarea
+                className="export-prompt"
+                value={prompt ?? "Loading…"}
+                readOnly={prompt === null}
+                rows={12}
+                onChange={(e) => {
+                  setPrompt(e.target.value);
+                  setCopied(false);
+                }}
+              />
+            </label>
+          )}
+
+          {!rendered && !isPrompt && (
             <label className="export-choice">
               <input type="checkbox" checked={choice.stripOids} onChange={(e) => set({ stripOids: e.target.checked })} />
               <span>
@@ -136,7 +189,15 @@ export function ExportDialog({ project, design, onClose }: { project: string; de
               <span className="notice-text">{error}</span>
             </div>
           )}
-          {done && (
+          {copied && (
+            <div className="export-result" role="status">
+              <p>
+                <Icon name="check" size={14} />
+                <span>Copied. Keep doi running while the agent works.</span>
+              </p>
+            </div>
+          )}
+          {done && !isPrompt && (
             <div className="export-result" role="status">
               <p>
                 <Icon name="check" size={14} />
@@ -171,9 +232,15 @@ export function ExportDialog({ project, design, onClose }: { project: string; de
             <button type="button" className="btn btn-secondary" onClick={onClose}>
               Close
             </button>
-            <button type="submit" className="btn btn-primary" disabled={running || (rendered && !frames)}>
-              {running ? "Exporting…" : "Export"}
-            </button>
+            {isPrompt ? (
+              <button type="submit" className="btn btn-primary" disabled={prompt === null}>
+                Copy prompt
+              </button>
+            ) : (
+              <button type="submit" className="btn btn-primary" disabled={running || (rendered && !frames)}>
+                {running ? "Exporting…" : "Export"}
+              </button>
+            )}
           </div>
         </form>
       </div>

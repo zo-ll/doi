@@ -12,7 +12,8 @@ import { uploadFile } from "../workspace/uploads.ts";
 import { deleteCommentRoute, getComments, patchComment, postComment } from "./comments.ts";
 import { getDesignSystem, importFromRepo, importFromScreenshots, putProjectDesignSystem } from "./design-systems.ts";
 import { getExport } from "./export.ts";
-import { getHandoff, postBundle } from "./handoff.ts";
+import { getHandoff, getPrompt, postBundle } from "./handoff.ts";
+import { handleMcp, MCP_PATH } from "../mcp/server.ts";
 import { getHistory, restoreVersion } from "./history.ts";
 import { getLayout, putLayout } from "./layout.ts";
 import { createVariantHandlers } from "./variants.ts";
@@ -228,6 +229,8 @@ export async function startServer(config: Config, options: { port?: number; deve
       "/api/projects/:project/designs/:design/variants/:set": { DELETE: (req) => variants.discard(req.params) },
       "/api/projects/:project/designs/:design/export": (req) => getExport(config.workspace, req, req.params),
       "/api/projects/:project/designs/:design/handoff": { GET: (req) => getHandoff(config.workspace, req.params) },
+      "/api/projects/:project/designs/:design/handoff/prompt": (req, srv) =>
+        getPrompt(config.workspace, req.params, `http://${HOSTNAME}:${srv.port}${MCP_PATH}`),
       "/api/projects/:project/designs/:design/handoff/bundle": { POST: (req) => postBundle(config.workspace, req, req.params) },
       "/api/projects/:project/designs/:design/history": (req) => getHistory(historyDeps, req.params),
       "/api/projects/:project/designs/:design/history/:sha/restore": { POST: (req) => restoreVersion(historyDeps, req.params) },
@@ -244,6 +247,7 @@ export async function startServer(config: Config, options: { port?: number; deve
         DELETE: (req) => deleteCommentRoute(commentDeps, req.params),
       },
       "/api/projects/:project/designs/:design/turns": { POST: (req, srv) => runTurnRequest(req, req.params, srv) },
+      [MCP_PATH]: (req) => handleMcp({ workspace: config.workspace }, req),
       "/__doi/bridge.js": () => new Response(bridge, { headers: { "content-type": "text/javascript" } }),
     }),
     fetch(req, srv) {
