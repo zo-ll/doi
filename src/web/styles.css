@@ -1298,3 +1298,20 @@ a:hover { color: var(--text); }
 .tweak-text { height: var(--control-h); font-size: var(--text-sm); }
 .tweak-range { width: 100%; accent-color: var(--accent); }
 .tweaks-foot { flex: none; display: flex; gap: var(--space-1-5); padding: var(--space-2-5) var(--space-3); border-top: 1px solid var(--line); }
+
+/* ---------- The app's code ---------- */
+
+.repo-mark { width: 10px; height: 10px; border: 1.5px solid currentColor; border-radius: 50%; position: relative; }
+.repo-mark::after { content: ""; position: absolute; left: 3px; top: 8px; width: 1.5px; height: 4px; background: currentColor; }
+.repo-dialog { width: min(640px, calc(100vw - 2 * var(--space-8))); height: min(640px, calc(100vh - 2 * var(--space-8))); }
+.repo-inner { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.repo-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4) var(--space-5); }
+.repo-intro { font-size: var(--text-control); line-height: var(--leading); color: var(--text-2); }
+.repo-linked { display: flex; align-items: center; gap: var(--space-2-5); padding: var(--space-2-5) var(--space-3); border: 1px solid var(--accent); border-radius: var(--radius-lg); background: var(--accent-soft); }
+.repo-linked-text { display: flex; flex-direction: column; gap: var(--space-0-5); min-width: 0; }
+.repo-linked-text .muted { font-size: var(--text-xs); }
+.repo-list { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.repo-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); }
+.repo-row + .repo-row { border-top: 1px solid var(--line); }
+.repo-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-0-5); font-size: var(--text-control); }
+.repo-row-text .muted { font-size: var(--text-meta); }

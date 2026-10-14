@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-10-14, after the UI rebuild (#110). Tests: 327 pass, 1 skip. M1, M2 and M3 are done. `bun check`: no errors.
+Last update: 2026-10-14, after the repo link (#112). Tests: 342 pass, 1 skip. M1, M2 and M3 are done. `bun check`: no errors.
 
 ## 1. What doi is
 
@@ -79,6 +79,7 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 | `src/web/App.tsx`, `src/web/components/` | The shell (#110): `TopBar` (breadcrumb, page picker, version, design system chip, Tweaks, Export, Hand off, model status, Usage, Settings, theme), `ProjectsNav` (drawer, ⌘P), `ChatPanel` (left), `Canvas` (tools V/C/H, toolbar, variants grid, history preview), `CommentsPanel` and `HistoryPanel` (right), dialogs `DesignSystemDialog` (⌘D), `ExportDialog` (⌘E), `HandoffDialog` (⌘⇧H), `SettingsDialog` (⌘,), `UsageDialog`, `Confirm`, and `TweaksPanel` (T) over the canvas. Panels collapse with ⌘[ and ⌘]; the state is in `localStorage` (`doi:panels`, `doi:theme`). `tokens.css` holds the UI kit colors (light, dark, `data-theme`); fonts are `@fontsource/ibm-plex-*`. Pure helpers with tests: `providers.ts` (status per task, short model names), `usage.ts`, `history.ts` (`versionKind`), `chat.ts`, `export.ts` |
 | `src/server/settings.ts`, `src/config.ts` | `GET /api/config` (no provider settings), `PUT /api/config/models` writes the [models] lines of config.toml (`withModels()`, comments stay) and changes the running config; `GET /api/usage` lists the token use of every answer. `[prices]` in config.toml: USD per 1M tokens per "provider:model" |
 | `src/workspace/tweaks.ts`, `src/server/tweaks.ts` | Tweaks (#65): controls from `tweaks.json` (system prompt v2 asks the model for it) or derived from the top-level `:root` variables of styles.css (colors, numbers with units). `GET/PUT …/tweaks`; PUT writes only top-level `:root` rules, takes the design lock and commits "Tweaks: …". The bridge takes `doi:vars` to set variables live |
+| `src/github/gh.ts`, `src/server/github.ts`, `src/generation/repo-context.ts`, `RepoDialog.tsx` | The app's code (#112): a project links one GitHub repo through the `gh` CLI only (`gh auth status` exit code, `gh repo list/view/clone`; never the token). A shallow clone lives in `<workspace>/.repos/<owner>/<repo>` (in `.git/info/exclude`), updated with fetch + reset; it goes when no project links it. `project.json` → `repo { name, commit, syncedAt }`. Routes: `GET /api/github/status`, `GET /api/github/repos`, `PUT/DELETE /api/projects/:p/repo`, `POST …/repo/sync`. Each turn and variant: `repoForTurn()` restores the clone (a model may have written in it) and adds a system part "# The app: owner/repo" with the file tree (secret-looking files left out, as in the repo scan); Claude Code gets the clone as `--add-dir` (read through `--restricted`), Codex reads the path, API models get the start and UI files (60k characters) |
 | Other routes of the rebuild | `GET …/pages` (HTML pages, index first), `GET /api/workspace` (path and uncommitted count), `ProjectSummary.decks` (index.html has `data-slide`), chat entries with `stats` (lines per file from `commitStats()`), turn body `model` ("provider:model", checked by `parseModelChoice()`), prompt route returns `url` |
 | `src/web/frame.ts` | `parseFrameMessage()`: checks each bridge message (the page runs its own scripts); `trackMessage()` |
 | `src/web/` | React UI (Bun HTML import, no Vite). All sizes and colors in `tokens.css`; only 1px hairlines are literal |
@@ -115,6 +116,8 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 - CLI backends (`editsFiles: true`) change the files in `GenerateRequest.cwd` themselves. Their `edit`/`write` events only report the change. **The edit applier must skip them.**
 
 ## 6. State and next steps
+
+**The app's code (#112).** A real check: `zo-ll/doi` linked through gh; a Haiku turn "Recreate the app's top bar" read TopBar.tsx and tokens.css from the clone and rebuilt it with the real labels (141k in, 96k cached, 10k out). Such turns read much code: watch the tokens.
 
 **UI rebuild done (#110, branch `ui/rebuild`).** One rewrite from the Claude Design project "doi" (read it with the `claude_design` MCP, project 92cf7e7c-022b-4930-9742-07aa3fea1ab1): shell, projects drawer, canvas tools, chat, comments, history, design systems, export, hand off, settings (#61), usage (#62), tweaks (#65). Each screen was checked in Chromium with screenshots. A real turn with `claude-code:claude-haiku-5-5` through the new chat streamed, showed the line counts and the tokens, and reloaded the frames (17k in, 1.3k out).
 

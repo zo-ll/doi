@@ -122,6 +122,7 @@ For more information, read the Bun API docs in `node_modules/bun-types/docs/**.m
 - Design iframes use `sandbox="allow-scripts"` without same-origin access. They talk to the app only through `postMessage`.
 - Vendor SDKs and agent CLIs are used only inside `src/providers/*`. CLI flags change between releases: check the CLI docs before you change a command line.
 - doi does not start coding agents for a handoff. Any agent reads a design through the MCP server at `/mcp` (`src/mcp/server.ts`), with the prompt from `src/handoff/prompt-v0.md`. Do not add code or settings for one agent.
+- GitHub only through the official `gh` CLI, inside `src/github/*`. doi never reads the gh token; `gh auth status` gives only its exit code.
 - Credentials: API keys come only from environment variables named in `config.toml` (`api_key_env`). Subscriptions go only through the official CLIs (`claude -p`, `codex exec`).
 - Never read, copy or store OAuth tokens or credential files of other apps (Claude Code, Codex, pi, OpenCode). Anthropic's terms forbid other apps to use Claude subscription credentials: https://code.claude.com/docs/en/legal-and-compliance
 - Status checks may ask a CLI for its login state, but must not return account details or secrets to the UI.

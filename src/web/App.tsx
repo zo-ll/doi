@@ -19,6 +19,7 @@ import { HandoffDialog } from "./components/HandoffDialog.tsx";
 import { SettingsDialog } from "./components/SettingsDialog.tsx";
 import { UsageDialog } from "./components/UsageDialog.tsx";
 import { TweaksPanel } from "./components/TweaksPanel.tsx";
+import { RepoDialog } from "./components/RepoDialog.tsx";
 import { ProjectsNav, type WorkspaceState } from "./components/ProjectsNav.tsx";
 import { MOD, TopBar, type DesignSystemChip } from "./components/TopBar.tsx";
 import { useHistory } from "./history.ts";
@@ -89,6 +90,7 @@ export function App() {
   const [panels, setPanels] = useState<Panels>(() => read(PANELS, isPanels) ?? { chat: true, side: true });
   const [sideTab, setSideTab] = useState<"comments" | "history">("comments");
   const [dsOpen, setDsOpen] = useState(false);
+  const [repoOpen, setRepoOpen] = useState(false);
   /** The open Export dialog and its first choice: "Hand off" opens it at the agent prompt. */
   const [exportOpen, setExportOpen] = useState<null | "file" | "handoff">(null);
   /** Comments the user marked "apply": they go with the next turn. */
@@ -280,6 +282,8 @@ export function App() {
         onNav={toggleNav}
         designSystem={dsChip}
         onDesignSystem={() => setDsOpen(true)}
+        repo={activeProject ? (activeProject.repo?.name ?? null) : undefined}
+        onRepo={() => setRepoOpen(true)}
         tweaksOpen={tweaksOpen}
         onTweaks={active ? () => setTweaksOpen((o) => !o) : undefined}
         onExport={active ? () => setExportOpen("file") : undefined}
@@ -302,6 +306,7 @@ export function App() {
           onClose={() => setExportOpen(null)}
         />
       )}
+      {repoOpen && activeProject && <RepoDialog project={activeProject} onChanged={retryProjects} onClose={() => setRepoOpen(false)} />}
       {dsOpen && activeProject && (
         <DesignSystemDialog
           project={activeProject}
@@ -366,6 +371,7 @@ export function App() {
                 variants.discard().catch(() => {});
               }}
               onCollapse={() => togglePanel("chat")}
+              repo={activeProject?.repo?.name ?? null}
               onOpenSettings={() => setScreen("settings")}
             />
           </aside>
