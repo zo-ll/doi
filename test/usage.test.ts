@@ -33,8 +33,8 @@ test("totals, groups and days in the range; subscriptions and local models have 
   expect(s.cost).toBeCloseTo(3);
   expect(s.unpriced).toBe(1);
   expect(s.days).toHaveLength(7);
-  expect(s.days.at(-1)).toEqual({ date: "2026-10-14", subscription: 1200, api: 0, local: 0 });
-  expect(s.days.find((d) => d.date === "2026-10-13")).toEqual({ date: "2026-10-13", subscription: 0, api: 1_000_020, local: 0 });
+  expect(s.days.at(-1)).toEqual({ date: "2026-10-14", subscription: 1200, api: 0, local: 0, unknown: 0 });
+  expect(s.days.find((d) => d.date === "2026-10-13")).toEqual({ date: "2026-10-13", subscription: 0, api: 1_000_020, local: 0, unknown: 0 });
   expect(s.rows.map((r) => [r.label, r.via, r.turns, r.billing, r.cost === null ? null : Math.round(r.cost)])).toEqual([
     ["big", "ANTHROPIC", 1, "api", 3],
     ["opus", "CLAUDE-CODE", 1, "subscription", null],
@@ -55,4 +55,11 @@ test("short counts", () => {
   expect(formatCount(2_410_000)).toBe("2.41M");
   expect(formatCount(618_400)).toBe("618k");
   expect(formatCount(950)).toBe("950");
+});
+
+test("a provider without a known source has no cost and is not an unpriced API turn", () => {
+  const s = summarize([e("2026-10-14T10:00:00Z", "mystery", "m", 100, 10)], () => "unknown", { "mystery:m": { input: 3, output: 15 } }, "model", 7, now);
+  expect([s.cost, s.unpriced]).toEqual([0, 0]);
+  expect(s.days.at(-1)).toMatchObject({ unknown: 110, api: 0 });
+  expect(s.rows[0]).toMatchObject({ billing: "unknown", cost: null });
 });

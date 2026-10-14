@@ -309,8 +309,10 @@ export function ChatPanel({
 
   // Variants take text only; images go with a normal turn.
   const variantsWithImages = count > 1 && images.length > 0;
+  // The variants route takes text only: applied comments would be lost.
+  const variantsWithComments = count > 1 && applied.length > 0;
   const hasInput = draft.trim().length > 0 || (applied.length > 0 && count === 1);
-  const canSend = hasInput && !disabled && !variantsOpen && !variantsWithImages;
+  const canSend = hasInput && !disabled && !variantsOpen && !variantsWithImages && !variantsWithComments;
   const modelProblem = current && (current.tone === "err" || current.tone === "warn") ? current : null;
   const turns = messages.filter((m) => m.kind === "user").length;
   const hasChips = selection !== null || applied.length > 0 || images.length > 0;
@@ -477,6 +479,11 @@ export function ChatPanel({
           {variantsWithImages && (
             <p className="field-error composer-error" role="alert">
               Variants do not take images. Remove the images, or make one design.
+            </p>
+          )}
+          {variantsWithComments && (
+            <p className="field-error composer-error" role="alert">
+              Variants do not take comments. Remove the comments, or make one design.
             </p>
           )}
           <textarea

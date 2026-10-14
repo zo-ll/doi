@@ -19,8 +19,8 @@ export function TweaksPanel({ active, revision, values, onChange, onSaved, onClo
   /** The live values, by variable name. */
   values: Record<string, string>;
   onChange: (values: Record<string, string>) => void;
-  /** The values are in styles.css now. */
-  onSaved: (commit: string | null) => void;
+  /** The values are in styles.css now; `commitError` when no version was made. */
+  onSaved: (commit: string | null, commitError?: string) => void;
   onClose: () => void;
 }) {
   const [tweaks, setTweaks] = useState<Tweaks | null>(null);
@@ -49,9 +49,9 @@ export function TweaksPanel({ active, revision, values, onChange, onSaved, onClo
     setBusy(true);
     setError(null);
     try {
-      const r = await sendJSON<{ commit: string | null; tweaks: Tweaks }>("PUT", tweaksUrl(active), { vars: values });
+      const r = await sendJSON<{ commit: string | null; commitError?: string; tweaks: Tweaks }>("PUT", tweaksUrl(active), { vars: values });
       setTweaks(r.tweaks);
-      onSaved(r.commit);
+      onSaved(r.commit, r.commitError);
     } catch (e) {
       setError((e as Error).message);
     } finally {

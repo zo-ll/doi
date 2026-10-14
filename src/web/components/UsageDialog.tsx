@@ -43,9 +43,10 @@ export function UsageDialog({ config, providers, projects, onClose }: {
   }, []);
 
   const sources = providers.state === "ready" ? providers.data : [];
+  // Without the provider status, a turn's billing is not known: no cost, and not "no price".
   const billing = (id: string): Billing => {
     const s = sources.find((p) => p.id === id)?.source;
-    return s === "cli" ? "subscription" : s === "local" ? "local" : "api";
+    return s === "cli" ? "subscription" : s === "local" ? "local" : s === "api_key" ? "api" : "unknown";
   };
   const summary = useMemo(
     () =>
@@ -57,8 +58,9 @@ export function UsageDialog({ config, providers, projects, onClose }: {
         : null,
     [entries, group, days, config.prices, sources, projects],
   );
-  const max = summary ? Math.max(1, ...summary.days.map((d) => d.subscription + d.api + d.local)) : 1;
+  const max = summary ? Math.max(1, ...summary.days.map((d) => d.subscription + d.api + d.local + d.unknown)) : 1;
   const hasLocal = !!summary?.days.some((d) => d.local > 0);
+  const hasUnknown = !!summary?.days.some((d) => d.unknown > 0);
 
   return (
     <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -126,12 +128,14 @@ export function UsageDialog({ config, providers, projects, onClose }: {
                 <span className="legend legend-sub">Subscription</span>
                 <span className="legend legend-api">API</span>
                 {hasLocal && <span className="legend legend-local">Local</span>}
+                {hasUnknown && <span className="legend legend-unknown">Unknown provider</span>}
               </div>
               <div className="usage-chart" role="img" aria-label="Tokens per day">
                 {summary.days.map((d) => {
-                  const total = d.subscription + d.api + d.local;
+                  const total = d.subscription + d.api + d.local + d.unknown;
                   return (
                     <div key={d.date} className="usage-day" title={`${shortDate(d.date)}: ${formatCount(total)} tokens`}>
+                      <span className="bar bar-unknown" style={{ height: `${(d.unknown / max) * 100}%` }} />
                       <span className="bar bar-local" style={{ height: `${(d.local / max) * 100}%` }} />
                       <span className="bar bar-api" style={{ height: `${(d.api / max) * 100}%` }} />
                       <span className="bar bar-sub" style={{ height: `${(d.subscription / max) * 100}%` }} />
@@ -170,7 +174,15 @@ export function UsageDialog({ config, providers, projects, onClose }: {
                         <td>{formatCount(r.output)}</td>
                         <td>{formatCount(r.cached)}</td>
                         <td className={r.cost === null ? "muted" : ""}>
-                          {r.cost !== null ? usd(r.cost) : r.billing === "subscription" ? "Subscription" : r.billing === "local" ? "Local" : r.billing === "mixed" ? "—" : "No price"}
+                          {r.cost !== null
+                            ? usd(r.cost)
+                            : r.billing === "subscription"
+                              ? "Subscription"
+                              : r.billing === "local"
+                                ? "Local"
+                                : r.billing === "api"
+                                  ? "No price"
+                                  : "—"}
                         </td>
                       </tr>
                     ))}

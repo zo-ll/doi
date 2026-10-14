@@ -3,8 +3,8 @@ import type { Price } from "../config.ts";
 import type { UsageEntry } from "../workspace/chat.ts";
 
 export type Group = "project" | "design" | "model" | "day";
-/** How a provider bills: a subscription through a CLI, an API key, or a local model. */
-export type Billing = "subscription" | "api" | "local";
+/** How a provider bills: a subscription through a CLI, an API key, a local model, or not known (no status). */
+export type Billing = "subscription" | "api" | "local" | "unknown";
 
 export interface UsageRow {
   key: string;
@@ -29,7 +29,7 @@ export interface UsageSummary {
   /** Turns of API models without a price in config.toml. */
   unpriced: number;
   /** One entry per day of the range, oldest first: tokens (input + output) by billing. */
-  days: { date: string; subscription: number; api: number; local: number }[];
+  days: { date: string; subscription: number; api: number; local: number; unknown: number }[];
   rows: UsageRow[];
 }
 
@@ -57,7 +57,7 @@ export function summarize(
   const list = entries.filter((e) => Date.parse(e.at) >= from && Date.parse(e.at) <= now);
   const sum: UsageSummary = { input: 0, output: 0, cached: 0, cost: 0, unpriced: 0, days: [], rows: [] };
   const rows = new Map<string, UsageRow>();
-  const perDay = new Map<string, { subscription: number; api: number; local: number }>();
+  const perDay = new Map<string, { subscription: number; api: number; local: number; unknown: number }>();
 
   for (const e of list) {
     const b = billing(e.provider);
@@ -70,7 +70,7 @@ export function summarize(
     else if (b === "api") sum.unpriced++;
 
     const d = dayOf(e.at);
-    const slot = perDay.get(d) ?? { subscription: 0, api: 0, local: 0 };
+    const slot = perDay.get(d) ?? { subscription: 0, api: 0, local: 0, unknown: 0 };
     slot[b] += e.inputTokens + e.outputTokens;
     perDay.set(d, slot);
 
@@ -97,7 +97,7 @@ export function summarize(
   const first = days === null ? (list.length ? Math.min(...list.map((e) => Date.parse(dayOf(e.at)))) : now) : now - (days - 1) * DAY;
   for (let t = Date.parse(new Date(first).toISOString().slice(0, 10)); t <= now; t += DAY) {
     const date = new Date(t).toISOString().slice(0, 10);
-    sum.days.push({ date, ...(perDay.get(date) ?? { subscription: 0, api: 0, local: 0 }) });
+    sum.days.push({ date, ...(perDay.get(date) ?? { subscription: 0, api: 0, local: 0, unknown: 0 }) });
   }
   sum.rows = [...rows.values()].sort((a, b) => (group === "day" ? b.key.localeCompare(a.key) : b.input + b.output - (a.input + a.output)));
   return sum;

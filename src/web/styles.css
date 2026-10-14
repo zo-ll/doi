@@ -1257,6 +1257,7 @@ a:hover { color: var(--text); }
 .legend-sub::before { background: var(--accent); }
 .legend-api::before { background: var(--text-3); }
 .legend-local::before { background: var(--warn); }
+.legend-unknown::before { background: var(--line-2); }
 .usage-chart { height: 120px; display: flex; align-items: flex-end; gap: 3px; border-bottom: 1px solid var(--line); }
 .usage-day { flex: 1; min-width: 2px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; }
 .usage-day:hover { background: var(--hover); }
@@ -1264,6 +1265,7 @@ a:hover { color: var(--text); }
 .bar-sub { background: var(--accent); }
 .bar-api { background: var(--text-3); }
 .bar-local { background: var(--warn); }
+.bar-unknown { background: var(--line-2); }
 .usage-axis { display: flex; justify-content: space-between; font: var(--text-xs) var(--font-mono); color: var(--text-3); }
 .usage-table { width: 100%; border-collapse: collapse; font-size: var(--text-control); }
 .usage-table th { padding: var(--space-2); border-bottom: 1px solid var(--line); font-size: var(--text-meta); font-weight: 400; color: var(--text-3); text-align: right; }

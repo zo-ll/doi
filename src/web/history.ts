@@ -63,13 +63,17 @@ export function useHistory(active: Active | null, revision: number) {
   };
 }
 
-export type VersionKind = "turn" | "pick" | "restore" | "rename" | "create";
+export type VersionKind = "turn" | "pick" | "restore" | "rename" | "create" | "tweak";
 
-/** What made a version, from its commit message (the messages doi writes itself). */
+/**
+ * What made a version, from its commit message. Only the exact forms that doi writes count,
+ * so a prompt that starts with "Restore " is still a turn.
+ */
 export function versionKind(message: string): VersionKind {
-  if (message.startsWith("Restore ")) return "restore";
-  if (message.startsWith("Pick variant ")) return "pick";
-  if (message.startsWith("Rename design ")) return "rename";
-  if (message.startsWith("Create design ") || message.startsWith("Create project ")) return "create";
+  if (/^Restore [0-9a-f]{7}: /.test(message)) return "restore";
+  if (/^Pick variant \d+: /.test(message)) return "pick";
+  if (/^Rename design [a-z0-9][a-z0-9-]* to [a-z0-9][a-z0-9-]*$/.test(message)) return "rename";
+  if (/^Create design [a-z0-9][a-z0-9-]*$/.test(message)) return "create";
+  if (/^Tweaks: --[A-Za-z0-9_-]+(, --[A-Za-z0-9_-]+)*$/.test(message)) return "tweak";
   return "turn";
 }

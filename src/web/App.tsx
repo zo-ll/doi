@@ -423,9 +423,15 @@ export function App() {
                   revision={revision}
                   values={liveVars}
                   onChange={setLiveVars}
-                  onSaved={() => {
+                  onSaved={(commit, commitError) => {
                     setLiveVars({});
-                    setToast(`Design updated · v${(versionCount ?? 0) + 1}`);
+                    setToast(
+                      commitError
+                        ? `Saved to styles.css, but no version was made: ${commitError}`
+                        : commit
+                          ? `Design updated · v${(versionCount ?? 0) + 1}`
+                          : "Saved to styles.css. Nothing changed.",
+                    );
                   }}
                   onClose={() => setTweaksOpen(false)}
                 />
