@@ -1,12 +1,14 @@
 import { Icon } from "./Icon.tsx";
 
-export function TopBar({ project, design, designSystem, onDesignSystem, onExport }: {
+export function TopBar({ project, design, designSystem, onDesignSystem, onExport, onHandoff }: {
   project: string | null;
   /** The project's design system; undefined without a project. */
   designSystem?: string | null;
   onDesignSystem?: () => void;
   /** Opens the export dialog; undefined without an open design. */
   onExport?: () => void;
+  /** Opens the export dialog at the agent prompt; undefined without an open design. */
+  onHandoff?: () => void;
   design: string | null;
 }) {
   return (
@@ -37,7 +39,12 @@ export function TopBar({ project, design, designSystem, onDesignSystem, onExport
             Export
           </button>
         )}
-        <button className="btn btn-secondary" disabled title="Handoff arrives in M4">
+        <button
+          className="btn btn-secondary"
+          onClick={onHandoff}
+          disabled={!onHandoff}
+          title="Give the design to a coding agent: a prompt for the doi MCP server, or a ZIP bundle"
+        >
           <Icon name="handoff" size={14} />
           Hand off
         </button>

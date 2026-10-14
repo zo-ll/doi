@@ -56,7 +56,8 @@ export function App() {
   const clearSelection = useCallback(() => setSelection(null), []);
   const [tab, setTab] = useState<"chat" | "comments" | "history">("chat");
   const [dsOpen, setDsOpen] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
+  /** The open Export dialog and its first choice: "Hand off" opens it at the agent prompt. */
+  const [exportOpen, setExportOpen] = useState<null | "file" | "handoff">(null);
   const [request, setRequest] = useState<CommentRequest | null>(null);
   const [running, setRunning] = useState(false);
   const requestKey = useRef(0);
@@ -133,10 +134,16 @@ export function App() {
         design={active?.design ?? null}
         designSystem={activeProject ? activeProject.designSystem : undefined}
         onDesignSystem={() => setDsOpen(true)}
-        onExport={active ? () => setExportOpen(true) : undefined}
+        onExport={active ? () => setExportOpen("file") : undefined}
+        onHandoff={active ? () => setExportOpen("handoff") : undefined}
       />
       {exportOpen && active && (
-        <ExportDialog project={active.project} design={active.design} onClose={() => setExportOpen(false)} />
+        <ExportDialog
+          project={active.project}
+          design={active.design}
+          initial={exportOpen === "handoff" ? "prompt" : "folder"}
+          onClose={() => setExportOpen(null)}
+        />
       )}
       {dsOpen && activeProject && (
         <DesignSystemDialog

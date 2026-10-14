@@ -1,31 +1,43 @@
 import { useEffect, useRef, useState } from "react";
 import { getJSON } from "../api.ts";
-import { exportUrl, fallbackName, runExport, type ExportChoice, type ExportFormat, type ExportReport } from "../export.ts";
+import { bundleRequest, exportUrl, fallbackName, runExport, type ExportChoice, type ExportFormat, type ExportReport } from "../export.ts";
 import type { Frame } from "../../workspace/frames.ts";
 import { Icon } from "./Icon.tsx";
 
-/** "prompt" is not a file: it is the text for a coding agent (#53, #54). */
-type Choice = ExportFormat | "prompt";
+/** "prompt" is the text for a coding agent (#53, #54); "bundle" is the handoff ZIP with HANDOFF.md (#49). */
+type Choice = ExportFormat | "prompt" | "bundle";
 
 const FORMATS: { id: Choice; title: string; text: string }[] = [
   { id: "folder", title: "Folder (.zip)", text: "All pages and files, with the design system files they link." },
   { id: "page", title: "Single HTML file", text: "index.html with its CSS, scripts, images and fonts inline. Links to other pages do not work." },
   { id: "png", title: "PNG", text: "A picture of one frame, or a ZIP with one picture per frame." },
   { id: "pdf", title: "PDF", text: "A deck gives one page per slide. Other designs give one page as wide as the frame and as high as the whole design." },
+  {
+    id: "bundle",
+    title: "Handoff bundle (.zip)",
+    text: "HANDOFF.md, the design files, screenshots and tokens.css, for an agent that cannot reach doi (a cloud agent) or for a person.",
+  },
   { id: "prompt", title: "Prompt for a coding agent", text: "Paste it into any agent in your repo. The agent reads the design through the doi MCP server while doi runs." },
 ];
 
 /** Export of the open design (#46, #47, #48): files, one HTML file, PNG or PDF, or the agent prompt. */
-export function ExportDialog({ project, design, onClose }: { project: string; design: string; onClose: () => void }) {
+export function ExportDialog({ project, design, initial = "folder", onClose }: {
+  project: string;
+  design: string;
+  /** The choice that is selected when the dialog opens. */
+  initial?: Choice;
+  onClose: () => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
-  const [choice, setChoice] = useState<ExportChoice>({ format: "folder", stripOids: false, frame: "all", scale: 2, fullPage: false });
+  const [choice, setChoice] = useState<ExportChoice>({ format: initial === "prompt" || initial === "bundle" ? "folder" : initial, stripOids: false, frame: "all", scale: 2, fullPage: false });
   const [frames, setFrames] = useState<Frame[] | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<(ExportReport & { file: string }) | null>(null);
-  const [kind, setKind] = useState<Choice>("folder");
+  const [kind, setKind] = useState<Choice>(initial);
   const [prompt, setPrompt] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [handoff, setHandoff] = useState<string | null>(null);
   const set = (patch: Partial<ExportChoice>) => setChoice((c) => ({ ...c, ...patch }));
 
   useEffect(() => {
@@ -66,6 +78,28 @@ export function ExportDialog({ project, design, onClose }: { project: string; de
       .catch((e: Error) => setError(e.message));
   }, [kind, prompt, project, design]);
 
+  useEffect(() => {
+    if (kind !== "bundle" || handoff !== null) return;
+    getJSON<{ markdown: string }>(`/api/projects/${project}/designs/${design}/handoff`)
+      .then((r) => setHandoff(r.markdown))
+      .catch((e: Error) => setError(e.message));
+  }, [kind, handoff, project, design]);
+
+  const downloadBundle = async () => {
+    if (handoff === null) return;
+    setRunning(true);
+    setError(null);
+    setDone(null);
+    try {
+      const { url, init } = bundleRequest(project, design, handoff);
+      setDone(await runExport(url, `${design}-handoff.zip`, init));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setRunning(false);
+    }
+  };
+
   const copy = async () => {
     if (prompt === null) return;
     setError(null);
@@ -78,7 +112,8 @@ export function ExportDialog({ project, design, onClose }: { project: string; de
   };
 
   const isPrompt = kind === "prompt";
-  const rendered = !isPrompt && (choice.format === "png" || choice.format === "pdf");
+  const isBundle = kind === "bundle";
+  const rendered = !isPrompt && !isBundle && (choice.format === "png" || choice.format === "pdf");
 
   return (
     <div className="dialog-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -97,7 +132,9 @@ export function ExportDialog({ project, design, onClose }: { project: string; de
           onSubmit={(e) => {
             e.preventDefault();
             if (isPrompt) void copy();
-            else if (!running) void start();
+            else if (running) return;
+            else if (isBundle) void downloadBundle();
+            else void start();
           }}
         >
           <fieldset className="export-choices">
@@ -112,7 +149,8 @@ export function ExportDialog({ project, design, onClose }: { project: string; de
                     setKind(f.id);
                     setError(null);
                     setCopied(false);
-                    if (f.id !== "prompt") set({ format: f.id });
+                    setDone(null);
+                    if (f.id !== "prompt" && f.id !== "bundle") set({ format: f.id });
                   }}
                 />
                 <span>
@@ -139,7 +177,23 @@ export function ExportDialog({ project, design, onClose }: { project: string; de
             </label>
           )}
 
-          {!rendered && !isPrompt && (
+          {isBundle && (
+            <label className="export-field">
+              HANDOFF.md
+              <textarea
+                className="export-prompt"
+                value={handoff ?? "Loading…"}
+                readOnly={handoff === null}
+                rows={12}
+                onChange={(e) => {
+                  setHandoff(e.target.value);
+                  setDone(null);
+                }}
+              />
+            </label>
+          )}
+
+          {!rendered && !isPrompt && !isBundle && (
             <label className="export-choice">
               <input type="checkbox" checked={choice.stripOids} onChange={(e) => set({ stripOids: e.target.checked })} />
               <span>
@@ -237,7 +291,11 @@ export function ExportDialog({ project, design, onClose }: { project: string; de
                 Copy prompt
               </button>
             ) : (
-              <button type="submit" className="btn btn-primary" disabled={running || (rendered && !frames)}>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={running || (rendered && !frames) || (isBundle && !handoff?.trim())}
+              >
                 {running ? "Exporting…" : "Export"}
               </button>
             )}
