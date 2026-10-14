@@ -78,3 +78,15 @@ describe("config.toml from the UI", () => {
     expect(parseConfig({}).prices).toEqual({});
   });
 });
+
+test("the [prices] table is replaced whole; other tables stay", async () => {
+  const { withPrices } = await import("../src/config.ts");
+  const text = 'port = 1\n\n[prices]\n"a:b" = { input = 1, output = 2 }\n\n[prices."c:d"]\ninput = 9\noutput = 9\n\n[models]\ngenerate = "codex:x"\n';
+  const out = withPrices(text, { "anthropic:m": { input: 3, output: 15, cached: 0.3 } });
+  expect(out).toContain('[models]\ngenerate = "codex:x"');
+  expect(out).not.toContain("a:b");
+  expect(out).not.toContain("c:d");
+  const parsed = parseConfig(Bun.TOML.parse(out) as Record<string, any>);
+  expect(parsed.prices).toEqual({ "anthropic:m": { input: 3, output: 15, cached: 0.3 } });
+  expect(withPrices(text, {})).not.toContain("[prices");
+});

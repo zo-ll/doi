@@ -1,5 +1,6 @@
 import { $ } from "bun";
 import { existsSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { chatFile } from "./chat.ts";
 import { designDir, designFile } from "./paths.ts";
@@ -175,4 +176,154 @@ export async function designFileAt(workspace: string, project: string, design: s
   if (!path) return null;
   const result = await $`git show ${`${sha}:${relPath(workspace, path)}`}`.cwd(workspace).quiet().nothrow();
   return result.exitCode === 0 ? new Uint8Array(result.stdout) : null;
+}
+
+/**
+ * The history of some paths as a `git fast-export` stream (#114): only the commits that touch
+ * them, and only their files. Null without git or without a commit.
+ */
+export async function exportHistory(workspace: string, paths: string[]): Promise<Uint8Array | null> {
+  if (!(await Bun.file(join(workspace, ".git", "HEAD")).exists())) return null;
+  return serial(async () => {
+    const head = await $`git rev-parse --verify --quiet HEAD`.cwd(workspace).quiet().nothrow();
+    if (head.exitCode !== 0) return null;
+    const r = await $`git fast-export --signed-tags=strip --tag-of-filtered-object=drop --reencode=yes --show-original-ids HEAD -- ${paths}`.cwd(workspace).quiet().nothrow();
+    if (r.exitCode !== 0) throw new Error(`git fast-export failed: ${r.stderr.toString().trim()}`);
+    return new Uint8Array(r.stdout);
+  });
+}
+
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+
+/**
+ * Rewrites a fast-export stream for an import: the branch becomes `ref`, and path prefixes
+ * change for renamed projects and design systems (`projects/a/` → `projects/a-2/`); a prefix
+ * renamed to null is dropped. The stream is parsed: `data` blocks (file contents, messages)
+ * are copied byte for byte.
+ */
+export function rewriteStream(stream: Uint8Array, ref: string, renames: [from: string, to: string | null][]): Uint8Array {
+  const out: Uint8Array[] = [];
+  const rename = (path: string): string | null => {
+    for (const [from, to] of renames) if (path.startsWith(from)) return to === null ? null : to + path.slice(from.length);
+    return path;
+  };
+  /** A path field: plain, or C-quoted. Our prefixes are plain ASCII, so the quoted form starts the same. */
+  const renamePath = (field: string): string | null => {
+    const quoted = field.startsWith('"');
+    const p = rename(quoted ? field.slice(1) : field);
+    return p === null ? null : quoted ? `"${p}` : p;
+  };
+  let i = 0;
+  while (i < stream.length) {
+    let end = stream.indexOf(10, i);
+    if (end < 0) end = stream.length;
+    const line = dec.decode(stream.subarray(i, end));
+    const next = end + 1;
+    if (line.startsWith("data ")) {
+      const size = Number(line.slice(5));
+      if (!Number.isInteger(size) || size < 0) throw new Error("The history stream is broken (data).");
+      out.push(stream.subarray(i, Math.min(stream.length, next + size)));
+      i = next + size;
+      continue;
+    }
+    let text: string | null = line;
+    if (/^(commit|reset) /.test(line)) text = `${line.split(" ")[0]} ${ref}`;
+    else if (line.startsWith("M ")) {
+      const [m, mode, dataref, ...rest] = line.split(" ");
+      const path = renamePath(rest.join(" "));
+      text = path === null ? null : [m, mode, dataref, path].join(" ");
+    } else if (line.startsWith("D ")) {
+      const path = renamePath(line.slice(2));
+      text = path === null ? null : `D ${path}`;
+    }
+    if (text !== null) out.push(enc.encode(text), new Uint8Array([10]));
+    i = next;
+  }
+  const total = out.reduce((n, b) => n + b.length, 0);
+  const all = new Uint8Array(total);
+  let at = 0;
+  for (const b of out) {
+    all.set(b, at);
+    at += b.length;
+  }
+  return all;
+}
+
+/** The commit marks of a fast-export stream with `--show-original-ids`: mark → the commit id it had. */
+export function originalIds(stream: Uint8Array): Map<string, string> {
+  const out = new Map<string, string>();
+  let inCommit = false;
+  let mark: string | null = null;
+  let i = 0;
+  while (i < stream.length) {
+    let end = stream.indexOf(10, i);
+    if (end < 0) end = stream.length;
+    const line = dec.decode(stream.subarray(i, end));
+    i = end + 1;
+    if (line.startsWith("data ")) {
+      i += Number(line.slice(5)) || 0; // file text or a message: never read as commands
+      inCommit = false;
+      continue;
+    }
+    if (line.startsWith("commit ")) {
+      inCommit = true;
+      mark = null;
+    } else if (inCommit && line.startsWith("mark ")) mark = line.slice(5);
+    else if (inCommit && line.startsWith("original-oid ") && mark) out.set(mark, line.slice(13));
+  }
+  return out;
+}
+
+export interface ImportedHistory {
+  /** The workspace HEAD after the import. */
+  head: string;
+  /** Old commit id → new commit id, for the commit lines of chat.jsonl. */
+  ids: Map<string, string>;
+}
+
+/**
+ * Adds a history stream to the workspace: `git fast-import` into a temporary ref, then a merge
+ * of that unrelated history, so `git log -- <path>` finds the imported commits. The paths must
+ * be new in the workspace. Returns null for a stream without commits.
+ */
+export async function importHistory(
+  workspace: string,
+  stream: Uint8Array,
+  renames: [string, string | null][],
+  message: string,
+): Promise<ImportedHistory | null> {
+  if (!stream.length) return null;
+  const ref = `refs/doi-import/${crypto.randomUUID()}`;
+  const marks = join(workspace, ".git", `doi-import-${crypto.randomUUID()}.marks`);
+  return serial(async () => {
+    const proc = Bun.spawn(["git", "fast-import", "--quiet", `--export-marks=${marks}`], { cwd: workspace, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+    proc.stdin.write(rewriteStream(stream, ref, renames));
+    await proc.stdin.end();
+    const [code, err] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+    try {
+      if (code !== 0) throw new Error(`git fast-import failed: ${err.trim().split("\n").at(-1)}`);
+      const has = await $`git rev-parse --verify --quiet ${ref}`.cwd(workspace).quiet().nothrow();
+      if (has.exitCode !== 0) return null; // no commits in the stream
+      const head = await $`git rev-parse --verify --quiet HEAD`.cwd(workspace).quiet().nothrow();
+      if (head.exitCode !== 0) {
+        // A workspace without a commit: the import is its first history.
+        await git(workspace, ["reset", "--quiet", ref]);
+        await git(workspace, ["checkout", "--quiet", "--", "."]);
+      } else {
+        await git(workspace, ["merge", "--quiet", "--allow-unrelated-histories", "--no-edit", "-m", message, ref]);
+      }
+      const original = originalIds(stream);
+      const ids = new Map<string, string>();
+      for (const line of (await Bun.file(marks).text().catch(() => "")).split("\n")) {
+        const [mark, sha] = line.split(" ");
+        const old = mark ? original.get(mark) : undefined;
+        if (old && sha) ids.set(old, sha);
+      }
+      return { head: (await git(workspace, ["rev-parse", "HEAD"])).trim(), ids };
+    } finally {
+      await $`git update-ref -d ${ref}`.cwd(workspace).quiet().nothrow();
+      await rm(marks, { force: true });
+    }
+  });
 }

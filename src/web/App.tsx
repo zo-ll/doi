@@ -20,6 +20,7 @@ import { SettingsDialog } from "./components/SettingsDialog.tsx";
 import { UsageDialog } from "./components/UsageDialog.tsx";
 import { TweaksPanel } from "./components/TweaksPanel.tsx";
 import { RepoDialog } from "./components/RepoDialog.tsx";
+import { ExportArchiveDialog, ImportArchiveDialog } from "./components/ArchiveDialogs.tsx";
 import { ProjectsNav, type WorkspaceState } from "./components/ProjectsNav.tsx";
 import { MOD, TopBar, type DesignSystemChip } from "./components/TopBar.tsx";
 import { useHistory } from "./history.ts";
@@ -91,6 +92,10 @@ export function App() {
   const [sideTab, setSideTab] = useState<"comments" | "history">("comments");
   const [dsOpen, setDsOpen] = useState(false);
   const [repoOpen, setRepoOpen] = useState(false);
+  /** The export dialog for one project or the workspace (#114). */
+  const [archive, setArchive] = useState<null | { kind: "project"; project: string } | { kind: "workspace" }>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const importInput = useRef<HTMLInputElement>(null);
   /** The open Export dialog and its first choice: "Hand off" opens it at the agent prompt. */
   const [exportOpen, setExportOpen] = useState<null | "file" | "handoff">(null);
   /** Comments the user marked "apply": they go with the next turn. */
@@ -306,6 +311,57 @@ export function App() {
           onClose={() => setExportOpen(null)}
         />
       )}
+      <input
+        ref={importInput}
+        type="file"
+        accept=".zip,application/zip"
+        className="visually-hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (f) {
+            setScreen(null); // the import dialog must not open under Settings
+            setImportFile(f);
+          }
+        }}
+      />
+      {archive && (
+        <ExportArchiveDialog
+          kind={archive.kind}
+          project={archive.kind === "project" ? archive.project : undefined}
+          projectName={archive.kind === "project" ? projects.state === "ready" ? projects.data.find((p) => p.id === archive.project)?.name : undefined : undefined}
+          ui={{ theme: themeChoice, panels, lastDesign: active }}
+          onClose={() => setArchive(null)}
+        />
+      )}
+      {importFile && (
+        <ImportArchiveDialog
+          file={importFile}
+          onClose={() => setImportFile(null)}
+          onImported={(r, ui) => {
+            setImportFile(null);
+            setScreen(null);
+            setNavOpen(false);
+            if (r.settingsApplied) retryConfig();
+            if (ui) {
+              chooseTheme(ui.theme);
+              if (ui.panels) {
+                setPanels(ui.panels);
+                write(PANELS, ui.panels);
+              }
+            }
+            // Open the imported design: its last design when the preferences came along, else the first one.
+            const to = (id: string) => r.projects.find((p) => p.from === id)?.to;
+            const last = ui?.lastDesign && to(ui.lastDesign.project) ? { project: to(ui.lastDesign.project)!, design: ui.lastDesign.design } : null;
+            const first = r.manifest.projects.find((p) => p.designs.length);
+            const next = last ?? (first ? { project: to(first.id)!, design: first.designs[0]! } : null);
+            if (next) open(next);
+            retryProjects();
+            retryWorkspace();
+            setToast(`Imported ${r.projects.length === 1 ? r.projects[0]!.name : `${r.projects.length} projects`}${r.history ? " with history" : ""}${r.settingsError ? `. Settings not applied: ${r.settingsError}` : ""}`);
+          }}
+        />
+      )}
       {repoOpen && activeProject && <RepoDialog project={activeProject} onChanged={retryProjects} onClose={() => setRepoOpen(false)} />}
       {dsOpen && activeProject && (
         <DesignSystemDialog
@@ -345,6 +401,11 @@ export function App() {
           onRecheck={retryProviders}
           onSaved={retryConfig}
           onClose={() => setScreen(null)}
+          onExportWorkspace={() => {
+            setScreen(null);
+            setArchive({ kind: "workspace" });
+          }}
+          onImport={() => importInput.current?.click()}
         />
       )}
       {screen === "usage" && config.state === "ready" && (
@@ -386,6 +447,14 @@ export function App() {
             onRetry={retryProjects}
             onChanged={onProjectsChanged}
             onClose={() => setNavOpen(false)}
+            onExport={(project) => {
+              setNavOpen(false);
+              setArchive({ kind: "project", project });
+            }}
+            onImport={() => {
+              setNavOpen(false);
+              importInput.current?.click();
+            }}
           />
         )}
 

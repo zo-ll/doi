@@ -31,6 +31,7 @@ The first run creates `./workspace` with a sample design.
 - Design systems (⌘D / Ctrl+D) come from a repo or from screenshots.
 - Export (⌘E) gives a folder, one HTML file, PNG or PDF. Hand off (⌘⇧H) gives a prompt for any coding agent, which reads the design through the MCP server at `/mcp`, or a ZIP bundle.
 - Settings (⌘,) chooses the model per task and writes it to `config.toml`. Usage shows tokens and estimated cost.
+- Export a project (projects drawer → Export) or the whole workspace (Settings → Workspace) to one `.doi.zip` file, with its version history, and import it in any doi workspace. The file can also carry the model choice, the prices and the UI preferences.
 - Link the app's GitHub repo to a project (the chip next to the design system; needs the `gh` CLI, logged in). The model then reads the app's code, so you can ask "Recreate the settings page".
 
 All shortcuts are in Settings → Shortcuts.
