@@ -15,6 +15,7 @@ import { getExport } from "./export.ts";
 import { getHandoff, getPrompt, postBundle } from "./handoff.ts";
 import { configView, getUsage, putModels } from "./settings.ts";
 import { getTweaks, putTweaks } from "./tweaks.ts";
+import { MAX_IMPORT_BYTES, postExport, postImport, postImportInspect } from "./archive.ts";
 import { deleteProjectRepo, getGithubRepos, getGithubStatus, putProjectRepo, syncProjectRepo } from "./github.ts";
 import { excludeClones } from "../github/gh.ts";
 import { handleMcp, MCP_PATH } from "../mcp/server.ts";
@@ -199,12 +200,16 @@ export async function startServer(config: Config, options: { port?: number; deve
   const server: Bun.Server<unknown> = Bun.serve({
     port: options.port ?? config.port,
     hostname: HOSTNAME,
+    maxRequestBodySize: MAX_IMPORT_BYTES,
     routes: guardRoutes({
       "/": index,
       "/api/health": () => Response.json({ ok: true }),
       "/api/config": () => Response.json(configView(config)),
       "/api/config/models": { PUT: (req) => putModels(config, req) },
       "/api/usage": () => getUsage(config),
+      "/api/export": { POST: (req) => postExport({ config, locks }, req) },
+      "/api/import/inspect": { POST: (req) => postImportInspect({ config, locks }, req) },
+      "/api/import": { POST: (req) => postImport({ config, locks }, req) },
       "/api/github/status": () => getGithubStatus(githubDeps),
       "/api/github/repos": () => getGithubRepos(githubDeps),
       "/api/projects/:project/repo": {

@@ -55,6 +55,10 @@ export function checkRequest(req: Request, port: number): Response | null {
   const length = req.headers.get("content-length");
   const hasBody = length !== null ? Number(length) > 0 : req.body !== null;
   const type = req.headers.get("content-type") ?? "";
-  if (hasBody && !/^application\/json\b/i.test(type)) return fail(415, "The body must be application/json.");
+  // An import file is a ZIP. A plain form cannot send that type, so it keeps the same protection.
+  const zipAllowed = url.pathname === "/api/import" || url.pathname === "/api/import/inspect";
+  if (hasBody && !/^application\/json\b/i.test(type) && !(zipAllowed && /^application\/zip\b/i.test(type))) {
+    return fail(415, zipAllowed ? "The body must be application/zip." : "The body must be application/json.");
+  }
   return null;
 }

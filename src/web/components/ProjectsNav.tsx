@@ -82,7 +82,7 @@ function InlineInput({ initial, label, placeholder, project, onSubmit, onCancel 
 }
 
 /** The projects drawer (⌘P): it opens over the chat, so navigation never takes canvas width. */
-export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onChanged, onClose }: {
+export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onChanged, onClose, onExport, onImport }: {
   projects: Load<ProjectSummary[]>;
   active: Active | null;
   workspace: Load<WorkspaceState>;
@@ -91,6 +91,10 @@ export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onCh
   /** The project list changed; `open` is the design to open next, if any. */
   onChanged: (open?: Active) => void;
   onClose: () => void;
+  /** Export one project to a file. */
+  onExport: (project: string) => void;
+  /** Pick an export file to import. */
+  onImport: () => void;
 }) {
   const [editing, setEditing] = useState<Editing | null>(null);
   // Projects start open; the user can fold them.
@@ -226,6 +230,9 @@ export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onCh
                     >
                       {p.name}
                     </span>
+                    <button className="btn btn-ghost btn-sm nav-export" onClick={() => onExport(p.id)} title={`Export ${p.name} to a file`}>
+                      Export
+                    </button>
                     <span className="nav-count">{p.designs.length}</span>
                   </div>
                 )}
@@ -295,6 +302,9 @@ export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onCh
           <div className="nav-footer">
             <div className="nav-footer-head">
               <span>Workspace</span>
+              <button className="link-btn" onClick={onImport} title="Import a project or a workspace from an export file">
+                Import…
+              </button>
               <span className="status">
                 <span className={`dot ${workspace.data.changes === null ? "" : workspace.data.changes === 0 ? "dot-ok" : "dot-warn"}`} />
                 {workspace.data.changes === null

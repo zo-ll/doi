@@ -33,7 +33,7 @@ const SHORTCUTS: [string, string][] = [
 ];
 
 /** Settings (⌘,): the model per task (#61), the theme, the workspace and the shortcuts. */
-export function SettingsDialog({ config, providers, workspace, themeChoice, onTheme, onRecheck, onSaved, onClose }: {
+export function SettingsDialog({ config, providers, workspace, themeChoice, onTheme, onRecheck, onSaved, onClose, onExportWorkspace, onImport }: {
   config: AppConfig;
   providers: Load<ProviderStatus[]>;
   workspace: Load<WorkspaceState>;
@@ -44,6 +44,8 @@ export function SettingsDialog({ config, providers, workspace, themeChoice, onTh
   /** The model choice was saved; the app loads the config again. */
   onSaved: () => void;
   onClose: () => void;
+  onExportWorkspace: () => void;
+  onImport: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [section, setSection] = useState<Section>("models");
@@ -230,6 +232,18 @@ export function SettingsDialog({ config, providers, workspace, themeChoice, onTh
             )}
 
             {section === "workspace" && (
+              <>
+              <div className="settings-actions">
+                <span className="settings-note spacer">
+                  doi keeps your work in the workspace folder. Export a file to move it to another computer, keep a backup, or share it.
+                </span>
+                <button className="btn btn-secondary" onClick={onImport}>
+                  Import…
+                </button>
+                <button className="btn btn-primary" onClick={onExportWorkspace}>
+                  Export the workspace…
+                </button>
+              </div>
               <dl className="settings-facts">
                 <dt>Workspace</dt>
                 <dd className="mono">{workspace.state === "ready" ? workspace.data.path : config.workspace}</dd>
@@ -250,6 +264,7 @@ export function SettingsDialog({ config, providers, workspace, themeChoice, onTh
                 <dt>Prices</dt>
                 <dd>{Object.keys(config.prices).length ? `${Object.keys(config.prices).length} models in [prices]` : "None. Add a [prices] table to config.toml for cost estimates."}</dd>
               </dl>
+              </>
             )}
 
             {section === "shortcuts" && (

@@ -1315,3 +1315,16 @@ a:hover { color: var(--text); }
 .repo-row + .repo-row { border-top: 1px solid var(--line); }
 .repo-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-0-5); font-size: var(--text-control); }
 .repo-row-text .muted { font-size: var(--text-meta); }
+
+/* ---------- Export and import of projects ---------- */
+
+.nav-export { opacity: 0; }
+.nav-row:hover .nav-export, .nav-export:focus-visible { opacity: 1; }
+.archive-dialog { width: min(560px, calc(100vw - 2 * var(--space-8))); }
+.archive-inner { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.archive-body { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4) var(--space-5); max-height: 60vh; overflow: auto; }
+.archive-list { display: flex; flex-direction: column; gap: var(--space-1-5); padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-lg); font-size: var(--text-control); }
+.archive-list h4 { margin: 0; font-size: var(--text-meta); font-weight: 400; color: var(--text-3); }
+.archive-list h4 + p, .archive-list p + h4 { margin-top: var(--space-1); }
+.archive-list p { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: baseline; }
+.archive-list .mono { font-size: var(--text-xs); }

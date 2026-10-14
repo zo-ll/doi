@@ -162,6 +162,27 @@ export function withModels(text: string, models: Record<ModelTask, ModelRef>): s
   return lines.join("\n");
 }
 
+/**
+ * Replaces the [prices] table of a config.toml text (and any [prices.…] tables) with these
+ * prices. Other lines stay as they are. No prices: the table goes.
+ */
+export function withPrices(text: string, prices: Record<string, Price>): string {
+  const lines = text.split("\n");
+  const kept: string[] = [];
+  let inPrices = false;
+  for (const line of lines) {
+    const header = /^\s*\[([^\]]+)\]\s*(#.*)?$/.exec(line);
+    if (header) inPrices = header[1]!.trim() === "prices" || header[1]!.trim().startsWith("prices.");
+    if (!inPrices) kept.push(line);
+  }
+  const body = kept.join("\n").replace(/\s*$/, "");
+  const entries = Object.entries(prices);
+  if (!entries.length) return `${body}\n`;
+  const row = ([ref, p]: [string, Price]) =>
+    `${JSON.stringify(ref)} = { input = ${p.input}, output = ${p.output}${p.cached !== undefined ? `, cached = ${p.cached}` : ""} }`;
+  return `${body}${body ? "\n\n" : ""}[prices]\n${entries.map(row).join("\n")}\n`;
+}
+
 /** Loads config.toml from the current directory. A missing file gives the defaults. */
 export async function loadConfig(path = "config.toml"): Promise<Config> {
   const file = Bun.file(path);

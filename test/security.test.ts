@@ -37,6 +37,13 @@ describe("request checks", () => {
     // A "simple" cross-site request has no JSON type.
     expect(status(req("/api/projects", { method: "POST", body, headers: { "content-type": "text/plain" } }))).toBe(415);
     expect(status(req("/api/projects", { method: "POST", body: "x" }))).toBe(415);
+    // A ZIP body only on the import routes; a form post stays refused there too.
+    const zip = { "content-type": "application/zip" };
+    expect(status(req("/api/import", { method: "POST", body: "PK", headers: zip }))).toBeNull();
+    expect(status(req("/api/import/inspect", { method: "POST", body: "PK", headers: zip }))).toBeNull();
+    expect(status(req("/api/projects", { method: "POST", body: "PK", headers: zip }))).toBe(415);
+    expect(status(req("/api/import", { method: "POST", body: "x", headers: { "content-type": "text/plain" } }))).toBe(415);
+    expect(status(req("/api/import", { method: "POST", body: "PK", headers: { ...zip, origin: "https://evil.example" } }))).toBe(403);
     // A POST without a body (restore) needs no type.
     expect(status(req("/api/projects/p/designs/d/history/abc1234/restore", { method: "POST" }))).toBeNull();
     // Reads are not refused for their Origin: without CORS, another site cannot read the answer.
