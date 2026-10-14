@@ -30,6 +30,8 @@ async function source() {
   const home = join(ws, "projects/shop/designs/home");
   await Bun.write(join(ws, "projects/shop/project.json"), JSON.stringify({ name: "The Shop", designSystem: "brand" }));
   await Bun.write(join(ws, "design-systems/brand/tokens.css"), ":root { --accent: #c00; }");
+  await Bun.write(join(ws, "design-systems/brand/components.css"), '@import "/ds/brand/tokens.css";');
+  await Bun.write(join(ws, "projects/shop/designs/home/styles.css"), '@import "/ds/brand/tokens.css";\nh1 { color: var(--accent); }');
   await Bun.write(join(home, "index.html"), '<link rel="stylesheet" href="/ds/brand/tokens.css"><h1 data-oid="t">One</h1>');
   await Bun.write(join(ws, "projects/blog/project.json"), JSON.stringify({ name: "Blog" }));
   await Bun.write(join(ws, "projects/blog/designs/home/index.html"), "<p>blog</p>");
@@ -67,6 +69,8 @@ test("a project moves to a workspace that has a 'shop' and another 'brand': new 
   expect(shop2).toMatchObject({ name: "The Shop", designSystem: "brand-2", designs: ["home"] });
   const dir = join(dst, "projects/shop-2/designs/home");
   expect(await Bun.file(join(dir, "index.html")).text()).toContain('href="/ds/brand-2/tokens.css"');
+  expect(await Bun.file(join(dir, "styles.css")).text()).toStartWith('@import "/ds/brand-2/tokens.css";');
+  expect(await Bun.file(join(dst, "design-systems/brand-2/components.css")).text()).toBe('@import "/ds/brand-2/tokens.css";');
   expect(await Bun.file(join(dir, ".comments.json")).text()).toContain("Bigger");
   expect(await Bun.file(join(dir, "draft.css")).text()).toBe("/* not committed yet */");
   expect(await Bun.file(join(dst, "design-systems/brand-2/tokens.css")).text()).toContain("#c00");
@@ -106,5 +110,8 @@ test("bad files are refused before anything is written", async () => {
   await expect(importArchive(dst, zip([f("manifest.json", JSON.stringify({ ...manifest, version: 9 }))]))).rejects.toThrow("newer doi");
   await expect(importArchive(dst, zip([f("manifest.json", JSON.stringify(manifest)), f("files/projects/other/x", "x")]))).rejects.toThrow("unexpected entry");
   await expect(importArchive(dst, zip([f("manifest.json", JSON.stringify({ ...manifest, projects: [{ id: "../up", name: "x", designs: [] }] }))]))).rejects.toThrow("bad project");
+  for (const designs of [undefined, "home", ["../x"], [3]]) {
+    await expect(importArchive(dst, zip([f("manifest.json", JSON.stringify({ ...manifest, projects: [{ id: "p", name: "P", designs }] }))]))).rejects.toThrow("bad project");
+  }
   expect(await Bun.file(join(dst, "projects")).exists()).toBe(false);
 });

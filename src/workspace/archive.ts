@@ -130,7 +130,12 @@ export function readArchive(bytes: Uint8Array): { manifest: Manifest; entries: Z
   if (m?.format !== ARCHIVE_FORMAT) throw new ArchiveError("This is not a doi export.");
   if (m.version > ARCHIVE_VERSION) throw new ArchiveError(`This file is from a newer doi (format ${m.version}). Update doi to import it.`);
   if (m.kind !== "project" && m.kind !== "workspace") throw new ArchiveError("manifest.json has an unknown kind.");
-  if (!Array.isArray(m.projects) || !m.projects.every((p) => NAME.test(p?.id) && typeof p.name === "string")) throw new ArchiveError("manifest.json lists a bad project.");
+  if (
+    !Array.isArray(m.projects) ||
+    !m.projects.every((p) => NAME.test(p?.id) && typeof p.name === "string" && Array.isArray(p.designs) && p.designs.every((d) => typeof d === "string" && NAME.test(d)))
+  ) {
+    throw new ArchiveError("manifest.json lists a bad project.");
+  }
   if (!Array.isArray(m.designSystems) || !m.designSystems.every((d) => typeof d === "string" && NAME.test(d))) throw new ArchiveError("manifest.json lists a bad design system.");
   const ids = new Set(m.projects.map((p) => p.id));
   const systems = new Set(m.designSystems);
@@ -240,6 +245,7 @@ export async function importArchive(workspace: string, bytes: Uint8Array): Promi
     const rel = rest.join("/");
     let data: Uint8Array = e.data;
     if (kind === "projects") data = rewriteProjectFile(rel, data, plan, ids, plan.projects.find((p) => p.from === name));
+    data = rewriteDsLinks(rel, data, plan);
     await Bun.write(join(workspace, root, rel), data);
     if (!written.has(root)) written.set(root, new Set());
     written.get(root)!.add(rel);
@@ -303,10 +309,21 @@ function rewriteProjectFile(
     });
     return utf8.encode(lines.join("\n"));
   }
-  if (/\.html?$/i.test(rel) && renamed.length) {
-    let text = dec.decode(data);
-    for (const d of renamed) text = text.split(`/ds/${d.from}/`).join(`/ds/${d.to}/`);
-    return utf8.encode(text);
-  }
   return data;
+}
+
+/** Files that can link a design system by its URL: pages, stylesheets, scripts, SVG. */
+const LINKS_DS = /\.(html?|css|m?js|svg)$/i;
+
+/**
+ * A renamed design system (brand → brand-2) moves to /ds/brand-2/: every page, stylesheet and
+ * script of the imported projects and design systems links it there. The version history keeps
+ * the old links: an old version restored after such an import links the old name.
+ */
+function rewriteDsLinks(rel: string, data: Uint8Array, plan: ImportPlan): Uint8Array {
+  const renamed = plan.designSystems.filter((d) => d.to !== d.from);
+  if (!renamed.length || !LINKS_DS.test(rel)) return data;
+  let text = dec.decode(data);
+  for (const d of renamed) text = text.split(`/ds/${d.from}/`).join(`/ds/${d.to}/`);
+  return utf8.encode(text);
 }
