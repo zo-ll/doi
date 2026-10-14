@@ -15,8 +15,11 @@ function stored(): Theme | null {
 
 const systemTheme = (): Theme => (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 
-/** The theme in use, and a toggle that stores the other one. */
-export function useTheme(): [Theme, () => void] {
+/** The stored choice: a theme, or null to follow the system. */
+export type ThemeChoice = Theme | null;
+
+/** The theme in use, a toggle that stores the other one, and the choice with its setter. */
+export function useTheme(): [Theme, () => void, ThemeChoice, (c: ThemeChoice) => void] {
   const [choice, setChoice] = useState<Theme | null>(stored);
   const [system, setSystem] = useState<Theme>(systemTheme);
 
@@ -33,14 +36,15 @@ export function useTheme(): [Theme, () => void] {
   }, [choice]);
 
   const theme = choice ?? system;
-  const toggle = useCallback(() => {
-    const next: Theme = theme === "dark" ? "light" : "dark";
+  const choose = useCallback((next: ThemeChoice) => {
     setChoice(next);
     try {
-      localStorage.setItem(KEY, next);
+      if (next) localStorage.setItem(KEY, next);
+      else localStorage.removeItem(KEY);
     } catch {
       // the choice lasts until the page reloads
     }
-  }, [theme]);
-  return [theme, toggle];
+  }, []);
+  const toggle = useCallback(() => choose(theme === "dark" ? "light" : "dark"), [theme, choose]);
+  return [theme, toggle, choice, choose];
 }

@@ -13,6 +13,7 @@ import { deleteCommentRoute, getComments, patchComment, postComment } from "./co
 import { getDesignSystem, importFromRepo, importFromScreenshots, putProjectDesignSystem } from "./design-systems.ts";
 import { getExport } from "./export.ts";
 import { getHandoff, getPrompt, postBundle } from "./handoff.ts";
+import { configView, getUsage, putModels } from "./settings.ts";
 import { handleMcp, MCP_PATH } from "../mcp/server.ts";
 import { getHistory, restoreVersion } from "./history.ts";
 import { getLayout, putLayout } from "./layout.ts";
@@ -194,8 +195,9 @@ export async function startServer(config: Config, options: { port?: number; deve
     routes: guardRoutes({
       "/": index,
       "/api/health": () => Response.json({ ok: true }),
-      "/api/config": () =>
-        Response.json({ models: config.models, workspace: config.workspace, editorUrl: config.editorUrl }),
+      "/api/config": () => Response.json(configView(config)),
+      "/api/config/models": { PUT: (req) => putModels(config, req) },
+      "/api/usage": () => getUsage(config),
       "/api/providers": async () => Response.json(await providerStatus(config)),
       // The workspace path and its git state, for the projects navigator. `changes` is null without git.
       "/api/workspace": async () => Response.json({ path: config.workspace, changes: await workspaceChanges(config.workspace) }),

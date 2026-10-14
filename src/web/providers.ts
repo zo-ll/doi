@@ -15,6 +15,19 @@ export interface TaskStatus {
   via: string;
 }
 
+/** The names the UI shows for provider ids. */
+export const PROVIDER_NAMES: Record<string, string> = {
+  "claude-code": "Claude Code",
+  codex: "Codex",
+  anthropic: "Anthropic API",
+  openai: "OpenAI API",
+  "opencode-go": "OpenCode Go",
+  google: "Google Gemini",
+  openrouter: "OpenRouter",
+  ollama: "Ollama",
+};
+export const providerName = (id: string) => PROVIDER_NAMES[id] ?? id;
+
 export const TASKS: { id: Task; label: string; hint: string }[] = [
   { id: "generate", label: "Generate", hint: "Full designs" },
   { id: "edit", label: "Edit", hint: "Small targeted edits" },

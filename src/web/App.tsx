@@ -16,6 +16,8 @@ import { HistoryPanel } from "./components/HistoryPanel.tsx";
 import { DesignSystemDialog } from "./components/DesignSystemDialog.tsx";
 import { ExportDialog } from "./components/ExportDialog.tsx";
 import { HandoffDialog } from "./components/HandoffDialog.tsx";
+import { SettingsDialog } from "./components/SettingsDialog.tsx";
+import { UsageDialog } from "./components/UsageDialog.tsx";
 import { ProjectsNav, type WorkspaceState } from "./components/ProjectsNav.tsx";
 import { MOD, TopBar, type DesignSystemChip } from "./components/TopBar.tsx";
 import { useHistory } from "./history.ts";
@@ -74,10 +76,10 @@ export function typing(e: KeyboardEvent): boolean {
 }
 
 export function App() {
-  const [theme, toggleTheme] = useTheme();
+  const [theme, toggleTheme, themeChoice, chooseTheme] = useTheme();
   const [projects, retryProjects] = useLoad<ProjectSummary[]>("/api/projects");
-  const [config] = useLoad<AppConfig>("/api/config");
-  const [providers] = useLoad<ProviderStatus[]>("/api/providers");
+  const [config, retryConfig] = useLoad<AppConfig>("/api/config");
+  const [providers, retryProviders] = useLoad<ProviderStatus[]>("/api/providers");
   const [workspace, retryWorkspace] = useLoad<WorkspaceState>("/api/workspace");
   const [active, setActive] = useState<Active | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
@@ -215,6 +217,7 @@ export function App() {
         "]": () => togglePanel("side"),
         d: () => activeProject && setDsOpen(true),
         e: () => active && setExportOpen("file"),
+        ",": () => setScreen("settings"),
       };
       if (e.shiftKey && key === "h") act.h = () => active && setExportOpen("handoff");
       const run = act[key];
@@ -307,6 +310,22 @@ export function App() {
             );
           }}
         />
+      )}
+
+      {screen === "settings" && config.state === "ready" && (
+        <SettingsDialog
+          config={config.data}
+          providers={providers}
+          workspace={workspace}
+          themeChoice={themeChoice}
+          onTheme={chooseTheme}
+          onRecheck={retryProviders}
+          onSaved={retryConfig}
+          onClose={() => setScreen(null)}
+        />
+      )}
+      {screen === "usage" && config.state === "ready" && (
+        <UsageDialog config={config.data} providers={providers} projects={projects.state === "ready" ? projects.data : []} onClose={() => setScreen(null)} />
       )}
 
       <div className="app-body">
