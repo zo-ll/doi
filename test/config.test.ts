@@ -21,7 +21,6 @@ describe("parseConfig", () => {
   test("fills defaults", () => {
     const config = parseConfig({}, "/tmp/doi");
     expect(config.workspace).toBe("/tmp/doi/workspace");
-    expect(config.harness.default).toBe("claude-code");
     expect(config.models.edit.provider).toBe("claude-code");
   });
 
@@ -30,16 +29,9 @@ describe("parseConfig", () => {
       workspace = "/data/doi"
       [models]
       edit = "openai:gpt-small"
-      [harness]
-      default = "codex"
     `) as Record<string, any>;
     const config = parseConfig(raw);
     expect(config.workspace).toBe("/data/doi");
     expect(config.models.edit).toEqual({ provider: "openai", model: "gpt-small" });
-    expect(config.harness.default).toBe("codex");
-  });
-
-  test("rejects unknown harnesses", () => {
-    expect(() => parseConfig({ harness: { default: "cursor" } })).toThrow("Unknown harness");
   });
 });

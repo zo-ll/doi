@@ -10,13 +10,11 @@ export type { DesignSystemView, ImportStreamEvent } from "../server/design-syste
 
 export interface AppConfig {
   models: Record<"generate" | "edit" | "extract", { provider: string; model: string }>;
-  harness: { default: string };
   workspace: string;
   /** Link that opens a file in the user's editor; {path} is the absolute path. */
   editorUrl: string;
 }
 
-export type Harnesses = Record<string, boolean>;
 
 /** Result of an async load, so each view can show its loading, error and ready states. */
 export type Load<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: T };

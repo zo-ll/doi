@@ -1,15 +1,6 @@
-import type { AppConfig, Harnesses, Load } from "../api.ts";
 import { Icon } from "./Icon.tsx";
 
-const HARNESS_LABEL: Record<string, string> = {
-  "claude-code": "Claude Code",
-  codex: "Codex",
-  opencode: "OpenCode",
-  "gemini-cli": "Gemini CLI",
-  aider: "Aider",
-};
-
-export function TopBar({ project, design, config, harnesses, designSystem, onDesignSystem, onExport }: {
+export function TopBar({ project, design, designSystem, onDesignSystem, onExport }: {
   project: string | null;
   /** The project's design system; undefined without a project. */
   designSystem?: string | null;
@@ -17,12 +8,7 @@ export function TopBar({ project, design, config, harnesses, designSystem, onDes
   /** Opens the export dialog; undefined without an open design. */
   onExport?: () => void;
   design: string | null;
-  config: Load<AppConfig>;
-  harnesses: Load<Harnesses>;
 }) {
-  const harnessId = config.state === "ready" ? config.data.harness.default : null;
-  const harnessFound = harnessId && harnesses.state === "ready" ? harnesses.data[harnessId] : undefined;
-
   return (
     <header className="topbar">
       <div className="topbar-start">
@@ -44,15 +30,6 @@ export function TopBar({ project, design, config, harnesses, designSystem, onDes
             <Icon name="palette" size={14} />
             {designSystem ?? "No design system"}
           </button>
-        )}
-        {harnessId && (
-          <span
-            className="pill"
-            title={harnessFound === false ? "Not found on PATH" : "Default harness (config.toml → harness.default)"}
-          >
-            <span className={`status-dot ${harnessFound === false ? "is-off" : harnessFound ? "is-on" : ""}`} />
-            {HARNESS_LABEL[harnessId] ?? harnessId}
-          </span>
         )}
         {onExport && (
           <button className="btn btn-secondary" onClick={onExport} title="Download the design as a folder or one HTML file">

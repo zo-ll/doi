@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getJSON, type AppConfig, type Harnesses, type Load, type ProjectSummary, type ProviderStatus } from "./api.ts";
+import { getJSON, type AppConfig, type Load, type ProjectSummary, type ProviderStatus } from "./api.ts";
 import { Canvas } from "./components/Canvas.tsx";
 import { ChatPanel, type CommentRequest, type Selection } from "./components/ChatPanel.tsx";
 import { CommentsPanel } from "./components/CommentsPanel.tsx";
@@ -50,7 +50,6 @@ function useLoad<T>(url: string): [Load<T>, () => void] {
 export function App() {
   const [projects, retryProjects] = useLoad<ProjectSummary[]>("/api/projects");
   const [config] = useLoad<AppConfig>("/api/config");
-  const [harnesses] = useLoad<Harnesses>("/api/harnesses");
   const [providers] = useLoad<ProviderStatus[]>("/api/providers");
   const [active, setActive] = useState<Active | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
@@ -132,8 +131,6 @@ export function App() {
       <TopBar
         project={projectName}
         design={active?.design ?? null}
-        config={config}
-        harnesses={harnesses}
         designSystem={activeProject ? activeProject.designSystem : undefined}
         onDesignSystem={() => setDsOpen(true)}
         onExport={active ? () => setExportOpen(true) : undefined}

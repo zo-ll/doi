@@ -2,6 +2,7 @@ import { ExportError } from "../export/html.ts";
 import { renderPngs } from "../export/render.ts";
 import { zip } from "../export/zip.ts";
 import { buildBundle, draftHandoff, HANDOFF_TEMPLATE } from "../handoff/bundle.ts";
+import { agentPrompt, AGENT_PROMPT } from "../handoff/prompt.ts";
 import { CommentError } from "../workspace/comments.ts";
 import { assertName } from "../workspace/paths.ts";
 import { download } from "./export.ts";
@@ -50,4 +51,14 @@ export function postBundle(workspace: string, req: Request, params: Params, rend
     const archive = zip(bundle.files.map((f) => ({ path: `${root}/${f.path}`, data: f.data })));
     return download(archive, "application/zip", `${root}.zip`, bundle);
   });
+}
+
+/**
+ * GET …/designs/:design/handoff/prompt: the prompt for any coding agent. It tells the agent how
+ * to read the design through the doi MCP server at `mcpUrl`.
+ */
+export function getPrompt(workspace: string, params: Params, mcpUrl: string): Promise<Response> {
+  return run(params, async () =>
+    Response.json({ prompt: await agentPrompt(workspace, params.project, params.design, mcpUrl), template: AGENT_PROMPT.version }),
+  );
 }

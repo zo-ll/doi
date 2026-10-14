@@ -2,7 +2,6 @@ import { resolve } from "node:path";
 
 /** API providers, and CLI backends that use a subscription through the official CLI. */
 export type ProviderId = "anthropic" | "openai" | "opencode-go" | "google" | "openrouter" | "ollama" | "claude-code" | "codex";
-export type HarnessId = "claude-code" | "codex" | "opencode" | "gemini-cli" | "aider";
 export type ModelTask = "generate" | "edit" | "extract";
 
 export interface ModelRef {
@@ -22,7 +21,6 @@ export interface Config {
   port: number;
   providers: Partial<Record<ProviderId, ProviderConfig>>;
   models: Record<ModelTask, ModelRef>;
-  harness: { default: HarnessId };
   /** Link that opens a file in the user's editor; {path} is the absolute path. */
   editorUrl: string;
 }
@@ -50,8 +48,6 @@ export function keyEnvFor(id: ProviderId, config: Pick<Config, "providers">): st
   return config.providers[id]?.api_key_env ?? DEFAULT_KEY_ENV[id];
 }
 
-const HARNESSES: readonly HarnessId[] = ["claude-code", "codex", "opencode", "gemini-cli", "aider"];
-
 /** Parses "anthropic:claude-opus-5-5". The model part may contain ":" (Ollama tags). */
 export function parseModelRef(ref: string): ModelRef {
   const sep = ref.indexOf(":");
@@ -73,16 +69,11 @@ const DEFAULTS = {
     edit: "claude-code:claude-sonnet-5-5",
     extract: "claude-code:claude-haiku-5-5",
   },
-  harness: "claude-code",
   editorUrl: "vscode://file{path}",
 } as const;
 
 export function parseConfig(raw: Record<string, any>, baseDir = process.cwd()): Config {
   const models = { ...DEFAULTS.models, ...(raw.models ?? {}) } as Record<ModelTask, string>;
-  const harness = (raw.harness?.default ?? DEFAULTS.harness) as HarnessId;
-  if (!HARNESSES.includes(harness)) {
-    throw new Error(`Unknown harness "${harness}".`);
-  }
   return {
     workspace: resolve(baseDir, raw.workspace ?? DEFAULTS.workspace),
     port: Number(raw.port ?? DEFAULTS.port),
@@ -92,7 +83,6 @@ export function parseConfig(raw: Record<string, any>, baseDir = process.cwd()): 
       edit: parseModelRef(models.edit),
       extract: parseModelRef(models.extract),
     },
-    harness: { default: harness },
     editorUrl: String(raw.editor_url ?? DEFAULTS.editorUrl),
   };
 }
