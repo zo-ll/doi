@@ -14,6 +14,7 @@ import { getDesignSystem, importFromRepo, importFromScreenshots, putProjectDesig
 import { getExport } from "./export.ts";
 import { getHandoff, getPrompt, postBundle } from "./handoff.ts";
 import { configView, getUsage, putModels } from "./settings.ts";
+import { getTweaks, putTweaks } from "./tweaks.ts";
 import { handleMcp, MCP_PATH } from "../mcp/server.ts";
 import { getHistory, restoreVersion } from "./history.ts";
 import { getLayout, putLayout } from "./layout.ts";
@@ -82,6 +83,7 @@ export async function startServer(config: Config, options: { port?: number; deve
     variantsOpen: variants.isOpen,
     commit: (paths: string[], message: string) => commitPaths(config.workspace, paths, message),
   };
+  const tweakDeps = { workspace: config.workspace, locks, commit: (paths: string[], message: string) => commitPaths(config.workspace, paths, message) };
   const chatStats = (project: string, design: string, shas: string[]) => commitStats(config.workspace, project, design, shas);
   const runTurnRequest = createTurnHandler({
     config,
@@ -225,7 +227,11 @@ export async function startServer(config: Config, options: { port?: number; deve
         if (!file || !(await file.exists())) return new Response("Not found", { status: 404 });
         return new Response(file, { headers: { "cache-control": "private, max-age=31536000, immutable" } });
       },
-          "/api/projects/:project/designs/:design/pages": async (req) => {
+          "/api/projects/:project/designs/:design/tweaks": {
+        GET: (req) => getTweaks(config.workspace, req.params),
+        PUT: (req) => putTweaks(tweakDeps, req, req.params),
+      },
+      "/api/projects/:project/designs/:design/pages": async (req) => {
         try {
           const { project, design } = req.params;
           if (!(await Bun.file(join(designDir(config.workspace, project, design), "index.html")).exists())) {

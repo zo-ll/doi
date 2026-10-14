@@ -4,7 +4,8 @@
 // Frame → app: doi:ready, doi:select { oid }, doi:clear, doi:rects { selected, hover, pins },
 // doi:wheel { deltaY, x, y } (a pinch or Ctrl/⌘ + wheel), doi:key { key, down, shift, mod }.
 // App → frame: doi:track { oid, pins } names the selected element (or null) and the elements
-// with open comments.
+// with open comments; doi:vars { vars } sets CSS variables on the page for a live tweak
+// (a null value removes one).
 // Rects are in the coordinates of this frame's viewport.
 (() => {
   let selectedOid = null;
@@ -113,9 +114,19 @@
     { passive: false },
   );
 
+  const VAR = /^--[A-Za-z0-9_-]{1,60}$/;
   window.addEventListener("message", (event) => {
     if (event.source !== parent) return;
     const d = event.data;
+    if (d?.type === "doi:vars" && d.vars && typeof d.vars === "object") {
+      for (const [name, value] of Object.entries(d.vars)) {
+        if (!VAR.test(name)) continue;
+        if (value === null) document.documentElement.style.removeProperty(name);
+        else if (typeof value === "string" && value.length <= 200) document.documentElement.style.setProperty(name, value);
+      }
+      schedule(); // the boxes move when sizes change
+      return;
+    }
     if (d?.type !== "doi:track" || (d.oid !== null && typeof d.oid !== "string")) return;
     selectedOid = d.oid;
     pinOids = Array.isArray(d.pins) ? d.pins.filter((p) => typeof p === "string") : [];

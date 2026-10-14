@@ -18,6 +18,7 @@ import { ExportDialog } from "./components/ExportDialog.tsx";
 import { HandoffDialog } from "./components/HandoffDialog.tsx";
 import { SettingsDialog } from "./components/SettingsDialog.tsx";
 import { UsageDialog } from "./components/UsageDialog.tsx";
+import { TweaksPanel } from "./components/TweaksPanel.tsx";
 import { ProjectsNav, type WorkspaceState } from "./components/ProjectsNav.tsx";
 import { MOD, TopBar, type DesignSystemChip } from "./components/TopBar.tsx";
 import { useHistory } from "./history.ts";
@@ -97,6 +98,16 @@ export function App() {
   const [askRestore, setAskRestore] = useState(false);
   /** Bumped to open the new-comment form (N, or the Comment tool). */
   const [newComment, setNewComment] = useState(0);
+  const [tweaksOpen, setTweaksOpen] = useState(false);
+  /** Live tweak values, by CSS variable; they show in the frames until saved or reset. */
+  const [liveVars, setLiveVars] = useState<Record<string, string>>({});
+  /** A short message at the bottom left of the canvas. */
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3200);
+    return () => clearTimeout(t);
+  }, [toast]);
   /** A full screen over the app: settings or usage. */
   const [screen, setScreen] = useState<null | "settings" | "usage">(null);
   const [page, setPage] = useState("index.html");
@@ -125,6 +136,7 @@ export function App() {
     setActive(a);
     setSelection(null);
     setApplied([]); // applied comments belong to the design they were made on
+    setLiveVars({});
     setPage("index.html");
     write(LAST_DESIGN, a);
   }, []);
@@ -204,6 +216,11 @@ export function App() {
         if (!document.querySelector('[aria-modal="true"]')) closePreview.current();
       }
       const key = e.key.toLowerCase();
+      if (!mod && !e.altKey && key === "t" && !typing(e) && activeRef.current && !document.querySelector('[aria-modal="true"]')) {
+        e.preventDefault();
+        setTweaksOpen((o) => !o);
+        return;
+      }
       if (!mod && !e.altKey && key === "n" && !typing(e) && selectionRef.current) {
         e.preventDefault();
         showSideRef.current("comments");
@@ -263,7 +280,8 @@ export function App() {
         onNav={toggleNav}
         designSystem={dsChip}
         onDesignSystem={() => setDsOpen(true)}
-        tweaksOpen={false}
+        tweaksOpen={tweaksOpen}
+        onTweaks={active ? () => setTweaksOpen((o) => !o) : undefined}
         onExport={active ? () => setExportOpen("file") : undefined}
         onHandoff={active ? () => setExportOpen("handoff") : undefined}
         tasks={tasks}
@@ -396,6 +414,30 @@ export function App() {
             setNewComment((k) => k + 1);
           }}
           onOpenHistory={() => showSide("history")}
+          liveVars={liveVars}
+          overlay={
+            <>
+              {tweaksOpen && active && !variants.set && (
+                <TweaksPanel
+                  active={active}
+                  revision={revision}
+                  values={liveVars}
+                  onChange={setLiveVars}
+                  onSaved={() => {
+                    setLiveVars({});
+                    setToast(`Design updated · v${(versionCount ?? 0) + 1}`);
+                  }}
+                  onClose={() => setTweaksOpen(false)}
+                />
+              )}
+              {toast && (
+                <div className="toast" role="status">
+                  <span className="dot dot-accent" />
+                  {toast}
+                </div>
+              )}
+            </>
+          }
         />
         {!panels.chat && (
           <button className="btn btn-secondary reopen-btn reopen-chat" onClick={() => togglePanel("chat")} title={`Show chat (${MOD}[)`}>

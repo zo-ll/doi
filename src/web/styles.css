@@ -855,7 +855,9 @@ a:hover { color: var(--text); }
 .custom-size-hint.is-error { color: var(--err); }
 
 .canvas-error { position: absolute; top: var(--space-3); left: 50%; transform: translateX(-50%); z-index: 6; max-width: var(--menu-w-wide); }
-.canvas-overlay { position: absolute; top: var(--space-3); right: var(--space-3); z-index: 8; user-select: text; }
+/* Floating panels over the canvas: the layer takes no clicks, its panels do. */
+.canvas-overlay { position: absolute; inset: 0; z-index: 8; pointer-events: none; user-select: text; }
+.canvas-overlay > * { pointer-events: auto; }
 
 /* A history preview: an amber edge and a banner over the frames. */
 .preview-edge { position: absolute; inset: 0; z-index: 4; border: 2px solid var(--warn); pointer-events: none; }
@@ -1279,3 +1281,29 @@ a:hover { color: var(--text); }
 .usage-table td { padding: var(--space-2); border-bottom: 1px solid var(--line); font-family: var(--font-mono); text-align: right; }
 .usage-table th:first-child, .usage-table td:first-child { text-align: left; font-family: var(--font-sans); }
 .usage-table td:last-child.muted { font-family: var(--font-sans); }
+
+/* ---------- Tweaks ---------- */
+
+.tweaks {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  width: 272px;
+  max-height: calc(100% - 90px);
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-menu);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  cursor: default;
+}
+.tweaks-head { height: var(--panel-header-h); flex: none; display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-2) 0 var(--space-3); border-bottom: 1px solid var(--line); }
+.tweaks-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--space-3-5); padding: var(--space-2-5) var(--space-3); }
+.tweaks-note { font-size: var(--text-meta); line-height: 1.45; color: var(--text-3); }
+.tweak { display: flex; flex-direction: column; gap: var(--space-1-5); }
+.tweak-head { display: flex; justify-content: space-between; gap: var(--space-2); font-size: var(--text-meta); }
+.tweak-color { width: 100%; height: var(--control-h); padding: 0; border: 1px solid var(--line-2); border-radius: var(--radius-md); background: transparent; cursor: pointer; }
+.tweak-text { height: var(--control-h); font-size: var(--text-sm); }
+.tweak-range { width: 100%; accent-color: var(--accent); }
+.tweaks-foot { flex: none; display: flex; gap: var(--space-1-5); padding: var(--space-2-5) var(--space-3); border-top: 1px solid var(--line); }

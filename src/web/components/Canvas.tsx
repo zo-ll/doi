@@ -25,6 +25,8 @@ const TOOLS: { id: Tool; label: string; key: string }[] = [
   { id: "hand", label: "Hand", key: "H" },
 ];
 
+const NO_VARS: Record<string, string> = {};
+
 /** True while the user types in a field of the app: canvas keys do nothing then. */
 const typing = (t: EventTarget | null) => t instanceof Element && t.closest("input, textarea, select, [contenteditable]") !== null;
 
@@ -45,6 +47,7 @@ const Frame = memo(function Frame({
   onWheel,
   onKey,
   onOpenHistory,
+  liveVars,
 }: {
   frame: FrameSpec;
   src: string;
@@ -63,6 +66,8 @@ const Frame = memo(function Frame({
   onWheel: (frame: FrameSpec, m: WheelMessage) => void;
   onKey: (m: KeyMessage) => void;
   onOpenHistory?: () => void;
+  /** CSS variables set on the page for a live tweak. */
+  liveVars: Record<string, string>;
 }) {
   const { width, height, label } = frame;
   const ref = useRef<HTMLIFrameElement>(null);
@@ -106,8 +111,11 @@ const Frame = memo(function Frame({
       else if (m?.type === "doi:rects") setRects({ selected: m.selected, hover: h.readOnly ? null : m.hover, pins: m.pins });
       else if (m?.type === "doi:wheel") h.onWheel(h.frame, m);
       else if (m?.type === "doi:key") h.onKey(m);
-      // A page that loaded again asks which element is selected and which have pins.
-      else if (m?.type === "doi:ready") ref.current?.contentWindow?.postMessage(track.current, "*");
+      // A page that loaded again asks which element is selected, which have pins, and the live tweaks.
+      else if (m?.type === "doi:ready") {
+        ref.current?.contentWindow?.postMessage(track.current, "*");
+        if (Object.keys(sentVars.current).length) ref.current?.contentWindow?.postMessage({ type: "doi:vars", vars: sentVars.current }, "*");
+      }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
@@ -118,6 +126,16 @@ const Frame = memo(function Frame({
     if (!oid) setRects((r) => ({ ...r, selected: null }));
     ref.current?.contentWindow?.postMessage(track.current, "*");
   }, [oid, pinKey]);
+
+  // Live tweaks: send the changed values, and null for the ones that are gone.
+  const sentVars = useRef<Record<string, string>>({});
+  useEffect(() => {
+    const before = sentVars.current;
+    const vars: Record<string, string | null> = { ...liveVars };
+    for (const name of Object.keys(before)) if (!(name in liveVars)) vars[name] = null;
+    sentVars.current = liveVars;
+    if (Object.keys(vars).length) ref.current?.contentWindow?.postMessage({ type: "doi:vars", vars }, "*");
+  }, [liveVars]);
 
   // A new page has no rects until its bridge reports them.
   useEffect(() => setRects({ selected: null, hover: null, pins: {} }), [url]);
@@ -435,6 +453,7 @@ export function Canvas({
   onRestorePreview,
   onClosePreview,
   overlay,
+  liveVars = NO_VARS,
 }: {
   active: Active | null;
   /** The page of the design that the frames show. */
@@ -465,6 +484,8 @@ export function Canvas({
   onClosePreview?: () => void;
   /** Floating panels over the canvas (Tweaks). */
   overlay?: React.ReactNode;
+  /** CSS variables of a live tweak, set on every page. */
+  liveVars?: Record<string, string>;
 }) {
   const ref = useRef<HTMLElement>(null);
   const [frames, setFrames] = useState<FrameSpec[] | null>(null);
@@ -763,6 +784,7 @@ export function Canvas({
               onWheel={onFrameWheel}
               onKey={onFrameKey}
               onOpenHistory={onOpenHistory}
+              liveVars={preview ? NO_VARS : liveVars}
             />
           ))}
         </div>
