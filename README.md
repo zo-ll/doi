@@ -8,7 +8,7 @@ Agents working on the repo: start with [docs/agent-handoff.md](docs/agent-handof
 
 ## Status
 
-In progress (M4, handoff). The core loop (M1), precision tools (M2) and design systems (M3) work. See [docs/agent-handoff.md](docs/agent-handoff.md).
+In progress (M5, breadth). The core loop (M1), precision tools (M2), design systems (M3) and the handoff (M4) work. See [docs/agent-handoff.md](docs/agent-handoff.md).
 
 doi uses your subscriptions through the official CLIs by default: `claude-code:<model>` (`claude -p`) and `codex:<model>` (`codex exec`). Log in to the CLI first. API keys are optional; see `config.example.toml`.
 
@@ -22,6 +22,18 @@ bun run dev                          # http://127.0.0.1:4317
 
 The first run creates `./workspace` with a sample design.
 
+## Use
+
+- Describe a design in the chat on the left. The canvas shows each page in its frames (Desktop, Mobile, …).
+- Click an element to target it (Shift-click: its parent). Press N for a comment on it, or use the Comment tool (C). "Apply" puts a comment into the next message.
+- Make 2–4 variants of one request and pick one. History (right panel) previews and restores any version.
+- Tweaks (T) change the design's CSS variables live; "Save as version" writes them.
+- Design systems (⌘D / Ctrl+D) come from a repo or from screenshots.
+- Export (⌘E) gives a folder, one HTML file, PNG or PDF. Hand off (⌘⇧H) gives a prompt for any coding agent, which reads the design through the MCP server at `/mcp`, or a ZIP bundle.
+- Settings (⌘,) chooses the model per task and writes it to `config.toml`. Usage shows tokens and estimated cost.
+
+All shortcuts are in Settings → Shortcuts.
+
 ## Check
 
 ```bash
@@ -34,7 +46,7 @@ bun check
 | Path | Contents |
 | --- | --- |
 | `src/server/` | `Bun.serve` routes, design file serving, bridge injection |
-| `src/web/` | React UI (HTML import, no Vite): chat panel and canvas |
+| `src/web/` | React UI (HTML import, no Vite): shell, chat, canvas, comments, history and the dialogs; tokens in `tokens.css` (doi UI kit, light and dark), IBM Plex bundled |
 | `src/frame/bridge.js` | Script injected into each design iframe for selection |
 | `src/providers/` | `Provider` interface, API adapters (Anthropic, OpenAI, OpenCode Go) and the CLI backends (Claude Code, Codex) |
 | `src/mcp/` | MCP server at `/mcp`: coding agents read designs through it |

@@ -149,7 +149,12 @@ export function withModels(text: string, models: Record<ModelTask, ModelRef>): s
     const m = /^\s*(generate|edit|extract)\s*=/.exec(lines[i]!);
     if (!m) continue;
     const task = m[1] as ModelTask;
-    lines[i] = value(task);
+    // A trailing comment stays, with the spaces before it. A "#" inside the quoted value does not count.
+    const line = lines[i]!;
+    const hash = line.replace(/"[^"]*"/g, (q) => "x".repeat(q.length)).indexOf("#");
+    let from = hash;
+    while (from > 0 && /\s/.test(line[from - 1]!)) from--;
+    lines[i] = value(task) + (hash > 0 ? line.slice(from) : "");
     done.add(task);
   }
   const missing = (["generate", "edit", "extract"] as const).filter((t) => !done.has(t)).map(value);

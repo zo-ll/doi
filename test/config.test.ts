@@ -59,7 +59,7 @@ describe("config.toml from the UI", () => {
     ].join("\n");
     const out = withModels(text, models);
     expect(out).toContain('# my config\nworkspace = "/data/doi"');
-    expect(out).toContain('[models]\nedit = "codex:default"\ngenerate = "claude-code:claude-opus-5-5"\n# edit = "openai:x"\nextract = "claude-code:claude-haiku-5-5"');
+    expect(out).toContain('[models]\nedit = "codex:default"\ngenerate = "claude-code:claude-opus-5-5"   # the best one\n# edit = "openai:x"\nextract = "claude-code:claude-haiku-5-5"');
     expect(out).toContain('[providers.openai]\napi_key_env = "MY_KEY"');
     const parsed = parseConfig(Bun.TOML.parse(out) as Record<string, any>);
     expect(parsed.models).toEqual(models);
