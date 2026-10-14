@@ -54,9 +54,17 @@ export function fileNameOf(header: string | null, fallback: string): string {
   return header?.match(/filename="([^"]+)"/)?.[1] ?? fallback;
 }
 
+/** The handoff bundle (#49): a POST with the user's HANDOFF.md, answered with a ZIP. */
+export function bundleRequest(project: string, design: string, markdown: string): { url: string; init: RequestInit } {
+  return {
+    url: `/api/projects/${project}/designs/${design}/handoff/bundle`,
+    init: { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ markdown }) },
+  };
+}
+
 /** Runs the export and saves the file through the browser. Returns the file name and the report. */
-export async function runExport(url: string, fallback: string): Promise<ExportReport & { file: string }> {
-  const res = await fetch(url);
+export async function runExport(url: string, fallback: string, init?: RequestInit): Promise<ExportReport & { file: string }> {
+  const res = await fetch(url, init);
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { error?: string } | null;
     throw new Error(body?.error ?? `${res.status} ${res.statusText}`);

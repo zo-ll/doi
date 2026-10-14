@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { exportFolder, exportPage, hoistImports, resolveRef, wrapImport } from "../src/export/html.ts";
 import { zip } from "../src/export/zip.ts";
 import { getExport, REPORT_HEADER } from "../src/server/export.ts";
-import { exportUrl, fallbackName, fileNameOf, parseReport, type ExportChoice } from "../src/web/export.ts";
+import { bundleRequest, exportUrl, fallbackName, fileNameOf, parseReport, type ExportChoice } from "../src/web/export.ts";
 import { designSystemDir } from "../src/workspace/design-systems.ts";
 import { designDir } from "../src/workspace/paths.ts";
 
@@ -332,5 +332,15 @@ describe("export UI helpers", () => {
     expect(parseReport(header)).toEqual({ missing: ["ä.png"], warnings: ["w"] });
     expect(parseReport(null)).toEqual({ missing: [], warnings: [] });
     expect(parseReport("%E0%A4%A")).toEqual({ missing: [], warnings: [] });
+  });
+});
+
+describe("bundle request", () => {
+  test("posts the user's HANDOFF.md as JSON to the bundle route", () => {
+    const { url, init } = bundleRequest("shop", "home", "# Handoff\n\nUse `{{x}}`.");
+    expect(url).toBe("/api/projects/shop/designs/home/handoff/bundle");
+    expect(init.method).toBe("POST");
+    expect(init.headers).toEqual({ "content-type": "application/json" });
+    expect(JSON.parse(init.body as string)).toEqual({ markdown: "# Handoff\n\nUse `{{x}}`." });
   });
 });
