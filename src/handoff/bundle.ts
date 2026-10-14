@@ -10,7 +10,7 @@ import { readComments } from "../workspace/comments.ts";
 import { activeDesignSystem } from "../workspace/design-systems.ts";
 import { readLayout } from "../workspace/layout.ts";
 import type { Frame } from "../workspace/frames.ts";
-import { designDir, listProjects } from "../workspace/paths.ts";
+import { designDir, designPages, listProjects } from "../workspace/paths.ts";
 import template from "./template-v0.md" with { type: "text" };
 
 /**
@@ -58,10 +58,9 @@ export function screenshotPlan(pages: string[], frames: Frame[]): Screenshot[] {
 }
 
 /** The HTML pages of a design, index.html first. */
-async function designPages(workspace: string, project: string, design: string): Promise<string[]> {
-  const dir = designDir(workspace, project, design);
-  if (!(await Bun.file(join(dir, "index.html")).exists())) throw new ExportError("Design not found.");
-  return (await readDesignFiles(dir)).map((f) => f.path).filter((p) => /\.html?$/i.test(p));
+async function pagesOf(workspace: string, project: string, design: string): Promise<string[]> {
+  if (!(await Bun.file(join(designDir(workspace, project, design), "index.html")).exists())) throw new ExportError("Design not found.");
+  return designPages(workspace, project, design);
 }
 
 const oneLine = (text: string, max: number) => {
@@ -213,7 +212,7 @@ export async function bundleTokens(workspace: string, project: string, design: s
 
 /** HANDOFF.md as the template makes it: the user edits it before the run. */
 export async function draftHandoff(workspace: string, project: string, design: string): Promise<string> {
-  const pages = await designPages(workspace, project, design);
+  const pages = await pagesOf(workspace, project, design);
   const [frames, chat, comments, tokens, projects, oids] = await Promise.all([
     readLayout(workspace, project, design),
     readChat(workspace, project, design),
@@ -275,7 +274,7 @@ export async function buildBundle(
   render: typeof renderPngs = renderPngs,
 ): Promise<Bundle> {
   const handoff = checkHandoff(markdown);
-  const pages = await designPages(workspace, project, design);
+  const pages = await pagesOf(workspace, project, design);
   // The data-oid attributes stay: HANDOFF.md names the elements of the comments by them.
   const folder = await exportFolder(workspace, project, design, { stripOids: false });
   const missing = new Set(folder.missing);

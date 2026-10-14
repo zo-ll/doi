@@ -18,7 +18,7 @@ import {
   type View,
 } from "../viewport.ts";
 import { FRAME_LIMITS, PRESETS, type Frame as FrameSpec } from "../../workspace/frames.ts";
-import type { Active } from "./Sidebar.tsx";
+import type { Active } from "../api.ts";
 import type { Selection } from "./ChatPanel.tsx";
 import { Icon } from "./Icon.tsx";
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { getJSON, historyUrl, sendJSON, type Load, type VersionView } from "./api.ts";
-import type { Active } from "./components/Sidebar.tsx";
+import type { Active } from "./api.ts";
 
 /** The versions of the open design and the one in the preview frame. */
 export function useHistory(active: Active | null, revision: number) {

@@ -22,6 +22,16 @@ async function git(workspace: string, args: string[]): Promise<string> {
   return result.stdout.toString();
 }
 
+/** Uncommitted changes in the workspace, for the status line; null when git is off. */
+export async function workspaceChanges(workspace: string): Promise<number | null> {
+  try {
+    const out = await serial(() => git(workspace, ["status", "--porcelain"]));
+    return out.split("\n").filter(Boolean).length;
+  } catch {
+    return null;
+  }
+}
+
 /** Makes the workspace its own git repo on first run. A repo around it does not count. */
 export async function ensureRepo(workspace: string): Promise<void> {
   if (await Bun.file(join(workspace, ".git", "HEAD")).exists()) return;

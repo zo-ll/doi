@@ -16,6 +16,12 @@ export interface AppConfig {
 }
 
 
+/** The open design. */
+export interface Active {
+  project: string;
+  design: string;
+}
+
 /** Result of an async load, so each view can show its loading, error and ready states. */
 export type Load<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: T };
 

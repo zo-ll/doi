@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { getJSON, sendJSON, variantsUrl, type VariantSetView } from "./api.ts";
-import type { Active } from "./components/Sidebar.tsx";
+import type { Active } from "./api.ts";
 
 /** The open variant set of the design, or null. `reload` loads it again. */
 export function useVariants(active: Active | null) {

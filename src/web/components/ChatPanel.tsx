@@ -13,7 +13,7 @@ import {
   type ChatMessage,
   type VariantsMessage,
 } from "../chat.ts";
-import type { Active } from "./Sidebar.tsx";
+import type { Active } from "../api.ts";
 import { Icon } from "./Icon.tsx";
 
 /** The selected element. Each frame finds it by its data-oid and draws it. */

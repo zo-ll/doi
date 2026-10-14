@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { commentsUrl, getJSON, sendJSON, type CommentView, type Load } from "./api.ts";
-import type { Active } from "./components/Sidebar.tsx";
+import type { Active } from "./api.ts";
 
 /** A pin on the canvas: one element and the numbers of its open comments. */
 export interface Pin {

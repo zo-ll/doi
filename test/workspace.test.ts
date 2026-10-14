@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { designFile, ensureWorkspace, listProjects } from "../src/workspace/paths.ts";
+import { designFile, designPages, ensureWorkspace, listProjects } from "../src/workspace/paths.ts";
 
 const dirs: string[] = [];
 afterAll(() => Promise.all(dirs.map((d) => rm(d, { recursive: true, force: true }))));
@@ -45,8 +45,8 @@ describe("listProjects", () => {
     await Bun.write(join(ws, "projects/other/designs/landing/index.html"), "<html></html>");
 
     expect(await listProjects(ws)).toEqual([
-      { id: "other", name: "other", designs: ["landing"], designSystem: null },
-      { id: "sample", name: "Sample", designs: ["home"], designSystem: null },
+      { id: "other", name: "other", designs: ["landing"], decks: [], designSystem: null },
+      { id: "sample", name: "Sample", designs: ["home"], decks: [], designSystem: null },
     ]);
   });
 
@@ -56,10 +56,32 @@ describe("listProjects", () => {
     await Bun.write(join(ws, "projects/broken/project.json"), "{ not json");
     await Bun.write(join(ws, "projects/broken/designs/home/index.html"), "<html></html>");
 
-    expect(await listProjects(ws)).toEqual([{ id: "broken", name: "broken", designs: ["home"], designSystem: null }]);
+    expect(await listProjects(ws)).toEqual([{ id: "broken", name: "broken", designs: ["home"], decks: [], designSystem: null }]);
   });
 
   test("returns an empty list for a missing workspace", async () => {
     expect(await listProjects("/nonexistent/doi-workspace")).toEqual([]);
+  });
+});
+
+describe("design pages and slide decks", () => {
+  test("lists HTML pages, index.html first, without hidden files", async () => {
+    const ws = await mkdtemp(join(tmpdir(), "doi-"));
+    dirs.push(ws);
+    const dir = join(ws, "projects/p/designs/d");
+    await Bun.write(join(dir, "index.html"), "<html></html>");
+    await Bun.write(join(dir, "about.html"), "<html></html>");
+    await Bun.write(join(dir, "blog/post.htm"), "<html></html>");
+    await Bun.write(join(dir, ".old/x.html"), "<html></html>");
+    await Bun.write(join(dir, "styles.css"), "");
+    expect(await designPages(ws, "p", "d")).toEqual(["index.html", "about.html", "blog/post.htm"]);
+  });
+
+  test("a design whose index.html has data-slide is a deck", async () => {
+    const ws = await mkdtemp(join(tmpdir(), "doi-"));
+    dirs.push(ws);
+    await Bun.write(join(ws, "projects/p/designs/deck/index.html"), '<section class="slide" data-slide>1</section>');
+    await Bun.write(join(ws, "projects/p/designs/page/index.html"), '<div data-slider="x" data-slide-note>no</div>');
+    expect(await listProjects(ws)).toEqual([{ id: "p", name: "p", designs: ["deck", "page"], decks: ["deck"], designSystem: null }]);
   });
 });
