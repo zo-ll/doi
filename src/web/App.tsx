@@ -279,6 +279,8 @@ export function App() {
       {dsOpen && activeProject && (
         <DesignSystemDialog
           project={activeProject}
+          projects={projects.state === "ready" ? projects.data : []}
+          extract={tasks.find((t) => t.task === "extract") ?? null}
           editorUrl={config.state === "ready" ? config.data.editorUrl : "vscode://file{path}"}
           onClose={() => setDsOpen(false)}
           onChanged={retryProjects}
