@@ -15,6 +15,7 @@ import { Confirm } from "./components/Confirm.tsx";
 import { HistoryPanel } from "./components/HistoryPanel.tsx";
 import { DesignSystemDialog } from "./components/DesignSystemDialog.tsx";
 import { ExportDialog } from "./components/ExportDialog.tsx";
+import { HandoffDialog } from "./components/HandoffDialog.tsx";
 import { ProjectsNav, type WorkspaceState } from "./components/ProjectsNav.tsx";
 import { MOD, TopBar, type DesignSystemChip } from "./components/TopBar.tsx";
 import { useHistory } from "./history.ts";
@@ -268,11 +269,15 @@ export function App() {
         theme={theme}
         onTheme={toggleTheme}
       />
-      {exportOpen && active && (
-        <ExportDialog
+      {exportOpen === "file" && active && <ExportDialog project={active.project} design={active.design} onClose={() => setExportOpen(null)} />}
+      {exportOpen === "handoff" && active && (
+        <HandoffDialog
           project={active.project}
           design={active.design}
-          initial={exportOpen === "handoff" ? "prompt" : "folder"}
+          version={versionCount}
+          pages={pages.state === "ready" ? pages.data.length : 1}
+          openComments={openComments}
+          hasDesignSystem={!!dsName}
           onClose={() => setExportOpen(null)}
         />
       )}

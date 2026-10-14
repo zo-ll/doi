@@ -167,8 +167,9 @@ describe("agent prompt", () => {
     const app = await startServer(parseConfig({ workspace: ws }), { port: 0, development: false });
     try {
       const res = await fetch(`http://127.0.0.1:${app.server.port}/api/projects/shop/designs/home/handoff/prompt`);
-      const body = (await res.json()) as { prompt: string; template: string };
+      const body = (await res.json()) as { prompt: string; template: string; url: string };
       expect(body.template).toBe("v0");
+      expect(body.url).toBe(`http://127.0.0.1:${app.server.port}/mcp`);
       expect(body.prompt).toContain(`- URL: http://127.0.0.1:${app.server.port}/mcp`);
     } finally {
       app.stop();
