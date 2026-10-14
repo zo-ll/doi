@@ -48,6 +48,21 @@ export function keyEnvFor(id: ProviderId, config: Pick<Config, "providers">): st
   return config.providers[id]?.api_key_env ?? DEFAULT_KEY_ENV[id];
 }
 
+/** A model name that goes to a CLI as an argument: it must not look like a flag. */
+const MODEL_NAME = /^[A-Za-z0-9._@/][A-Za-z0-9._:@/-]{0,99}$/;
+
+/** A model the user chose in the UI ("<provider>:<model>"), or the reason it is not valid. */
+export function parseModelChoice(raw: unknown): ModelRef | string {
+  if (typeof raw !== "string") return 'A model must be "<provider>:<model>".';
+  try {
+    const ref = parseModelRef(raw.trim());
+    if (!MODEL_NAME.test(ref.model)) return `The model name "${ref.model}" is not valid.`;
+    return ref;
+  } catch (e) {
+    return (e as Error).message;
+  }
+}
+
 /** Parses "anthropic:claude-opus-5-5". The model part may contain ":" (Ollama tags). */
 export function parseModelRef(ref: string): ModelRef {
   const sep = ref.indexOf(":");

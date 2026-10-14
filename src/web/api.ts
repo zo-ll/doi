@@ -2,7 +2,8 @@
 export type { ProjectSummary } from "../workspace/paths.ts";
 export type { ProviderStatus } from "../providers/status.ts";
 export type { ChatEntry, Usage } from "../workspace/chat.ts";
-export type { TurnStreamEvent } from "../server/turns.ts";
+export type { ChatEntryView, TurnStreamEvent } from "../server/turns.ts";
+export type { FileStat } from "../workspace/git.ts";
 export type { CommentView } from "../server/comments.ts";
 export type { VariantSetView, VariantStreamEvent } from "../server/variants.ts";
 export type { VersionView } from "../server/history.ts";

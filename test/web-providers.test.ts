@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ProviderStatus } from "../src/providers/status.ts";
-import { statusOf, taskStatuses } from "../src/web/providers.ts";
+import { shortModel, statusOf, taskStatuses } from "../src/web/providers.ts";
 
 const p = (over: Partial<ProviderStatus>): ProviderStatus => ({ id: "claude-code", source: "cli", ready: true, detail: "Logged in", implemented: true, ...over });
 
@@ -28,4 +28,11 @@ test("one status per task, in task order", () => {
     ["extract", "gpt-6", "warn"],
   ]);
   expect(taskStatuses(models, null)[0]).toMatchObject({ tone: "unknown", label: "Checking…" });
+});
+
+test("short model names", () => {
+  expect(shortModel("claude-opus-5-5")).toBe("Opus 5.5");
+  expect(shortModel("claude-haiku-5-5")).toBe("Haiku 5.5");
+  expect(shortModel("gpt-6-luna")).toBe("gpt-6-luna");
+  expect(shortModel("claude-opus")).toBe("claude-opus");
 });

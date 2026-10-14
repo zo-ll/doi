@@ -7,7 +7,7 @@ import { designDir, designPages, ensureWorkspace, fileIn, listProjects } from ".
 import { variantDir } from "../workspace/variants.ts";
 import { designSystemDir, listDesignSystems, loadDesignSystem, previewPage } from "../workspace/design-systems.ts";
 import { designEvents, watchDesigns } from "../workspace/watch.ts";
-import { commitPaths, commitTurn, designFileAt, designVersion, ensureRepo, isSha, workspaceChanges } from "../workspace/git.ts";
+import { commitPaths, commitStats, commitTurn, designFileAt, designVersion, ensureRepo, isSha, workspaceChanges } from "../workspace/git.ts";
 import { uploadFile } from "../workspace/uploads.ts";
 import { deleteCommentRoute, getComments, patchComment, postComment } from "./comments.ts";
 import { getDesignSystem, importFromRepo, importFromScreenshots, putProjectDesignSystem } from "./design-systems.ts";
@@ -81,6 +81,7 @@ export async function startServer(config: Config, options: { port?: number; deve
     variantsOpen: variants.isOpen,
     commit: (paths: string[], message: string) => commitPaths(config.workspace, paths, message),
   };
+  const chatStats = (project: string, design: string, shas: string[]) => commitStats(config.workspace, project, design, shas);
   const runTurnRequest = createTurnHandler({
     config,
     locks,
@@ -88,6 +89,7 @@ export async function startServer(config: Config, options: { port?: number; deve
     getProvider,
     watcher,
     commit: (project, design, prompt) => commitTurn(config.workspace, project, design, prompt),
+    stats: chatStats,
   });
 
   const BRIDGE_TAG = `<script src="/__doi/bridge.js"></script>`;
@@ -232,7 +234,7 @@ export async function startServer(config: Config, options: { port?: number; deve
           return Response.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
         }
       },
-      "/api/projects/:project/designs/:design/chat": (req) => getChat(config.workspace, req.params),
+      "/api/projects/:project/designs/:design/chat": (req) => getChat(config.workspace, req.params, chatStats),
       "/api/projects/:project/designs/:design/variants": {
         GET: (req) => variants.get(req.params),
         POST: (req, srv) => variants.post(req, req.params, srv),

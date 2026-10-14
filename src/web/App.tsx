@@ -9,7 +9,7 @@ import {
   type ProviderStatus,
 } from "./api.ts";
 import { Canvas } from "./components/Canvas.tsx";
-import { ChatPanel, type CommentRequest, type Selection } from "./components/ChatPanel.tsx";
+import { ChatPanel, type AppliedComment, type Selection } from "./components/ChatPanel.tsx";
 import { CommentsPanel } from "./components/CommentsPanel.tsx";
 import { HistoryPanel } from "./components/HistoryPanel.tsx";
 import { DesignSystemDialog } from "./components/DesignSystemDialog.tsx";
@@ -86,10 +86,12 @@ export function App() {
   const [dsOpen, setDsOpen] = useState(false);
   /** The open Export dialog and its first choice: "Hand off" opens it at the agent prompt. */
   const [exportOpen, setExportOpen] = useState<null | "file" | "handoff">(null);
-  const [request, setRequest] = useState<CommentRequest | null>(null);
+  /** Comments the user marked "apply": they go with the next turn. */
+  const [applied, setApplied] = useState<AppliedComment[]>([]);
   const [running, setRunning] = useState(false);
+  /** A full screen over the app: settings or usage. */
+  const [screen, setScreen] = useState<null | "settings" | "usage">(null);
   const [page, setPage] = useState("index.html");
-  const requestKey = useRef(0);
   // Bumped when the files of the open design change; the canvas reloads its frames.
   const [revision, setRevision] = useState(0);
   const activeRef = useRef(active);
@@ -111,7 +113,7 @@ export function App() {
   const open = useCallback((a: Active) => {
     setActive(a);
     setSelection(null);
-    setRequest(null); // a request belongs to the design it was made on
+    setApplied([]); // applied comments belong to the design they were made on
     setPage("index.html");
     write(LAST_DESIGN, a);
   }, []);
@@ -175,11 +177,6 @@ export function App() {
           swatches: ds.state === "ready" ? ds.data.tokens.filter((t) => t.group === "color").slice(0, 3).map((t) => t.resolved) : [],
         };
 
-  const generate = config.state === "ready" ? config.data.models.generate : null;
-  const modelChoices =
-    config.state === "ready" ? [...new Set(Object.values(config.data.models).map((m) => `${m.provider}:${m.model}`))] : [];
-  const generateStatus =
-    generate && providers.state === "ready" ? (providers.data.find((p) => p.id === generate.provider) ?? null) : null;
   const tasks = config.state === "ready" ? taskStatuses(config.data.models, providers.state === "ready" ? providers.data : null) : [];
 
   useEffect(() => {
@@ -245,8 +242,8 @@ export function App() {
         onExport={active ? () => setExportOpen("file") : undefined}
         onHandoff={active ? () => setExportOpen("handoff") : undefined}
         tasks={tasks}
-        onUsage={() => {}}
-        onSettings={() => {}}
+        onUsage={() => setScreen("usage")}
+        onSettings={() => setScreen("settings")}
         theme={theme}
         onTheme={toggleTheme}
       />
@@ -270,31 +267,25 @@ export function App() {
       <div className="app-body">
         {panels.chat && (
           <aside className="chat-pane" aria-label="Chat">
-            <div className="panel-header">
-              <span className="panel-title">Chat</span>
-              <span className="spacer" />
-              <button className="collapse-btn" onClick={() => togglePanel("chat")} title={`Collapse chat (${MOD}[)`} aria-label="Collapse chat">
-                {MOD}[
-              </button>
-            </div>
-            <div className="pane-body">
-              <ChatPanel
-                key={active ? `${active.project}/${active.design}/${chatEpoch}` : ""}
-                target={active}
-                selection={selection}
-                model={generate?.model ?? null}
-                modelStatus={generateStatus}
-                onClearSelection={clearSelection}
-                request={request}
-                onRequestTaken={() => setRequest(null)}
-                onRunningChange={setRunning}
-                onCommentsChanged={comments.reload}
-                modelRef={generate ? `${generate.provider}:${generate.model}` : null}
-                models={modelChoices}
-                variantsOpen={variants.set !== null}
-                onVariantsChanged={variants.reload}
-              />
-            </div>
+            <ChatPanel
+              key={active ? `${active.project}/${active.design}/${chatEpoch}` : ""}
+              target={active}
+              selection={selection}
+              tasks={tasks}
+              onClearSelection={clearSelection}
+              applied={applied}
+              onUnapply={(id) => setApplied((list) => list.filter((c) => c.id !== id))}
+              onAppliedSent={() => setApplied([])}
+              onRunningChange={setRunning}
+              onCommentsChanged={comments.reload}
+              variantsOpen={variants.set !== null}
+              onVariantsChanged={variants.reload}
+              onDiscardVariants={() => {
+                variants.discard().catch(() => {});
+              }}
+              onCollapse={() => togglePanel("chat")}
+              onOpenSettings={() => setScreen("settings")}
+            />
           </aside>
         )}
 
@@ -392,8 +383,13 @@ export function App() {
                   onRetry={comments.reload}
                   running={running}
                   onApply={(list) => {
-                    setRequest({ key: ++requestKey.current, comments: list.map(({ id, oid, text }) => ({ id, oid, text })) });
-                    if (!panels.chat) togglePanel("chat"); // the answer streams there
+                    // Numbers as in the Comments list: the position among all comments, from 1.
+                    const number = (id: string) => commentList.findIndex((c) => c.id === id) + 1;
+                    setApplied((now) => {
+                      const add = list.filter((c) => !now.some((x) => x.id === c.id)).map(({ id, oid, text }) => ({ id, oid, text, n: number(id) }));
+                      return [...now, ...add];
+                    });
+                    if (!panels.chat) togglePanel("chat"); // the chips show in the composer
                   }}
                 />
               )}

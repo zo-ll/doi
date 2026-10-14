@@ -112,6 +112,8 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 
 ## 6. State and next steps
 
+**UI rebuild in progress (#110, branch `ui/rebuild`, not pushed).** One big rewrite from the Claude Design project "doi" (user decision 2026-10-14; read it with the `claude_design` MCP, project 92cf7e7c-022b-4930-9742-07aa3fea1ab1). Done: tokens and IBM Plex, shell (top bar, projects drawer ⌘P, collapsible panels, theme), canvas (tools V/C/H, toolbar, page picker, variants grid, preview banner), chat panel (model chip, applied-comment chips, retry, line counts from git; the turn body takes `model`). Next: Comments panel, History panel, Design systems dialog, Export and Hand off dialogs, Settings (#61), Usage (#62), Tweaks (#65), then remove the old CSS sections, update README, open the PR. Check the composer row width in a screenshot first.
+
 Done and closed: #1 CI, #13 app shell, #74 credentials and status, #60 Claude Code backend, #73 Codex backend, #4 system prompt v0, #5 context assembler, #6 edit applier, #7 generation endpoint, #8 chat history, #10 live reload, #11 git history, #12 projects, #9 image input.
 
 M1 is complete. The user chose to start M2 before the M1 gate (one real design), so the gate is still open.

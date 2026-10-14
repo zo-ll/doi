@@ -23,6 +23,12 @@ export const TASKS: { id: Task; label: string; hint: string }[] = [
 
 const SOURCE: Record<ProviderStatus["source"], string> = { cli: "CLI · subscription", api_key: "API key", local: "local server" };
 
+/** A short name for a model id: "claude-opus-5-5" → "Opus 5.5". Other ids stay as they are. */
+export function shortModel(id: string): string {
+  const m = /^claude-([a-z]+)-(\d+)-(\d+)$/.exec(id);
+  return m ? `${m[1]![0]!.toUpperCase()}${m[1]!.slice(1)} ${m[2]}.${m[3]}` : id;
+}
+
 /** One status: green when ready, red when the CLI or server is missing, amber for the rest. */
 export function statusOf(p: ProviderStatus | undefined): { tone: Tone; label: string; via: string } {
   if (!p) return { tone: "unknown", label: "Unknown", via: "" };

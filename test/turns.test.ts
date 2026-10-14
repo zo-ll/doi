@@ -136,6 +136,12 @@ describe("POST turns", () => {
     expect(calls[0]!.req.messages.at(-1)!.content[0]).toEqual({ type: "text", text: 'Target: data-oid="title". Change only this element and the CSS rules for it, with small edits. Bigger' });
   });
 
+  test("a model chosen for the turn wins over the config", async () => {
+    await events(await post({ text: "Bigger", target: "title", model: "anthropic:other-model" }));
+    expect(calls[0]!.provider).toBe("anthropic");
+    expect(calls[0]!.req.model).toBe("other-model");
+  });
+
   test("bad requests and unknown designs fail before any provider call", async () => {
     expect((await post({ text: "" })).status).toBe(400);
     expect((await post({ text: "x", target: "a b" })).status).toBe(400);
@@ -143,6 +149,9 @@ describe("POST turns", () => {
     expect((await fetch(url(), { method: "POST", body: "{not json" })).status).toBe(400);
     expect((await post({ text: "x" }, {}, "Bad_Name")).status).toBe(400);
     expect((await post({ text: "x" }, {}, "missing")).status).toBe(404);
+    expect((await post({ text: "x", model: "anthropic:--help" })).status).toBe(400);
+    expect((await post({ text: "x", model: "nobody:m" })).status).toBe(400);
+    expect((await post({ text: "x", model: 3 })).status).toBe(400);
     expect(calls).toHaveLength(0);
   });
 

@@ -1,4 +1,4 @@
-import type { Config, ProviderId } from "../config.ts";
+import { parseModelChoice, type Config, type ModelRef, type ProviderId } from "../config.ts";
 import { ApplyError, runTurn, type TurnEvent } from "../generation/apply.ts";
 import { assembleContext, capabilitiesFor, ContextTooLargeError, readDesignFiles } from "../generation/context.ts";
 import { linkDesignSystemIn } from "../generation/ds-link.ts";
@@ -6,7 +6,8 @@ import { designOids, fixDesignOids } from "../generation/oids.ts";
 import { touchedOids } from "../generation/touched.ts";
 import { SYSTEM_PROMPT } from "../generation/prompts.ts";
 import type { Provider } from "../providers/types.ts";
-import { appendChat, appendCommit, historyMessages, readChat, type TurnComment } from "../workspace/chat.ts";
+import { appendChat, appendCommit, historyMessages, readChat, turnCommits, type ChatEntry, type TurnComment } from "../workspace/chat.ts";
+import type { FileStat } from "../workspace/git.ts";
 import { CommentError, readComments, updateComment } from "../workspace/comments.ts";
 import { activeDesignSystem, formatDesignSystem } from "../workspace/design-systems.ts";
 import { designDir } from "../workspace/paths.ts";
@@ -26,6 +27,8 @@ export interface TurnDeps {
   locks?: DesignLocks;
   /** True when the design has open variants; a turn then waits for a pick or a discard. */
   variantsOpen?: (params: { project: string; design: string }) => Promise<boolean>;
+  /** The changed lines per file of some commits of a design, for the chat. */
+  stats?: (project: string, design: string, shas: string[]) => Promise<Map<string, FileStat[]>>;
 }
 
 export interface TurnBody {
@@ -36,6 +39,8 @@ export interface TurnBody {
   images: { mediaType: ImageType; data: Uint8Array }[];
   /** Ids of open comments to apply (#17). */
   comments: string[];
+  /** A model the user chose for this turn; else the config's edit or generate model. */
+  model: ModelRef | null;
 }
 
 /** Events on the stream: the turn events, an error event if the turn failed, then the commit. */
@@ -43,7 +48,7 @@ export type TurnStreamEvent =
   | TurnEvent
   | { type: "error"; kind: "context" | "apply" | "provider"; message: string }
   /** After `done`: the commit of the turn, or why it failed. The turn itself succeeded. */
-  | { type: "commit"; sha: string | null; error?: string }
+  | { type: "commit"; sha: string | null; error?: string; stats?: FileStat[] }
   /** After `applied`: the comments of this turn whose element the turn changed. They are done now. */
   | { type: "comments"; done: string[] };
 
@@ -54,7 +59,7 @@ const OID = /^[A-Za-z0-9_-]{1,100}$/;
 
 function parseBody(raw: unknown): TurnBody | string {
   if (typeof raw !== "object" || raw === null) return "The body must be a JSON object.";
-  const { text = "", target, images, comments = [] } = raw as Record<string, unknown>;
+  const { text = "", target, images, comments = [], model } = raw as Record<string, unknown>;
   if (!Array.isArray(comments) || comments.length > MAX_COMMENTS || !comments.every((c) => typeof c === "string" && COMMENT_ID.test(c))) {
     return `comments must be a list of at most ${MAX_COMMENTS} comment ids.`;
   }
@@ -65,7 +70,9 @@ function parseBody(raw: unknown): TurnBody | string {
   }
   const parsed = parseImages(images);
   if (typeof parsed === "string") return parsed;
-  return { text, target: (target as string | null | undefined) ?? null, images: parsed, comments: [...new Set(comments as string[])] };
+  const ref = model === undefined || model === null ? null : parseModelChoice(model);
+  if (typeof ref === "string") return ref;
+  return { text, target: (target as string | null | undefined) ?? null, images: parsed, comments: [...new Set(comments as string[])], model: ref };
 }
 
 
@@ -92,14 +99,31 @@ function errorEvent(e: unknown): TurnStreamEvent {
 
 const sse = (e: TurnStreamEvent) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`;
 
+/** A stored message, and for an answer that made a commit, its changed lines per file. */
+export type ChatEntryView = ChatEntry & { stats?: FileStat[] };
+
 /** GET /api/projects/:project/designs/:design/chat: the stored messages of one design. */
-export async function getChat(workspace: string, params: { project: string; design: string }): Promise<Response> {
+export async function getChat(
+  workspace: string,
+  params: { project: string; design: string },
+  stats?: TurnDeps["stats"],
+): Promise<Response> {
   try {
     designDir(workspace, params.project, params.design); // validates both names
   } catch (e) {
     return Response.json({ error: (e as Error).message }, { status: 400 });
   }
-  return Response.json(await readChat(workspace, params.project, params.design));
+  const entries: ChatEntryView[] = await readChat(workspace, params.project, params.design);
+  if (stats) {
+    const commits = await turnCommits(workspace, params.project, params.design);
+    const counts = await stats(params.project, params.design, [...commits.values()]);
+    for (const e of entries) {
+      const sha = e.role === "assistant" ? commits.get(e.turn) : undefined;
+      const s = sha ? counts.get(sha) : undefined;
+      if (s) e.stats = s;
+    }
+  }
+  return Response.json(entries);
 }
 
 /**
@@ -134,7 +158,7 @@ export function createTurnHandler(deps: TurnDeps) {
     }
     if (typeof body === "string") return Response.json({ error: body }, { status: 400 });
 
-    const ref = body.target ? deps.config.models.edit : deps.config.models.generate;
+    const ref = body.model ?? (body.target ? deps.config.models.edit : deps.config.models.generate);
     let provider: Provider;
     try {
       provider = deps.getProvider(ref.provider, deps.config);
@@ -286,7 +310,8 @@ export function createTurnHandler(deps: TurnDeps) {
               const sha = await deps.commit(params.project, params.design, message);
               // The version history names the model of this commit through this line.
               if (sha) await appendCommit(workspace, params.project, { turn: turnId, design: params.design, sha });
-              send({ type: "commit", sha });
+              const counts = sha && deps.stats ? (await deps.stats(params.project, params.design, [sha]).catch(() => null))?.get(sha) : undefined;
+              send({ type: "commit", sha, ...(counts ? { stats: counts } : {}) });
             } catch (e) {
               const message = e instanceof Error ? e.message : String(e);
               console.error("Could not commit the turn:", message);
