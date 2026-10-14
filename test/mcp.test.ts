@@ -136,6 +136,17 @@ describe("MCP over HTTP at /mcp", () => {
     expect(sandboxed.status).toBe(403);
     const simple = await fetch(`${base}/mcp`, { method: "POST", body, headers: { ...headers, "content-type": "text/plain" } });
     expect(simple.status).toBe(415);
+    // A cross-site EventSource must not hold a stream open.
+    const stream = await fetch(`${base}/mcp`, { headers: { accept: "text/event-stream", origin: "https://evil.example" } });
+    expect(stream.status).toBe(403);
+  });
+
+  test("GET and DELETE get 405: the server is stateless", async () => {
+    for (const method of ["GET", "DELETE"]) {
+      const res = await fetch(`${base}/mcp`, { method, headers: { accept: "text/event-stream" } });
+      expect(res.status).toBe(405);
+      expect(res.headers.get("allow")).toBe("POST");
+    }
   });
 });
 

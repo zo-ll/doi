@@ -245,7 +245,12 @@ export async function startServer(config: Config, options: { port?: number; deve
         DELETE: (req) => deleteCommentRoute(commentDeps, req.params),
       },
       "/api/projects/:project/designs/:design/turns": { POST: (req, srv) => runTurnRequest(req, req.params, srv) },
-      [MCP_PATH]: (req) => handleMcp({ workspace: config.workspace }, req),
+      // Stateless: no server-sent stream (GET) and no session to end (DELETE), so only POST.
+      [MCP_PATH]: {
+        POST: (req) => handleMcp({ workspace: config.workspace }, req),
+        GET: () => new Response("Method not allowed", { status: 405, headers: { allow: "POST" } }),
+        DELETE: () => new Response("Method not allowed", { status: 405, headers: { allow: "POST" } }),
+      },
       "/__doi/bridge.js": () => new Response(bridge, { headers: { "content-type": "text/javascript" } }),
     }),
     fetch(req, srv) {

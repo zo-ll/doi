@@ -39,5 +39,4 @@ bun check
 | `src/providers/` | `Provider` interface, API adapters (Anthropic, OpenAI, OpenCode Go) and the CLI backends (Claude Code, Codex) |
 | `src/mcp/` | MCP server at `/mcp`: coding agents read designs through it |
 | `src/workspace/` | Workspace layout and safe path helpers |
-| `src/mcp/` | MCP server (M4) |
 | `test/` | `bun test` suites |
