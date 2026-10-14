@@ -32,5 +32,3 @@ extract  = "claude-code:claude-haiku-5-5"  # design system extraction (needs vis
 # With an API key, for example:
 # generate = "anthropic:claude-opus-5-5"
 
-[harness]
-default = "claude-code"

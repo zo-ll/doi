@@ -79,20 +79,6 @@ button { font: inherit; color: inherit; }
 }
 .link-btn:hover { text-decoration: underline; }
 
-.pill {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1-5);
-  height: var(--control-h-sm);
-  padding: 0 var(--space-2);
-  border-radius: var(--radius-full);
-  background: var(--surface-sunken);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  font-size: var(--text-xs);
-  font-family: var(--font-mono);
-}
-
 .status-dot { width: var(--status-dot); height: var(--status-dot); border-radius: 50%; background: var(--text-tertiary); }
 .status-dot.is-on { background: var(--success); }
 .status-dot.is-off { background: var(--danger); }

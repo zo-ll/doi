@@ -37,7 +37,7 @@ bun check
 | `src/web/` | React UI (HTML import, no Vite): chat panel and canvas |
 | `src/frame/bridge.js` | Script injected into each design iframe for selection |
 | `src/providers/` | `Provider` interface, API adapters (Anthropic, OpenAI, OpenCode Go) and the CLI backends (Claude Code, Codex) |
-| `src/harnesses/` | `Harness` interface, CLI adapters, handoff |
+| `src/mcp/` | MCP server at `/mcp`: coding agents read designs through it |
 | `src/workspace/` | Workspace layout and safe path helpers |
 | `src/mcp/` | MCP server (M4) |
 | `test/` | `bun test` suites |

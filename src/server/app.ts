@@ -1,6 +1,5 @@
 import index from "../web/index.html";
 import type { Config } from "../config.ts";
-import { detectHarnesses } from "../harnesses/registry.ts";
 import { getProvider } from "../providers/registry.ts";
 import { providerStatus } from "../providers/status.ts";
 import { designDir, ensureWorkspace, fileIn, listProjects } from "../workspace/paths.ts";
@@ -193,8 +192,7 @@ export async function startServer(config: Config, options: { port?: number; deve
       "/": index,
       "/api/health": () => Response.json({ ok: true }),
       "/api/config": () =>
-        Response.json({ models: config.models, harness: config.harness, workspace: config.workspace, editorUrl: config.editorUrl }),
-      "/api/harnesses": async () => Response.json(await detectHarnesses()),
+        Response.json({ models: config.models, workspace: config.workspace, editorUrl: config.editorUrl }),
       "/api/providers": async () => Response.json(await providerStatus(config)),
       "/api/events": (req, srv) => designEvents(watcher, req, srv),
       "/api/design-systems": async () => Response.json(await listDesignSystems(config.workspace)),
