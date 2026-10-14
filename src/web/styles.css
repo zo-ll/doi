@@ -1009,33 +1009,30 @@ a:hover { color: var(--text); }
 
 /* ---------- History ---------- */
 
-.version {
-  display: grid;
-  gap: var(--space-1);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: none;
-  color: var(--text);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
+.history { flex: 1; min-height: 0; overflow: auto; padding: var(--space-2) var(--space-2) var(--space-4); }
+.history-intro { padding: var(--space-1) var(--space-1-5) var(--space-2-5); font-size: var(--text-sm); line-height: 1.45; color: var(--text-3); }
+.history-error { margin: 0 var(--space-1-5) var(--space-2); }
+.history-list { display: flex; flex-direction: column; gap: var(--space-0-5); }
+.version { display: flex; gap: var(--space-2-5); padding: var(--space-2-5) var(--space-2); border: 1px solid transparent; border-radius: var(--radius-lg); }
+.version.is-previewing { background: var(--warn-soft); border-color: var(--warn); }
+.version-dot { width: 9px; height: 9px; flex: none; margin-top: 3px; border-radius: 50%; background: var(--line-2); }
+.version-dot.is-current { background: var(--accent); }
+.version-dot.is-previewing { background: var(--warn); }
+.version-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.version-head { display: flex; align-items: center; gap: var(--space-1-5); }
+.version-n { font: var(--weight-medium) var(--text-sm) var(--font-mono); }
+.version-current { font-size: var(--text-xs); color: var(--accent-text); }
+.version-time { font-size: var(--text-xs); color: var(--text-3); white-space: nowrap; }
+.version-message {
+  font-size: var(--text-control);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
-.version:hover { background: var(--hover); }
-.version.is-active { border-color: var(--accent); background: var(--accent-soft); }
-.version-message { overflow-wrap: anywhere; }
-.version-meta { display: flex; align-items: center; gap: var(--space-2); min-width: 0; font-size: var(--text-xs); color: var(--text-3); }
-.version-meta > span { white-space: nowrap; flex: none; }
-.version-meta > .truncate { flex: 0 1 auto; }
-.version-sha { font-family: var(--font-mono); }
-.badge-current {
-  margin-left: auto;
-  padding: 0 var(--space-1-5);
-  border-radius: var(--radius-full);
-  background: var(--accent-soft);
-  color: var(--accent-text);
-  font-weight: var(--weight-medium);
-}
+.version-meta { font: var(--text-xs) var(--font-mono); color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.version-actions { display: flex; gap: var(--space-1); margin-top: var(--space-0-5); }
 
 /* ---------- Design system dialog ---------- */
 

@@ -11,6 +11,7 @@ import {
 import { Canvas } from "./components/Canvas.tsx";
 import { ChatPanel, type AppliedComment, type Selection } from "./components/ChatPanel.tsx";
 import { CommentsPanel } from "./components/CommentsPanel.tsx";
+import { Confirm } from "./components/Confirm.tsx";
 import { HistoryPanel } from "./components/HistoryPanel.tsx";
 import { DesignSystemDialog } from "./components/DesignSystemDialog.tsx";
 import { ExportDialog } from "./components/ExportDialog.tsx";
@@ -89,6 +90,8 @@ export function App() {
   /** Comments the user marked "apply": they go with the next turn. */
   const [applied, setApplied] = useState<AppliedComment[]>([]);
   const [running, setRunning] = useState(false);
+  /** The restore question for the previewed version is open. */
+  const [askRestore, setAskRestore] = useState(false);
   /** Bumped to open the new-comment form (N, or the Comment tool). */
   const [newComment, setNewComment] = useState(0);
   /** A full screen over the app: settings or usage. */
@@ -282,6 +285,23 @@ export function App() {
         />
       )}
 
+      {askRestore && history.preview && versionList && (
+        <Confirm
+          title={`Restore ${previewLabel.split(" · ")[0]}?`}
+          body={`doi creates v${versionList.length + 1} with the files from ${previewLabel.split(" · ")[0]}. v${versionList.length} and all earlier versions stay in the history. Comments do not change.`}
+          action={`Restore ${previewLabel.split(" · ")[0]}`}
+          busy={history.busy}
+          error={history.error}
+          onCancel={() => setAskRestore(false)}
+          onConfirm={() => {
+            history.restore().then(
+              () => setAskRestore(false),
+              () => {}, // the dialog shows the error
+            );
+          }}
+        />
+      )}
+
       <div className="app-body">
         {panels.chat && (
           <aside className="chat-pane" aria-label="Chat">
@@ -330,9 +350,7 @@ export function App() {
           preview={history.preview}
           previewBusy={history.busy}
           previewError={history.error}
-          onRestorePreview={() => {
-            history.restore().catch(() => {}); // the bar shows the error
-          }}
+          onRestorePreview={() => setAskRestore(true)}
           previewLabel={previewLabel}
           onClosePreview={() => history.setPreview(null)}
           variants={variants.set}
@@ -390,6 +408,7 @@ export function App() {
                   versions={active ? history.versions : { state: "ready", data: [] }}
                   preview={history.preview?.sha ?? null}
                   onPreview={history.setPreview}
+                  onRestore={() => setAskRestore(true)}
                   onRetry={history.reload}
                 />
               )}

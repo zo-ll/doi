@@ -1,5 +1,6 @@
 import type { Load, VersionView } from "../api.ts";
-import { Icon } from "./Icon.tsx";
+import { shortModel } from "../providers.ts";
+import { versionKind } from "../history.ts";
 
 /** "just now", "5 min ago", "3 h ago", else the date. */
 export function timeAgo(iso: string, now = Date.now()): string {
@@ -12,49 +13,74 @@ export function timeAgo(iso: string, now = Date.now()): string {
   return new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
-export function HistoryPanel({ versions, preview, onPreview, onRetry }: {
+export function HistoryPanel({ versions, preview, onPreview, onRestore, onRetry }: {
   versions: Load<VersionView[]>;
-  /** The version shown in the preview frame. */
+  /** The version shown on the canvas. */
   preview: string | null;
   onPreview: (v: VersionView | null) => void;
+  /** Asks to restore the previewed version. */
+  onRestore: () => void;
   onRetry: () => void;
 }) {
+  const list = versions.state === "ready" ? versions.data : [];
   return (
-    <div className="comments history">
-      <div className="comments-list">
-        {versions.state === "loading" && <div className="skeleton comments-skeleton" aria-label="Loading the history" />}
-        {versions.state === "error" && (
-          <div className="notice notice-danger" role="alert">
-            <Icon name="alert" />
-            <span>The history cannot load: {versions.message}</span>
-            <button className="link-btn" onClick={onRetry}>Try again</button>
-          </div>
-        )}
-        {versions.state === "ready" && versions.data.length === 0 && (
-          <div className="chat-empty">
-            <div className="chat-empty-icon"><Icon name="history" size={20} /></div>
-            <h2>No versions</h2>
-            <p>Each completed change is a version here. Preview an old version, and restore it if you want it back.</p>
-          </div>
-        )}
-        {versions.state === "ready" &&
-          versions.data.map((v, i) => (
-            <button
-              key={v.sha}
-              className={`version${preview === v.sha ? " is-active" : ""}`}
-              onClick={() => onPreview(preview === v.sha || i === 0 ? null : v)}
-              aria-pressed={preview === v.sha}
-              title={i === 0 ? "This is the current version" : "Preview this version on the canvas"}
-            >
-              <span className="version-message">{v.message}</span>
-              <span className="version-meta">
-                <span>{timeAgo(v.at)}</span>
-                {v.model && <span className="truncate">{v.model}</span>}
-                <span className="version-sha">{v.sha.slice(0, 7)}</span>
-                {i === 0 && <span className="badge-current">Current</span>}
-              </span>
-            </button>
-          ))}
+    <div className="history">
+      <p className="history-intro">Every turn, pick, restore and rename is a version. Restoring adds a new version; nothing is lost.</p>
+      {versions.state === "loading" && (
+        <div className="history-list" aria-busy="true" aria-label="Loading the history">
+          <div className="skeleton comment-skeleton" />
+          <div className="skeleton comment-skeleton" />
+        </div>
+      )}
+      {versions.state === "error" && (
+        <div className="banner banner-err history-error" role="alert">
+          <span className="dot dot-err" />
+          <span className="spacer">The history cannot load: {versions.message}</span>
+          <button className="btn btn-secondary btn-sm" onClick={onRetry}>
+            Try again
+          </button>
+        </div>
+      )}
+      {versions.state === "ready" && list.length === 0 && <p className="comments-empty">No versions yet. The first completed turn makes v1.</p>}
+      <div className="history-list">
+        {list.map((v, i) => {
+          const n = list.length - i;
+          const current = i === 0;
+          const previewing = preview === v.sha;
+          return (
+            <div key={v.sha} className={`version${previewing ? " is-previewing" : ""}`}>
+              <span className={`version-dot${current ? " is-current" : previewing ? " is-previewing" : ""}`} />
+              <div className="version-body">
+                <div className="version-head">
+                  <span className="version-n">v{n}</span>
+                  <span className="badge">{versionKind(v.message)}</span>
+                  {current && <span className="version-current">Current</span>}
+                  <span className="spacer" />
+                  <span className="version-time" title={new Date(v.at).toLocaleString()}>
+                    {timeAgo(v.at)}
+                  </span>
+                </div>
+                <p className="version-message">{v.message}</p>
+                <p className="version-meta">
+                  {v.model ? `${shortModel(v.model.split(":").slice(1).join(":"))} · ` : ""}
+                  {v.sha.slice(0, 7)}
+                </p>
+                {!current && (
+                  <div className="version-actions">
+                    <button className="btn btn-secondary btn-sm" onClick={() => onPreview(previewing ? null : v)} aria-pressed={previewing}>
+                      {previewing ? "Close preview" : "Preview"}
+                    </button>
+                    {previewing && (
+                      <button className="btn btn-primary btn-sm" onClick={onRestore}>
+                        Restore
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

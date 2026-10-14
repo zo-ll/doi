@@ -62,3 +62,14 @@ export function useHistory(active: Active | null, revision: number) {
     restore,
   };
 }
+
+export type VersionKind = "turn" | "pick" | "restore" | "rename" | "create";
+
+/** What made a version, from its commit message (the messages doi writes itself). */
+export function versionKind(message: string): VersionKind {
+  if (message.startsWith("Restore ")) return "restore";
+  if (message.startsWith("Pick variant ")) return "pick";
+  if (message.startsWith("Rename design ")) return "rename";
+  if (message.startsWith("Create design ") || message.startsWith("Create project ")) return "create";
+  return "turn";
+}
