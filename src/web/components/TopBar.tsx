@@ -29,6 +29,9 @@ export function TopBar(props: {
   /** The project's design system; undefined without a project. */
   designSystem?: DesignSystemChip | null;
   onDesignSystem?: () => void;
+  /** The project's linked repo; undefined without a project. */
+  repo?: string | null;
+  onRepo?: () => void;
   tweaksOpen: boolean;
   onTweaks?: () => void;
   onExport?: () => void;
@@ -100,6 +103,12 @@ export function TopBar(props: {
             </span>
           )}
           {props.designSystem?.name ?? "No design system"}
+        </button>
+      )}
+      {props.repo !== undefined && (
+        <button className={`ds-chip ${props.repo ? "" : "is-empty"}`} onClick={props.onRepo} title="The app's code: a GitHub repo the model reads">
+          <span className="repo-mark" aria-hidden="true" />
+          {props.repo ?? "Link the app's repo"}
         </button>
       )}
       {props.onTweaks && (

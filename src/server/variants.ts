@@ -4,6 +4,7 @@ import { assembleContext, capabilitiesFor, ContextTooLargeError, readDesignFiles
 import { linkDesignSystemIn } from "../generation/ds-link.ts";
 import { fixDesignOids } from "../generation/oids.ts";
 import { activeDesignSystem, formatDesignSystem } from "../workspace/design-systems.ts";
+import { repoForTurn } from "../generation/repo-context.ts";
 import { SYSTEM_PROMPT } from "../generation/prompts.ts";
 import type { Provider } from "../providers/types.ts";
 import { appendChat, appendCommit, chatFile, historyMessages, readChat } from "../workspace/chat.ts";
@@ -174,15 +175,25 @@ export function createVariantHandlers(deps: VariantDeps) {
         const runOne = async (v: Variant, provider: Provider) => {
           const vdir = variantDir(workspace, params.project, params.design, set.id, v.n);
           try {
+            const readsFiles = provider.capabilities.editsFiles;
+            const repo = await repoForTurn(workspace, params.project, readsFiles);
             const context = assembleContext({
               systemPrompt: SYSTEM_PROMPT.text,
               designSystem: ds ? formatDesignSystem(ds) : null,
+              repo: repo?.text ?? null,
               files: before,
               history,
               turn: { text, target: target as string | null },
               capabilities: capabilitiesFor(provider, v.model),
             });
-            const request = { model: v.model, system: context.system, messages: context.messages, signal: abort.signal, cwd: vdir };
+            const request = {
+              model: v.model,
+              system: context.system,
+              messages: context.messages,
+              signal: abort.signal,
+              cwd: vdir,
+              ...(repo && readsFiles ? { readDirs: [repo.dir] } : {}),
+            };
             for await (let e of runTurn(provider, request, { ...params, workspace, dir: vdir })) {
               if (e.type === "text") v.text += e.delta;
               if (e.type === "retry") v.text = "";

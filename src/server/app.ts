@@ -15,6 +15,8 @@ import { getExport } from "./export.ts";
 import { getHandoff, getPrompt, postBundle } from "./handoff.ts";
 import { configView, getUsage, putModels } from "./settings.ts";
 import { getTweaks, putTweaks } from "./tweaks.ts";
+import { deleteProjectRepo, getGithubRepos, getGithubStatus, putProjectRepo, syncProjectRepo } from "./github.ts";
+import { excludeClones } from "../github/gh.ts";
 import { handleMcp, MCP_PATH } from "../mcp/server.ts";
 import { getHistory, restoreVersion } from "./history.ts";
 import { getLayout, putLayout } from "./layout.ts";
@@ -53,6 +55,8 @@ export async function startServer(config: Config, options: { port?: number; deve
   await ensureWorkspace(config.workspace);
   // Without git, doi still works; only the version history is missing.
   await ensureRepo(config.workspace).catch((e) => console.error("Version history is off:", e instanceof Error ? e.message : e));
+  // Clones of linked repos live in the workspace, outside its history.
+  await excludeClones(config.workspace).catch(() => {});
 
   const watcher = watchDesigns(config.workspace);
   const locks = new DesignLocks();
@@ -83,6 +87,7 @@ export async function startServer(config: Config, options: { port?: number; deve
     variantsOpen: variants.isOpen,
     commit: (paths: string[], message: string) => commitPaths(config.workspace, paths, message),
   };
+  const githubDeps = { workspace: config.workspace, locks, commit: (paths: string[], message: string) => commitPaths(config.workspace, paths, message) };
   const tweakDeps = { workspace: config.workspace, locks, commit: (paths: string[], message: string) => commitPaths(config.workspace, paths, message) };
   const chatStats = (project: string, design: string, shas: string[]) => commitStats(config.workspace, project, design, shas);
   const runTurnRequest = createTurnHandler({
@@ -200,6 +205,13 @@ export async function startServer(config: Config, options: { port?: number; deve
       "/api/config": () => Response.json(configView(config)),
       "/api/config/models": { PUT: (req) => putModels(config, req) },
       "/api/usage": () => getUsage(config),
+      "/api/github/status": () => getGithubStatus(githubDeps),
+      "/api/github/repos": () => getGithubRepos(githubDeps),
+      "/api/projects/:project/repo": {
+        PUT: (req, srv) => putProjectRepo(githubDeps, req, req.params, srv),
+        DELETE: (req) => deleteProjectRepo(githubDeps, req.params),
+      },
+      "/api/projects/:project/repo/sync": { POST: (req, srv) => syncProjectRepo(githubDeps, req, req.params, srv) },
       "/api/providers": async () => Response.json(await providerStatus(config)),
       // The workspace path and its git state, for the projects navigator. `changes` is null without git.
       "/api/workspace": async () => Response.json({ path: config.workspace, changes: await workspaceChanges(config.workspace) }),

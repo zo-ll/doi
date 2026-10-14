@@ -20,7 +20,7 @@ export type { Proc, Spawn } from "./cli.ts";
  * Flags checked against Claude Code 2.1.296. The system text goes in a file, not in argv:
  * one argument is limited to about 128 KB on Linux, and argv is visible in the process list.
  */
-export function claudeArgs(model: string, systemFile: string): string[] {
+export function claudeArgs(model: string, systemFile: string, readDirs: string[] = []): string[] {
   return [
     "-p",
     "--input-format", "stream-json",
@@ -32,6 +32,8 @@ export function claudeArgs(model: string, systemFile: string): string[] {
     "--tools", "Read,Edit,Write",
     "--permission-mode", "acceptEdits",
     "--no-session-persistence",
+    // --restricted confines the file tools to the cwd and these folders (the linked repo's clone).
+    ...readDirs.flatMap((d) => ["--add-dir", d]),
     "--model", model,
     "--append-system-prompt-file", systemFile,
   ];
@@ -106,7 +108,7 @@ export function createClaudeCode(_config: Config, spawn: Spawn = bunSpawn): Prov
       let proc: Proc;
       try {
         await writeFile(systemFile, req.system.join("\n\n"), { mode: 0o600 });
-        proc = spawn(["claude", ...claudeArgs(req.model, systemFile)], req.cwd);
+        proc = spawn(["claude", ...claudeArgs(req.model, systemFile, req.readDirs)], req.cwd);
       } catch (e) {
         await rm(tmp, { recursive: true, force: true });
         throw e;

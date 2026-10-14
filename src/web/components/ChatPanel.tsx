@@ -71,6 +71,7 @@ export function ChatPanel({
   onDiscardVariants,
   onCollapse,
   onOpenSettings,
+  repo = null,
 }: {
   /** The open design; null disables the composer. */
   target: Active | null;
@@ -93,6 +94,8 @@ export function ChatPanel({
   onDiscardVariants?: () => void;
   onCollapse: () => void;
   onOpenSettings: () => void;
+  /** The project's linked repo: the samples start from the app's code. */
+  repo?: string | null;
 }) {
   const disabled = target === null;
   const [draft, setDraft] = useState("");
@@ -334,7 +337,7 @@ export function ChatPanel({
             <h2>Describe a design</h2>
             <p>The model writes HTML and CSS pages. Each frame on the canvas shows them at a different size.</p>
             <div className="chat-samples">
-              {SAMPLES.map((s) => (
+              {(repo ? [`Recreate the home page of ${repo}`, "Recreate the settings page from the code, then make it calmer", "A new onboarding screen that fits the app's style"] : SAMPLES).map((s) => (
                 <button
                   key={s}
                   className="chat-sample"

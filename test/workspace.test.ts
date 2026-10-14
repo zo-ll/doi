@@ -45,8 +45,8 @@ describe("listProjects", () => {
     await Bun.write(join(ws, "projects/other/designs/landing/index.html"), "<html></html>");
 
     expect(await listProjects(ws)).toEqual([
-      { id: "other", name: "other", designs: ["landing"], decks: [], designSystem: null },
-      { id: "sample", name: "Sample", designs: ["home"], decks: [], designSystem: null },
+      { id: "other", name: "other", designs: ["landing"], decks: [], designSystem: null, repo: null },
+      { id: "sample", name: "Sample", designs: ["home"], decks: [], designSystem: null, repo: null },
     ]);
   });
 
@@ -56,7 +56,7 @@ describe("listProjects", () => {
     await Bun.write(join(ws, "projects/broken/project.json"), "{ not json");
     await Bun.write(join(ws, "projects/broken/designs/home/index.html"), "<html></html>");
 
-    expect(await listProjects(ws)).toEqual([{ id: "broken", name: "broken", designs: ["home"], decks: [], designSystem: null }]);
+    expect(await listProjects(ws)).toEqual([{ id: "broken", name: "broken", designs: ["home"], decks: [], designSystem: null, repo: null }]);
   });
 
   test("returns an empty list for a missing workspace", async () => {
@@ -82,6 +82,6 @@ describe("design pages and slide decks", () => {
     dirs.push(ws);
     await Bun.write(join(ws, "projects/p/designs/deck/index.html"), '<section class="slide" data-slide>1</section>');
     await Bun.write(join(ws, "projects/p/designs/page/index.html"), '<div data-slider="x" data-slide-note>no</div>');
-    expect(await listProjects(ws)).toEqual([{ id: "p", name: "p", designs: ["deck", "page"], decks: ["deck"], designSystem: null }]);
+    expect(await listProjects(ws)).toEqual([{ id: "p", name: "p", designs: ["deck", "page"], decks: ["deck"], designSystem: null, repo: null }]);
   });
 });

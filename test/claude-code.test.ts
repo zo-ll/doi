@@ -106,6 +106,16 @@ describe("claude-code provider", () => {
     expect(args).not.toContain("--bare"); // --bare skips keychain reads, which the subscription login needs
   });
 
+  test("a linked repo's clone is an extra read folder; it comes before another flag", () => {
+    expect(claudeArgs("opus", "/s.md")).not.toContain("--add-dir");
+    const args = claudeArgs("opus", "/s.md", ["/ws/.repos/me/app"]);
+    const i = args.indexOf("--add-dir");
+    expect(args[i + 1]).toBe("/ws/.repos/me/app");
+    // --add-dir takes several values: the next item must be a flag, not a value it could take.
+    expect(args[i + 2]!.startsWith("--")).toBe(true);
+    expect(args).toContain("--restricted");
+  });
+
   test("the system text goes in a private file outside the design folder, removed after the run", async () => {
     const big = "x".repeat(300_000); // larger than one Linux argv string (about 128 KB)
     const { spawn, seen } = fakeSpawn([result()]);
