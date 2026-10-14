@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { chatUrl, getJSON, turnUrl, uploadUrl, variantsUrl, type ChatEntry, type ProviderStatus, type VariantStreamEvent } from "../api.ts";
+import { chatUrl, getJSON, turnUrl, uploadUrl, variantsUrl, type Active, type ChatEntryView, type VariantStreamEvent } from "../api.ts";
 import { isImageType, prepareImage, type PreparedImage } from "../images.ts";
 import { IMAGE_LIMITS } from "../../workspace/image-limits.ts";
 import {
@@ -11,90 +11,106 @@ import {
   readEvents,
   type Answer,
   type ChatMessage,
+  type Task,
   type VariantsMessage,
 } from "../chat.ts";
-import type { Active } from "./Sidebar.tsx";
-import { Icon } from "./Icon.tsx";
+import { shortModel, type TaskStatus } from "../providers.ts";
+import { MOD } from "./TopBar.tsx";
 
 /** The selected element. Each frame finds it by its data-oid and draws it. */
 export interface Selection {
   oid: string;
 }
 
+/** A comment the user marked "apply": it goes with the next turn. `n` is its number in the list. */
+export interface AppliedComment {
+  id: string;
+  oid: string;
+  text: string;
+  n: number;
+}
+
 type NewMessage = ChatMessage extends infer M ? (M extends ChatMessage ? Omit<M, "id"> : never) : never;
 
-const SUGGESTIONS = [
-  "A pricing page with three plans and a FAQ",
-  "A dashboard home for a fitness app",
-  "Make the hero more compact",
+/** What a turn sent, so Retry can send it again. */
+interface Sent {
+  text: string;
+  target: string | null;
+  images: PreparedImage[];
+  comments: AppliedComment[];
+  count: number;
+}
+
+const SAMPLES = [
+  "A pricing page with three plans, a comparison table and a FAQ",
+  "A dashboard home for a fitness app: today's goal, streak and the last workouts",
+  "A calm landing page for a note-taking app, with one accent color",
 ];
 
-const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const TONE_DOT = { ok: "dot-ok", warn: "dot-warn", err: "dot-err", unknown: "" } as const;
+const time = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : "");
+const usageLine = (u: { inputTokens: number; outputTokens: number; cachedTokens: number }) =>
+  `in ${formatTokens(u.inputTokens)} · out ${formatTokens(u.outputTokens)} · cached ${formatTokens(u.cachedTokens)}`;
 
 /**
  * The chat of one design. App mounts it with key = the design, so a design switch starts a
  * new panel: a run of the old design is aborted, and its messages cannot reach the new one.
  */
-/** Comments to apply in one turn, from the Comments tab. `key` makes each request new. */
-export interface CommentRequest {
-  key: number;
-  comments: { id: string; oid: string; text: string }[];
-}
-
 export function ChatPanel({
   target,
   selection,
-  model,
-  modelStatus,
+  tasks,
   onClearSelection,
-  hidden = false,
-  request = null,
-  onRequestTaken,
+  applied = [],
+  onUnapply,
+  onAppliedSent,
   onRunningChange,
   onCommentsChanged,
-  modelRef = null,
-  models = [],
   variantsOpen = false,
   onVariantsChanged,
+  onDiscardVariants,
+  onCollapse,
+  onOpenSettings,
 }: {
   /** The open design; null disables the composer. */
   target: Active | null;
   selection: Selection | null;
-  model: string | null;
-  /** Status of the provider behind `model`; null while it loads. */
-  modelStatus: ProviderStatus | null;
+  /** The model and status of each task (generate, edit, extract). */
+  tasks: TaskStatus[];
   onClearSelection: () => void;
-  /** The panel stays mounted behind another tab, so a running turn goes on. */
-  hidden?: boolean;
-  request?: CommentRequest | null;
-  onRequestTaken?: () => void;
+  /** Comments to send with the next turn. */
+  applied?: AppliedComment[];
+  onUnapply?: (id: string) => void;
+  /** The applied comments went with a turn. */
+  onAppliedSent?: () => void;
   onRunningChange?: (running: boolean) => void;
   /** A turn marked comments done. */
   onCommentsChanged?: () => void;
-  /** The default model as "<provider>:<model>", for variants. */
-  modelRef?: string | null;
-  /** The models from config.toml, offered for each variant. */
-  models?: string[];
   /** The design has open variants: no turn can start until one is picked or they are discarded. */
   variantsOpen?: boolean;
   /** A variants run changed the open set. */
   onVariantsChanged?: () => void;
+  onDiscardVariants?: () => void;
+  onCollapse: () => void;
+  onOpenSettings: () => void;
 }) {
   const disabled = target === null;
   const [draft, setDraft] = useState("");
   const [images, setImages] = useState<PreparedImage[]>([]);
   const [imageError, setImageError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [running, setRunning] = useState(false);
   // 1 is a normal turn; 2 to 4 starts that many variants.
   const [count, setCount] = useState(1);
-  const [variantModels, setVariantModels] = useState<string[]>([]);
+  /** A model the user picked for this design's turns; null uses the config. */
+  const [chosen, setChosen] = useState<TaskStatus | null>(null);
+  const [modelMenu, setModelMenu] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(1);
   const abortRef = useRef<AbortController | null>(null);
+  const sentRef = useRef(new Map<number, Sent>());
 
   // Auto-grow the composer up to its CSS max-height.
   useEffect(() => {
@@ -108,26 +124,27 @@ export function ChatPanel({
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [messages]);
 
-  const push = (m: NewMessage) =>
-    setMessages((list) => [...list, { ...m, id: nextId.current++ } as ChatMessage]);
-
+  const push = (m: NewMessage) => setMessages((list) => [...list, { ...m, id: nextId.current++ } as ChatMessage]);
   const updateAnswer = (id: number, f: (a: Answer) => Answer) =>
     setMessages((list) => list.map((m) => (m.id === id && m.kind === "assistant" ? f(m) : m)));
   const updateVariants = (id: number, f: (m: VariantsMessage) => VariantsMessage) =>
     setMessages((list) => list.map((m) => (m.id === id && m.kind === "variants" ? f(m) : m)));
 
-  /** The model of each variant: the chosen one, or the default. */
-  const modelsFor = (n: number) => Array.from({ length: n }, (_, i) => variantModels[i]?.trim() || modelRef || "");
+  // The model of the next turn: the user's pick, or the edit model for a target, else generate.
+  const byTask = (task: "generate" | "edit") => tasks.find((t) => t.task === task) ?? null;
+  const current = chosen ?? byTask(selection ? "edit" : "generate");
+  const currentTask: Task = selection ? "edit" : "generate";
+  const modelRef = current ? `${current.provider}:${current.model}` : null;
+  // Ready models from the config, one entry per provider and model.
+  const choices = tasks.filter((t, i) => tasks.findIndex((x) => x.provider === t.provider && x.model === t.model) === i);
 
-  /** Starts `count` variants of the draft. The answer streams into one message. */
-  const sendVariants = async () => {
-    const text = draft.trim();
-    if (!text || running || !target) return;
-    const turnTarget = selection?.oid ?? null;
-    push({ kind: "user", text, ...(turnTarget ? { target: turnTarget } : {}) });
+  /** Starts `n` variants of `text`. The answer streams into one message. */
+  const sendVariants = async (s: Sent) => {
+    if (!target) return;
+    push({ kind: "user", text: s.text, at: new Date().toISOString(), ...(s.target ? { target: s.target } : {}) });
     const id = nextId.current++;
     setMessages((list) => [...list, { id, kind: "variants", status: "running", items: [] }]);
-    setDraft("");
+    sentRef.current.set(id, s);
     const controller = new AbortController();
     abortRef.current = controller;
     setRunning(true);
@@ -135,7 +152,7 @@ export function ChatPanel({
       const res = await fetch(variantsUrl(target.project, target.design), {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text, target: turnTarget, count, models: modelsFor(count) }),
+        body: JSON.stringify({ text: s.text, target: s.target, count: s.count, ...(modelRef ? { models: Array(s.count).fill(modelRef) } : {}) }),
         signal: controller.signal,
       });
       if (!res.ok || !res.body) {
@@ -165,16 +182,25 @@ export function ChatPanel({
   useEffect(() => {
     if (!target) return;
     let live = true;
-    getJSON<ChatEntry[]>(chatUrl(target.project, target.design))
+    getJSON<ChatEntryView[]>(chatUrl(target.project, target.design))
       .then((entries) => {
         if (!live) return;
         const loaded = fromEntries(entries, () => nextId.current++, (name) => uploadUrl(target.project, name));
+        // A stored turn can be sent again (without its images, which the server keeps as files).
+        loaded.forEach((m, i) => {
+          const before = loaded[i - 1];
+          if (m.kind === "assistant" && before?.kind === "user") {
+            sentRef.current.set(m.id, { text: before.text, target: before.target ?? null, images: [], comments: [], count: 1 });
+          }
+        });
         setMessages((list) => [...loaded, ...list]);
       })
       .catch((e: unknown) => {
         if (live) push({ kind: "error", text: `The chat history could not load: ${e instanceof Error ? e.message : String(e)}` });
       });
-    return () => { live = false; };
+    return () => {
+      live = false;
+    };
   }, [target?.project, target?.design]);
 
   // Stop a running request when the panel unmounts or the design changes.
@@ -199,26 +225,20 @@ export function ChatPanel({
     setImages((list) => [...list, ...added].slice(0, IMAGE_LIMITS.count));
   };
 
-  /** Sends the draft, or with `comments` only those comments; the draft and images stay then. */
-  const send = async (comments?: CommentRequest["comments"]) => {
-    const text = comments ? "" : draft.trim();
-    if ((!text && !comments?.length) || running || !target) return;
-    const sent = comments ? [] : images;
-    const turnTarget = comments ? null : (selection?.oid ?? null);
+  /** Runs one turn. The answer streams into a new message. */
+  const sendTurn = async (s: Sent) => {
+    if (!target) return;
     push({
       kind: "user",
-      text,
-      ...(turnTarget ? { target: turnTarget } : {}),
-      ...(sent.length ? { images: sent.map((i) => i.url) } : {}),
-      ...(comments ? { comments: comments.map(({ oid, text }) => ({ oid, text })) } : {}),
+      text: s.text,
+      at: new Date().toISOString(),
+      ...(s.target ? { target: s.target } : {}),
+      ...(s.images.length ? { images: s.images.map((i) => i.url) } : {}),
+      ...(s.comments.length ? { comments: s.comments.map(({ oid, text }) => ({ oid, text })) } : {}),
     });
-    if (!comments) {
-      setImages([]);
-      setImageError(null);
-      setDraft("");
-    }
     const answerId = nextId.current++;
-    setMessages((list) => [...list, newAnswer(answerId)]);
+    sentRef.current.set(answerId, s);
+    setMessages((list) => [...list, newAnswer(answerId, current?.model, chosen ? currentTask : s.target ? "edit" : "generate")]);
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -228,10 +248,11 @@ export function ChatPanel({
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          text,
-          target: turnTarget,
-          images: sent.map(({ mediaType, data }) => ({ mediaType, data })),
-          ...(comments ? { comments: comments.map((c) => c.id) } : {}),
+          text: s.text,
+          target: s.target,
+          images: s.images.map(({ mediaType, data }) => ({ mediaType, data })),
+          ...(s.comments.length ? { comments: s.comments.map((c) => c.id) } : {}),
+          ...(chosen && modelRef ? { model: modelRef } : {}),
         }),
         signal: controller.signal,
       });
@@ -247,9 +268,7 @@ export function ChatPanel({
         if (event.type === "comments") onCommentsChanged?.();
         updateAnswer(answerId, (a) => applyEvent(a, event));
       }
-      if (!ended) {
-        updateAnswer(answerId, (a) => ({ ...a, status: "error", error: "The connection closed before the turn ended." }));
-      }
+      if (!ended) updateAnswer(answerId, (a) => ({ ...a, status: "error", error: "The connection closed before the turn ended." }));
     } catch (e) {
       if (controller.signal.aborted) updateAnswer(answerId, (a) => ({ ...a, status: "stopped" }));
       else updateAnswer(answerId, (a) => ({ ...a, status: "error", error: `The request failed: ${e instanceof Error ? e.message : String(e)}` }));
@@ -260,22 +279,28 @@ export function ChatPanel({
   };
 
   const stop = () => abortRef.current?.abort();
-
   useEffect(() => onRunningChange?.(running), [running]);
 
-  // "Apply" in the Comments tab: run one turn for those comments.
-  useEffect(() => {
-    if (!request || running || !target) return;
-    onRequestTaken?.();
-    void send(request.comments);
-  }, [request, running]);
-
-  const submit = () => void (count > 1 ? sendVariants() : send());
+  const send = () => {
+    const text = draft.trim();
+    if ((!text && !applied.length) || running || !target) return;
+    const s: Sent = { text, target: selection?.oid ?? null, images, comments: applied, count };
+    setDraft("");
+    setImages([]);
+    setImageError(null);
+    if (applied.length) onAppliedSent?.();
+    void (count > 1 ? sendVariants(s) : sendTurn(s));
+  };
+  const retry = (id: number) => {
+    const s = sentRef.current.get(id);
+    if (!s || running) return;
+    void (s.count > 1 ? sendVariants(s) : sendTurn(s));
+  };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      if (canSend) submit();
+      if (canSend) send();
     } else if (e.key === "Escape" && running) {
       e.preventDefault();
       stop();
@@ -284,92 +309,122 @@ export function ChatPanel({
 
   // Variants take text only; images go with a normal turn.
   const variantsWithImages = count > 1 && images.length > 0;
-  const canSend = draft.trim().length > 0 && !disabled && !variantsOpen && !variantsWithImages;
-  const modelReady = modelStatus ? modelStatus.ready && modelStatus.implemented : false;
-  const modelProblem =
-    modelStatus && !modelReady
-      ? !modelStatus.implemented
-        ? `The ${modelStatus.id} provider is not available yet`
-        : modelStatus.detail
-      : null;
+  // The variants route takes text only: applied comments would be lost.
+  const variantsWithComments = count > 1 && applied.length > 0;
+  const hasInput = draft.trim().length > 0 || (applied.length > 0 && count === 1);
+  const canSend = hasInput && !disabled && !variantsOpen && !variantsWithImages && !variantsWithComments;
+  const modelProblem = current && (current.tone === "err" || current.tone === "warn") ? current : null;
+  const turns = messages.filter((m) => m.kind === "user").length;
+  const hasChips = selection !== null || applied.length > 0 || images.length > 0;
 
   return (
-    <section className="chat" aria-label="Chat" hidden={hidden}>
+    <section className="chat" aria-label="Chat">
+      <div className="panel-header">
+        <span className="panel-title">Chat</span>
+        <span className="panel-meta">{turns === 1 ? "1 turn" : `${turns} turns`}</span>
+        <span className="spacer" />
+        <button className="collapse-btn" onClick={onCollapse} title={`Collapse chat (${MOD}[)`} aria-label="Collapse chat">
+          {MOD}[
+        </button>
+      </div>
 
       <div className="chat-messages" ref={listRef}>
-        {messages.length === 0 ? (
+        {messages.length === 0 && (
           <div className="chat-empty">
-            <div className="chat-empty-icon"><Icon name="sparkle" size={20} /></div>
             <h2>Describe a design</h2>
-            <p>Write what you want, or click an element on the canvas to change only that part.</p>
-            <div className="suggestions">
-              {SUGGESTIONS.map((s) => (
-                <button key={s} className="suggestion" onClick={() => { setDraft(s); inputRef.current?.focus(); }}>
+            <p>The model writes HTML and CSS pages. Each frame on the canvas shows them at a different size.</p>
+            <div className="chat-samples">
+              {SAMPLES.map((s) => (
+                <button
+                  key={s}
+                  className="chat-sample"
+                  disabled={disabled}
+                  onClick={() => {
+                    setDraft(s);
+                    inputRef.current?.focus();
+                  }}
+                >
                   {s}
                 </button>
               ))}
             </div>
           </div>
-        ) : (
-          messages.map((m) =>
-            m.kind === "user" ? (
-              <div key={m.id} className="msg msg-user">
-                {m.target && <span className="msg-target"><Icon name="target" size={12} />{m.target}</span>}
-                {m.images && (
-                  <div className="msg-images">
-                    {m.images.map((src, i) => <img key={i} src={src} alt={`Attached image ${i + 1}`} />)}
+        )}
+        {messages.map((m) =>
+          m.kind === "user" ? (
+            <div key={m.id} className="turn-user">
+              <div className="turn-meta">
+                <span className="turn-who">You</span>
+                <span>{time(m.at)}</span>
+              </div>
+              <div className="msg-card">
+                {(m.target || m.comments?.length) && (
+                  <div className="msg-chips">
+                    {m.target && (
+                      <span className="chip chip-accent">
+                        <span className="el-mark" />
+                        {m.target}
+                      </span>
+                    )}
+                    {m.comments?.map((c, i) => (
+                      <span key={i} className="chip chip-outline" title={c.text}>
+                        Comment on {c.oid}
+                      </span>
+                    ))}
                   </div>
                 )}
-                {m.comments && (
-                  <ol className="msg-comments" aria-label="Comments to apply">
-                    {m.comments.map((c, i) => (
-                      <li key={i}>
-                        <span className="msg-target"><Icon name="target" size={12} />{c.oid}</span> {c.text}
-                      </li>
+                {m.text && <p className="msg-text">{m.text}</p>}
+                {m.images && (
+                  <div className="msg-images">
+                    {m.images.map((src, i) => (
+                      <img key={i} src={src} alt={`Attached image ${i + 1}`} />
                     ))}
-                  </ol>
+                  </div>
                 )}
-                {m.text && <p>{m.text}</p>}
               </div>
-            ) : m.kind === "assistant" ? (
-              <AnswerView key={m.id} answer={m} />
-            ) : m.kind === "error" ? (
-              <div key={m.id} className="notice notice-danger" role="alert">
-                <Icon name="alert" />
-                <p className="notice-text">{m.text}</p>
-              </div>
-            ) : m.kind === "variants" ? (
-              <VariantsView key={m.id} message={m} />
-            ) : (
-              <p key={m.id} className="msg-info">{m.text}</p>
-            ),
-          )
-        )}
-        {running && (
-          <div className="msg-pending" role="status">
-            <span className="pending-dot" />
-            Working… <span className="muted">Esc to stop</span>
-          </div>
+            </div>
+          ) : m.kind === "assistant" ? (
+            <AnswerView key={m.id} answer={m} running={running} onRetry={() => retry(m.id)} onOtherModel={() => setModelMenu(true)} />
+          ) : m.kind === "variants" ? (
+            <VariantsLine key={m.id} message={m} />
+          ) : m.kind === "error" ? (
+            <div key={m.id} className="banner banner-err" role="alert">
+              <span className="dot dot-err" />
+              {m.text}
+            </div>
+          ) : (
+            <p key={m.id} className="msg-info">
+              {m.text}
+            </p>
+          ),
         )}
       </div>
 
       <div className="composer-wrap">
         {variantsOpen && (
-          <p className="composer-warning" role="status">
-            <Icon name="alert" size={14} />
-            <span>This design has variants. Pick one on the canvas, or discard them, before the next change.</span>
-          </p>
+          <div className="banner banner-warn" role="status">
+            <span className="dot dot-warn" />
+            <span className="spacer">A variant set is open. Pick one or discard all first.</span>
+            {onDiscardVariants && (
+              <button className="btn btn-secondary btn-sm" onClick={onDiscardVariants}>
+                Discard all
+              </button>
+            )}
+          </div>
         )}
-        {modelProblem && (
-          <p className="composer-warning" role="status">
-            <Icon name="alert" size={14} />
-            <span>
-              {modelProblem}. <span className="muted">Or change the model in config.toml.</span>
+        {!variantsOpen && modelProblem && (
+          <div className="banner banner-warn" role="status">
+            <span className="dot dot-warn" />
+            <span className="spacer">
+              {modelProblem.model}: {modelProblem.label.toLowerCase()}. {modelProblem.via}
             </span>
-          </p>
+            <button className="btn btn-secondary btn-sm" onClick={() => setModelMenu(true)}>
+              Use another model
+            </button>
+          </div>
         )}
         <div
-          className={`composer ${disabled ? "is-disabled" : ""} ${dragging ? "is-dragging" : ""}`}
+          className={`composer${disabled ? " is-disabled" : ""}${dragging ? " is-dragging" : ""}`}
           onDragOver={(e) => {
             if (disabled || !e.dataTransfer.types.includes("Files")) return;
             e.preventDefault();
@@ -385,55 +440,51 @@ export function ChatPanel({
             void addImages([...e.dataTransfer.files]);
           }}
         >
-          {selection && (
-            <div className="composer-context">
-              <span className="chip chip-accent">
-                <Icon name="target" size={12} />
-                <span className="truncate">{selection.oid}</span>
-                <button className="chip-close" onClick={onClearSelection} aria-label="Clear selection">
-                  <Icon name="close" size={12} />
-                </button>
-              </span>
-              <span className="muted">Edits apply to this element</span>
-            </div>
-          )}
-          {images.length > 0 && (
-            <div className="composer-images">
+          {hasChips && (
+            <div className="composer-chips">
+              {selection && (
+                <span className="chip chip-accent" title="Edits apply to this element">
+                  <span className="el-mark" />
+                  <span className="truncate">{selection.oid}</span>
+                  <span className="chip-note">· edits apply here</span>
+                  <button className="chip-close" onClick={onClearSelection} aria-label="Remove target element" title="Remove (Esc)">
+                    ×
+                  </button>
+                </span>
+              )}
+              {applied.map((c) => (
+                <span key={c.id} className="chip chip-outline chip-comment" title={c.text}>
+                  <strong>#{c.n}</strong>
+                  <span className="truncate">{c.text}</span>
+                  <button className="chip-close" onClick={() => onUnapply?.(c.id)} aria-label={`Don't apply comment ${c.n}`}>
+                    ×
+                  </button>
+                </span>
+              ))}
               {images.map((img, i) => (
-                <span key={i} className="composer-thumb">
+                <span key={i} className="composer-thumb" title={`Image ${i + 1}`}>
                   <img src={img.url} alt={`Image ${i + 1} to send`} />
-                  <button
-                    className="chip-close"
-                    aria-label={`Remove image ${i + 1}`}
-                    onClick={() => setImages((list) => list.filter((_, j) => j !== i))}
-                  >
-                    <Icon name="close" size={12} />
+                  <button aria-label={`Remove image ${i + 1}`} onClick={() => setImages((list) => list.filter((_, j) => j !== i))}>
+                    ×
                   </button>
                 </span>
               ))}
             </div>
           )}
-          {imageError && <p className="composer-image-error" role="alert">{imageError}</p>}
-          {variantsWithImages && <p className="composer-image-error" role="alert">Variants do not take images. Remove the images, or make one design.</p>}
-          {count > 1 && (
-            <div className="variant-models">
-              {Array.from({ length: count }, (_, i) => (
-                <label key={i} className="variant-model">
-                  <span className="muted">{i + 1}</span>
-                  <input
-                    list="doi-models"
-                    value={variantModels[i] ?? modelRef ?? ""}
-                    onChange={(e) => setVariantModels((list) => Object.assign([...list], { [i]: e.target.value }))}
-                    aria-label={`Model of variant ${i + 1}`}
-                    placeholder="provider:model"
-                    spellCheck={false}
-                  />
-                </label>
-              ))}
-              <datalist id="doi-models">
-                {models.map((m) => <option key={m} value={m} />)}
-              </datalist>
-            </div>
+          {imageError && (
+            <p className="field-error composer-error" role="alert">
+              {imageError}
+            </p>
+          )}
+          {variantsWithImages && (
+            <p className="field-error composer-error" role="alert">
+              Variants do not take images. Remove the images, or make one design.
+            </p>
+          )}
+          {variantsWithComments && (
+            <p className="field-error composer-error" role="alert">
+              Variants do not take comments. Remove the comments, or make one design.
+            </p>
           )}
           <textarea
             ref={inputRef}
@@ -447,135 +498,218 @@ export function ChatPanel({
                 void addImages(files);
               }
             }}
-            placeholder={disabled ? "Select a design to start" : "Describe a design or a change…"}
-            rows={2}
+            placeholder={disabled ? "Open a design to start" : selection ? "Describe a change to this element…" : "Describe a design or a change…"}
+            rows={3}
             disabled={disabled}
             aria-label="Message"
           />
           <div className="composer-actions">
-            <button
-              className="icon-btn"
-              disabled={disabled || images.length >= IMAGE_LIMITS.count}
-              title="Attach images (or paste or drop them)"
-              aria-label="Attach image"
-              onClick={() => fileRef.current?.click()}
-            >
-              <Icon name="attach" />
-            </button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              multiple
-              hidden
-              onChange={(e) => {
-                void addImages([...(e.target.files ?? [])]);
-                e.target.value = "";
-              }}
-            />
-            <select
-              className="variant-count"
-              value={count}
-              onChange={(e) => setCount(Number(e.target.value))}
-              aria-label="Number of variants"
-              title="Make one design, or 2 to 4 variants to compare"
-              disabled={disabled || running}
-            >
-              <option value={1}>1×</option>
-              <option value={2}>2×</option>
-              <option value={3}>3×</option>
-              <option value={4}>4×</option>
-            </select>
-            {model && (
-              <span className="composer-model truncate" title={modelStatus?.detail}>
-                <span className={`status-dot ${modelStatus ? (modelReady ? "is-on" : "is-off") : ""}`} />
-                {model}
-              </span>
+            <label className={`btn btn-ghost btn-md${disabled || images.length >= IMAGE_LIMITS.count ? " is-disabled" : ""}`} title="Attach images (paste or drop works too)">
+              Attach
+              <input
+                type="file"
+                className="visually-hidden"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                multiple
+                disabled={disabled || images.length >= IMAGE_LIMITS.count}
+                onChange={(e) => {
+                  void addImages([...(e.target.files ?? [])]);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            <div className="seg" role="radiogroup" aria-label="Variants" title="One design or 2–4 variants">
+              {[1, 2, 3, 4].map((n) => (
+                <button key={n} className="seg-item" role="radio" aria-checked={count === n} disabled={disabled || running} onClick={() => setCount(n)}>
+                  {n === 1 ? "One" : n}
+                </button>
+              ))}
+            </div>
+            <span className="spacer" />
+            {current && (
+              <button
+                className={`model-chip${chosen ? " is-chosen" : ""}`}
+                onClick={() => setModelMenu((o) => !o)}
+                aria-expanded={modelMenu}
+                title={`${current.provider}:${current.model} · ${chosen ? "chosen for this design" : `config.toml → ${currentTask}`}`}
+              >
+                <span className={`dot ${TONE_DOT[current.tone]}`} />
+                <span className="truncate">{shortModel(current.model)}</span>
+              </button>
             )}
             {running ? (
-              <button className="btn btn-secondary" onClick={stop} title="Stop (Esc)">
-                <Icon name="stop" size={14} />
+              <button className="btn btn-secondary btn-md" onClick={stop} title="Stop (Esc)">
+                <span className="stop-square" />
                 Stop
               </button>
             ) : (
-              <button className="btn btn-primary" onClick={submit} disabled={!canSend} title={`Send (${isMac ? "⌘" : "Ctrl"}+Enter)`}>
+              <button className="btn btn-primary btn-md" onClick={send} disabled={!canSend} title={`Send (${MOD}↵)`}>
                 {count > 1 ? `Make ${count}` : "Send"}
-                <kbd>{isMac ? "⌘" : "Ctrl"}↵</kbd>
               </button>
             )}
           </div>
+          {modelMenu && (
+            <>
+              <div className="popover-layer" onMouseDown={() => setModelMenu(false)} />
+              <div className="menu model-menu" role="menu" aria-label="Model">
+                <div className="menu-label">Model for this design · from config.toml</div>
+                {chosen && (
+                  <button
+                    className="menu-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setChosen(null);
+                      setModelMenu(false);
+                    }}
+                  >
+                    Use the config: generate and edit models
+                  </button>
+                )}
+                {choices.map((t) => {
+                  const on = chosen ? chosen.provider === t.provider && chosen.model === t.model : false;
+                  return (
+                    <button
+                      key={`${t.provider}:${t.model}`}
+                      className="menu-item"
+                      role="menuitemradio"
+                      aria-checked={on}
+                      disabled={t.tone !== "ok"}
+                      onClick={() => {
+                        setChosen(t);
+                        setModelMenu(false);
+                      }}
+                    >
+                      <span className={`dot ${TONE_DOT[t.tone]}`} />
+                      <span className="mono truncate">{t.model}</span>
+                      <span className="meta">
+                        {t.provider}
+                        {on ? " ✓" : ""}
+                      </span>
+                    </button>
+                  );
+                })}
+                <div className="menu-sep" />
+                <button
+                  className="menu-item"
+                  onClick={() => {
+                    setModelMenu(false);
+                    onOpenSettings();
+                  }}
+                >
+                  Models and providers…<span className="meta">{MOD},</span>
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+        <div className="composer-hints">
+          <span>{MOD}↵ send</span>
+          <span>Esc stop</span>
+          <span>⇧-click parent</span>
         </div>
       </div>
     </section>
   );
 }
 
-function VariantsView({ message: m }: { message: VariantsMessage }) {
+function VariantsLine({ message: m }: { message: VariantsMessage }) {
+  const done = m.items.filter((v) => v.status === "done").length;
+  const state =
+    m.status === "running"
+      ? m.items.length
+        ? `${done} of ${m.items.length} done`
+        : "Starting…"
+      : m.status === "done"
+        ? "Pick one on the canvas"
+        : m.status === "stopped"
+          ? "Stopped"
+          : "Failed";
   return (
-    <div className="msg msg-assistant msg-variants" aria-label="Variants">
-      {m.items.map((v) => (
-        <div key={v.n} className={`variant-item is-${v.status}`}>
-          <p className="variant-head">
-            <span className="comment-number">{v.n}</span>
-            <span className="truncate">{v.model}</span>
-            <span className="muted">
-              {v.status === "running" ? "Working…" : v.status === "done" ? "Ready" : v.status === "stopped" ? "Stopped" : "Failed"}
-            </span>
-          </p>
-          {v.text && <p className="variant-text">{v.text}</p>}
-          {v.error && <p className="variant-error">{v.error}</p>}
-          {v.usage && (
-            <p className="msg-meta">
-              <span title="Input, output and cached tokens">
-                {formatTokens(v.usage.inputTokens)} in · {formatTokens(v.usage.outputTokens)} out
-                {v.usage.cachedTokens > 0 && ` · ${formatTokens(v.usage.cachedTokens)} cached`}
-              </span>
-            </p>
-          )}
-        </div>
-      ))}
-      {m.status === "running" && m.items.length === 0 && <p className="msg-info">Starting the variants…</p>}
-      {m.status === "done" && <p className="msg-info">Pick a variant on the canvas. The others stay in the version history.</p>}
-      {m.status === "stopped" && <p className="msg-info">Stopped.</p>}
+    <div className="turn-ai">
+      <div className="variants-line">
+        <span className="variants-line-label">Variants · {m.items.length || "…"}</span>
+        <span className="spacer" />
+        {m.status === "running" && <span className="spinner" />}
+        <span className="muted">{state}</span>
+      </div>
       {m.error && (
-        <div className="notice notice-danger" role="alert">
-          <Icon name="alert" />
-          <p className="notice-text">{m.error}</p>
+        <div className="banner banner-err" role="alert">
+          <span className="dot dot-err" />
+          {m.error}
         </div>
       )}
     </div>
   );
 }
 
-function AnswerView({ answer: a }: { answer: Answer }) {
+function AnswerView({ answer: a, running, onRetry, onOtherModel }: { answer: Answer; running: boolean; onRetry: () => void; onOtherModel: () => void }) {
+  const streaming = a.status === "running";
+  const files = a.stats ?? a.files.map((file) => ({ file, add: null as number | null, del: null as number | null }));
   return (
-    <div className="msg msg-assistant">
-      {a.text && <p>{a.text}</p>}
-      {a.retries > 0 && a.status === "running" && (
-        <p className="msg-info">Some changes did not match. Trying again ({a.retries})…</p>
+    <div className="turn-ai">
+      <div className="turn-meta">
+        {a.model && <span className="turn-model">{a.model}</span>}
+        {a.task && <span>· {a.task}</span>}
+        {a.at && <span>· {time(a.at)}</span>}
+      </div>
+      {a.text && (
+        <p className="msg-text">
+          {a.text}
+          {streaming && <span className="stream-cursor" />}
+        </p>
       )}
-      {a.status === "error" && (
-        <div className="notice notice-danger" role="alert">
-          <Icon name="alert" />
-          <p className="notice-text">{a.error}</p>
+      {streaming && (
+        <p className="turn-progress">
+          <span className="spinner" />
+          {a.retries > 0 ? `Some changes did not match. Trying again (${a.retries})…` : "Working…"}
+        </p>
+      )}
+      {files.length > 0 && (
+        <div className="turn-files">
+          {files.map((f) => (
+            <div key={f.file} className="turn-file">
+              <span className="spacer truncate">{f.file}</span>
+              {f.add !== null && f.add > 0 && <span className="add">+{f.add}</span>}
+              {f.del !== null && f.del > 0 && <span className="del">−{f.del}</span>}
+            </div>
+          ))}
         </div>
       )}
-      {a.status === "stopped" && <p className="msg-info">Stopped.</p>}
-      {a.commitError && <p className="msg-info">The change was not saved in the version history: {a.commitError}</p>}
-      {(a.files.length > 0 || a.usage) && (
-        <p className="msg-meta">
-          {a.files.length > 0 && <span>Changed {a.files.join(", ")}</span>}
-          {a.commentsDone !== undefined && (
-            <span>{a.commentsDone} comment{a.commentsDone === 1 ? "" : "s"} done</span>
-          )}
-          {a.commit && <span title={a.commit}>Saved as {a.commit.slice(0, 7)}</span>}
-          {a.usage && (
-            <span title="Input, output and cached tokens">
-              {formatTokens(a.usage.inputTokens)} in · {formatTokens(a.usage.outputTokens)} out
-              {a.usage.cachedTokens > 0 && ` · ${formatTokens(a.usage.cachedTokens)} cached`}
-            </span>
-          )}
+      {a.status === "done" && (
+        <p className="turn-tokens" title="Input, output and cached tokens">
+          {a.usage ? usageLine(a.usage) : "no token count"}
+          {a.commentsDone !== undefined && ` · ${a.commentsDone} comment${a.commentsDone === 1 ? "" : "s"} done`}
         </p>
+      )}
+      {a.commitError && <p className="msg-info">The change was not saved in the version history: {a.commitError}</p>}
+      {a.status === "error" && (
+        <div className="turn-error" role="alert">
+          <p className="turn-error-title">
+            <span className="dot dot-err" />
+            The turn failed
+          </p>
+          <p>
+            {a.error}
+            {a.files.length === 0 && " No files changed."}
+          </p>
+          <div className="turn-error-actions">
+            <button className="btn btn-secondary btn-md" onClick={onRetry} disabled={running}>
+              Retry
+            </button>
+            <button className="btn btn-ghost btn-md" onClick={onOtherModel}>
+              Use another model
+            </button>
+          </div>
+        </div>
+      )}
+      {a.status === "stopped" && (
+        <div className="turn-stopped">
+          <span className="dot dot-stopped" />
+          Stopped by you.{a.files.length === 0 && " No files changed."}
+          <button className="btn btn-secondary btn-sm" onClick={onRetry} disabled={running}>
+            Retry
+          </button>
+        </div>
       )}
     </div>
   );

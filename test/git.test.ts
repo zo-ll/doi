@@ -3,7 +3,7 @@ import { $ } from "bun";
 import { mkdir, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { commitMessage, commitPaths, commitTurn, designVersion, ensureRepo } from "../src/workspace/git.ts";
+import { commitMessage, commitPaths, commitStats, commitTurn, designVersion, ensureRepo } from "../src/workspace/git.ts";
 import { rename } from "node:fs/promises";
 import { designDir } from "../src/workspace/paths.ts";
 
@@ -116,5 +116,27 @@ describe("git history", () => {
     await commitTurn(ws, "p", "about", "about");
     // The later commit of "about" is not a version of "home".
     expect(await designVersion(ws, "p", "home")).toBe(home);
+  });
+});
+
+describe("commit stats", () => {
+  test("lines added and removed per file of the design, for several commits at once", async () => {
+    const ws = await workspace();
+    const home = designDir(ws, "p", "home");
+    await Bun.write(join(home, "styles.css"), "a {}\nb {}\n");
+    await Bun.write(join(home, "index.html"), "<h1>home</h1>\n<p>new</p>\n");
+    const first = (await commitTurn(ws, "p", "home", "One"))!;
+    await Bun.write(join(home, "styles.css"), "a {}\n");
+    await Bun.write(join(designDir(ws, "p", "about"), "index.html"), "<h1>other design</h1>\n");
+    await commitPaths(ws, [designDir(ws, "p", "about")], "About");
+    const second = (await commitTurn(ws, "p", "home", "Two"))!;
+    const stats = await commitStats(ws, "p", "home", [first, second, "deadbeef"]);
+    expect(stats.get(first)).toEqual([
+      { file: "index.html", add: 2, del: 0 }, // ensureRepo makes no first commit
+      { file: "styles.css", add: 2, del: 0 },
+    ]);
+    expect(stats.get(second)).toEqual([{ file: "styles.css", add: 0, del: 1 }]);
+    expect(stats.has("deadbeef")).toBe(false);
+    expect((await commitStats(ws, "p", "home", ["not a sha", "--all"])).size).toBe(0);
   });
 });

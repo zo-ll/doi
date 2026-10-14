@@ -1,17 +1,20 @@
 import index from "../web/index.html";
 import type { Config } from "../config.ts";
+import { join } from "node:path";
 import { getProvider } from "../providers/registry.ts";
 import { providerStatus } from "../providers/status.ts";
-import { designDir, ensureWorkspace, fileIn, listProjects } from "../workspace/paths.ts";
+import { designDir, designPages, ensureWorkspace, fileIn, listProjects } from "../workspace/paths.ts";
 import { variantDir } from "../workspace/variants.ts";
 import { designSystemDir, listDesignSystems, loadDesignSystem, previewPage } from "../workspace/design-systems.ts";
 import { designEvents, watchDesigns } from "../workspace/watch.ts";
-import { commitPaths, commitTurn, designFileAt, designVersion, ensureRepo, isSha } from "../workspace/git.ts";
+import { commitPaths, commitStats, commitTurn, designFileAt, designVersion, ensureRepo, isSha, workspaceChanges } from "../workspace/git.ts";
 import { uploadFile } from "../workspace/uploads.ts";
 import { deleteCommentRoute, getComments, patchComment, postComment } from "./comments.ts";
 import { getDesignSystem, importFromRepo, importFromScreenshots, putProjectDesignSystem } from "./design-systems.ts";
 import { getExport } from "./export.ts";
 import { getHandoff, getPrompt, postBundle } from "./handoff.ts";
+import { configView, getUsage, putModels } from "./settings.ts";
+import { getTweaks, putTweaks } from "./tweaks.ts";
 import { handleMcp, MCP_PATH } from "../mcp/server.ts";
 import { getHistory, restoreVersion } from "./history.ts";
 import { getLayout, putLayout } from "./layout.ts";
@@ -80,6 +83,8 @@ export async function startServer(config: Config, options: { port?: number; deve
     variantsOpen: variants.isOpen,
     commit: (paths: string[], message: string) => commitPaths(config.workspace, paths, message),
   };
+  const tweakDeps = { workspace: config.workspace, locks, commit: (paths: string[], message: string) => commitPaths(config.workspace, paths, message) };
+  const chatStats = (project: string, design: string, shas: string[]) => commitStats(config.workspace, project, design, shas);
   const runTurnRequest = createTurnHandler({
     config,
     locks,
@@ -87,6 +92,7 @@ export async function startServer(config: Config, options: { port?: number; deve
     getProvider,
     watcher,
     commit: (project, design, prompt) => commitTurn(config.workspace, project, design, prompt),
+    stats: chatStats,
   });
 
   const BRIDGE_TAG = `<script src="/__doi/bridge.js"></script>`;
@@ -191,9 +197,12 @@ export async function startServer(config: Config, options: { port?: number; deve
     routes: guardRoutes({
       "/": index,
       "/api/health": () => Response.json({ ok: true }),
-      "/api/config": () =>
-        Response.json({ models: config.models, workspace: config.workspace, editorUrl: config.editorUrl }),
+      "/api/config": () => Response.json(configView(config)),
+      "/api/config/models": { PUT: (req) => putModels(config, req) },
+      "/api/usage": () => getUsage(config),
       "/api/providers": async () => Response.json(await providerStatus(config)),
+      // The workspace path and its git state, for the projects navigator. `changes` is null without git.
+      "/api/workspace": async () => Response.json({ path: config.workspace, changes: await workspaceChanges(config.workspace) }),
       "/api/events": (req, srv) => designEvents(watcher, req, srv),
       "/api/design-systems": async () => Response.json(await listDesignSystems(config.workspace)),
       "/api/design-systems/import": { POST: (req, srv) => importFromRepo(importDeps, req, srv) },
@@ -218,7 +227,22 @@ export async function startServer(config: Config, options: { port?: number; deve
         if (!file || !(await file.exists())) return new Response("Not found", { status: 404 });
         return new Response(file, { headers: { "cache-control": "private, max-age=31536000, immutable" } });
       },
-          "/api/projects/:project/designs/:design/chat": (req) => getChat(config.workspace, req.params),
+          "/api/projects/:project/designs/:design/tweaks": {
+        GET: (req) => getTweaks(config.workspace, req.params),
+        PUT: (req) => putTweaks(tweakDeps, req, req.params),
+      },
+      "/api/projects/:project/designs/:design/pages": async (req) => {
+        try {
+          const { project, design } = req.params;
+          if (!(await Bun.file(join(designDir(config.workspace, project, design), "index.html")).exists())) {
+            return Response.json({ error: "Design not found." }, { status: 404 });
+          }
+          return Response.json(await designPages(config.workspace, project, design));
+        } catch (e) {
+          return Response.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
+        }
+      },
+      "/api/projects/:project/designs/:design/chat": (req) => getChat(config.workspace, req.params, chatStats),
       "/api/projects/:project/designs/:design/variants": {
         GET: (req) => variants.get(req.params),
         POST: (req, srv) => variants.post(req, req.params, srv),

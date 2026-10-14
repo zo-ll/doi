@@ -2,7 +2,11 @@
 export type { ProjectSummary } from "../workspace/paths.ts";
 export type { ProviderStatus } from "../providers/status.ts";
 export type { ChatEntry, Usage } from "../workspace/chat.ts";
-export type { TurnStreamEvent } from "../server/turns.ts";
+export type { ChatEntryView, TurnStreamEvent } from "../server/turns.ts";
+export type { FileStat } from "../workspace/git.ts";
+export type { UsageEntry } from "../workspace/chat.ts";
+import type { Price } from "../config.ts";
+export type { Price };
 export type { CommentView } from "../server/comments.ts";
 export type { VariantSetView, VariantStreamEvent } from "../server/variants.ts";
 export type { VersionView } from "../server/history.ts";
@@ -13,8 +17,18 @@ export interface AppConfig {
   workspace: string;
   /** Link that opens a file in the user's editor; {path} is the absolute path. */
   editorUrl: string;
+  /** USD per 1M tokens per "<provider>:<model>", from config.toml [prices]. */
+  prices: Record<string, Price>;
+  /** Where the model choice is written; null without a file path. */
+  configPath: string | null;
 }
 
+
+/** The open design. */
+export interface Active {
+  project: string;
+  design: string;
+}
 
 /** Result of an async load, so each view can show its loading, error and ready states. */
 export type Load<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: T };

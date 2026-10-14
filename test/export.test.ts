@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { exportFolder, exportPage, hoistImports, resolveRef, wrapImport } from "../src/export/html.ts";
 import { zip } from "../src/export/zip.ts";
 import { getExport, REPORT_HEADER } from "../src/server/export.ts";
-import { bundleRequest, exportUrl, fallbackName, fileNameOf, parseReport, type ExportChoice } from "../src/web/export.ts";
+import { bundleRequest, exportUrl, fallbackName, fileNameOf, formatSize, parseReport, type ExportChoice } from "../src/web/export.ts";
 import { designSystemDir } from "../src/workspace/design-systems.ts";
 import { designDir } from "../src/workspace/paths.ts";
 
@@ -343,4 +343,10 @@ describe("bundle request", () => {
     expect(init.headers).toEqual({ "content-type": "application/json" });
     expect(JSON.parse(init.body as string)).toEqual({ markdown: "# Handoff\n\nUse `{{x}}`." });
   });
+});
+
+test("file sizes are short", () => {
+  expect(formatSize(900)).toBe("900 B");
+  expect(formatSize(412 * 1024 + 100)).toBe("412 KB");
+  expect(formatSize(1.94 * 1024 * 1024)).toBe("1.9 MB");
 });

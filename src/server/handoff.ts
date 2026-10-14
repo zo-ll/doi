@@ -59,6 +59,6 @@ export function postBundle(workspace: string, req: Request, params: Params, rend
  */
 export function getPrompt(workspace: string, params: Params, mcpUrl: string): Promise<Response> {
   return run(params, async () =>
-    Response.json({ prompt: await agentPrompt(workspace, params.project, params.design, mcpUrl), template: AGENT_PROMPT.version }),
+    Response.json({ prompt: await agentPrompt(workspace, params.project, params.design, mcpUrl), template: AGENT_PROMPT.version, url: mcpUrl }),
   );
 }

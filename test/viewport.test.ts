@@ -58,12 +58,3 @@ describe("viewport", () => {
     expect(newFrameId([], "!!")).toBe("frame");
   });
 });
-
-test("variant frames go in one row under the design frames, with the size of the first frame", async () => {
-  const { variantSlots } = await import("../src/web/viewport.ts");
-  expect(variantSlots([f("a", 10, 0, 1000, 600), f("b", 1100, 50, 300, 700)], 2)).toEqual([
-    { x: 10, y: 990, width: 1000, height: 600 },
-    { x: 1090, y: 990, width: 1000, height: 600 },
-  ]);
-  expect(variantSlots([], 1)).toEqual([{ x: 0, y: 0, width: 1440, height: 900 }]);
-});

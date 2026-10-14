@@ -1,30 +1,17 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { designUrl, getJSON, sendJSON, variantPageUrl, versionPageUrl, type VariantSetView, type VersionView } from "../api.ts";
+import { designUrl, getJSON, sendJSON, variantPageUrl, versionPageUrl, type Active, type VariantSetView, type VersionView } from "../api.ts";
 import { formatTokens } from "../chat.ts";
 import type { Pin } from "../comments.ts";
 import { parseFrameMessage, trackMessage, type FrameMessage, type Rect } from "../frame.ts";
-import {
-  arrangeRow,
-  fitView,
-  newFrameId,
-  nextPosition,
-  stepZoom,
-  variantSlots,
-  wheelFactor,
-  zoomAt,
-  ZOOM_MAX,
-  ZOOM_MIN,
-  type Point,
-  type View,
-} from "../viewport.ts";
+import { arrangeRow, fitView, newFrameId, nextPosition, stepZoom, wheelFactor, zoomAt, ZOOM_MAX, ZOOM_MIN, type Point, type View } from "../viewport.ts";
 import { FRAME_LIMITS, PRESETS, type Frame as FrameSpec } from "../../workspace/frames.ts";
-import type { Active } from "./Sidebar.tsx";
 import type { Selection } from "./ChatPanel.tsx";
-import { Icon } from "./Icon.tsx";
 
 type FrameState = "loading" | "ready" | "error";
 type WheelMessage = Extract<FrameMessage, { type: "doi:wheel" }>;
 type KeyMessage = Extract<FrameMessage, { type: "doi:key" }>;
+/** Select (V) picks elements, Comment (C) starts a comment on one, Hand (H) pans everywhere. */
+export type Tool = "select" | "comment" | "hand";
 
 /** Screen pixels above a box for its tag. With less room, the tag goes inside the box. */
 const TAG_ROOM = 24;
@@ -32,18 +19,26 @@ const TAG_ROOM = 24;
 const ARROW_STEP = 64;
 const boxStyle = (r: Rect) => ({ left: r.x, top: r.y, width: r.width, height: r.height });
 const layoutUrl = (a: Active) => `/api/projects/${a.project}/designs/${a.design}/layout`;
+const TOOLS: { id: Tool; label: string; key: string }[] = [
+  { id: "select", label: "Select", key: "V" },
+  { id: "comment", label: "Comment", key: "C" },
+  { id: "hand", label: "Hand", key: "H" },
+];
+
+const NO_VARS: Record<string, string> = {};
 
 /** True while the user types in a field of the app: canvas keys do nothing then. */
-const typing = (t: EventTarget | null) =>
-  t instanceof Element && t.closest("input, textarea, select, [contenteditable]") !== null;
+const typing = (t: EventTarget | null) => t instanceof Element && t.closest("input, textarea, select, [contenteditable]") !== null;
 
 const Frame = memo(function Frame({
   frame,
   src,
+  page,
   zoom,
   selection,
   pins,
   canRemove,
+  readOnly,
   onSelect,
   onClear,
   onPin,
@@ -51,13 +46,18 @@ const Frame = memo(function Frame({
   onMoveStart,
   onWheel,
   onKey,
+  onOpenHistory,
+  liveVars,
 }: {
   frame: FrameSpec;
   src: string;
+  page: string;
   zoom: number;
   selection: Selection | null;
   pins: Pin[];
   canRemove: boolean;
+  /** An old version: no selection, pins or frame changes. */
+  readOnly: boolean;
   onSelect: (s: Selection) => void;
   onClear: () => void;
   onPin: (oid: string) => void;
@@ -65,46 +65,57 @@ const Frame = memo(function Frame({
   onMoveStart: (e: React.PointerEvent, id: string) => void;
   onWheel: (frame: FrameSpec, m: WheelMessage) => void;
   onKey: (m: KeyMessage) => void;
+  onOpenHistory?: () => void;
+  /** CSS variables set on the page for a live tweak. */
+  liveVars: Record<string, string>;
 }) {
   const { width, height, label } = frame;
   const ref = useRef<HTMLIFrameElement>(null);
   const [state, setState] = useState<FrameState>("loading");
+  const [reload, setReload] = useState(0);
   const [rects, setRects] = useState<{
     selected: Rect | null;
     hover: { oid: string; rect: Rect } | null;
     pins: Record<string, Rect>;
   }>({ selected: null, hover: null, pins: {} });
-  const oid = selection?.oid ?? null;
+  const oid = readOnly ? null : (selection?.oid ?? null);
+  const shownPins = readOnly ? [] : pins;
   // One string, so the effect below runs only when the set of pinned elements changes.
-  const pinKey = pins.map((p) => p.oid).join(" ");
+  const pinKey = shownPins.map((p) => p.oid).join(" ");
   const track = useRef(trackMessage(null));
   track.current = trackMessage(oid, pinKey ? pinKey.split(" ") : []);
   // The latest frame and handlers, so the message listener stays the same while the frame moves.
-  const latest = useRef({ frame, onSelect, onClear, onWheel, onKey });
-  latest.current = { frame, onSelect, onClear, onWheel, onKey };
+  const latest = useRef({ frame, readOnly, onSelect, onClear, onWheel, onKey });
+  latest.current = { frame, readOnly, onSelect, onClear, onWheel, onKey };
+  const url = reload ? `${src}${src.includes("?") ? "&" : "?"}reload=${reload}` : src;
 
   // An iframe cannot report an HTTP error, so check the page before showing it.
   useEffect(() => {
     let live = true;
     setState("loading");
-    fetch(src, { method: "HEAD" })
+    fetch(url, { method: "HEAD" })
       .then((r) => live && !r.ok && setState("error"))
       .catch(() => live && setState("error"));
-    return () => { live = false; };
-  }, [src]);
+    return () => {
+      live = false;
+    };
+  }, [url]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.source !== ref.current?.contentWindow) return;
       const m = parseFrameMessage(event.data);
       const h = latest.current;
-      if (m?.type === "doi:select") h.onSelect({ oid: m.oid });
-      else if (m?.type === "doi:clear") h.onClear();
-      else if (m?.type === "doi:rects") setRects({ selected: m.selected, hover: m.hover, pins: m.pins });
+      if (m?.type === "doi:select") !h.readOnly && h.onSelect({ oid: m.oid });
+      else if (m?.type === "doi:clear") !h.readOnly && h.onClear();
+      else if (m?.type === "doi:rects") setRects({ selected: m.selected, hover: h.readOnly ? null : m.hover, pins: m.pins });
       else if (m?.type === "doi:wheel") h.onWheel(h.frame, m);
       else if (m?.type === "doi:key") h.onKey(m);
-      // A page that loaded again asks which element is selected and which have pins.
-      else if (m?.type === "doi:ready") ref.current?.contentWindow?.postMessage(track.current, "*");
+      // A page that loaded again asks which element is selected, which have pins, and the live tweaks.
+      else if (m?.type === "doi:ready") {
+        ref.current?.contentWindow?.postMessage(track.current, "*");
+        if (Object.keys(sentVars.current).length) ref.current?.contentWindow?.postMessage({ type: "doi:vars", vars: sentVars.current }, "*");
+      }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
@@ -116,15 +127,32 @@ const Frame = memo(function Frame({
     ref.current?.contentWindow?.postMessage(track.current, "*");
   }, [oid, pinKey]);
 
+  // Live tweaks: send the changed values, and null for the ones that are gone.
+  const sentVars = useRef<Record<string, string>>({});
+  useEffect(() => {
+    const before = sentVars.current;
+    const vars: Record<string, string | null> = { ...liveVars };
+    for (const name of Object.keys(before)) if (!(name in liveVars)) vars[name] = null;
+    sentVars.current = liveVars;
+    if (Object.keys(vars).length) ref.current?.contentWindow?.postMessage({ type: "doi:vars", vars }, "*");
+  }, [liveVars]);
+
   // A new page has no rects until its bridge reports them.
-  useEffect(() => setRects({ selected: null, hover: null, pins: {} }), [src]);
+  useEffect(() => setRects({ selected: null, hover: null, pins: {} }), [url]);
 
   return (
     <figure className="frame" style={{ left: frame.x, top: frame.y, width, height }}>
-      <figcaption className="frame-label" onPointerDown={(e) => onMoveStart(e, frame.id)} title="Drag to move the frame">
-        <span className="truncate">{label}</span>
-        <span className="muted">{width} × {height}</span>
-        {canRemove && (
+      <figcaption
+        className="frame-label"
+        style={{ transform: `scale(${1 / zoom})` }}
+        onPointerDown={(e) => !readOnly && onMoveStart(e, frame.id)}
+        title={readOnly ? undefined : "Drag to move"}
+      >
+        <span className="frame-name">{label}</span>
+        <span className="frame-size">
+          {width} × {height}
+        </span>
+        {canRemove && !readOnly && (
           <button
             className="frame-remove"
             onPointerDown={(e) => e.stopPropagation()}
@@ -132,21 +160,38 @@ const Frame = memo(function Frame({
             aria-label={`Remove frame ${label}`}
             title="Remove frame"
           >
-            <Icon name="close" size={12} />
+            ×
           </button>
         )}
       </figcaption>
       <div className="frame-surface">
         {state === "error" ? (
           <div className="frame-state">
-            <Icon name="alert" size={20} />
-            <p>This design cannot load.</p>
+            <div className="frame-error" role="alert" style={{ transform: `scale(${1 / zoom})` }}>
+              <p className="frame-error-title">
+                <span className="dot dot-err" />
+                This page could not load
+              </p>
+              <p className="frame-error-text">
+                <span className="mono">{page}</span> is missing, or the server did not answer.
+              </p>
+              <div className="frame-error-actions">
+                <button className="btn btn-secondary btn-md" onClick={() => setReload((n) => n + 1)}>
+                  Reload frame
+                </button>
+                {onOpenHistory && (
+                  <button className="btn btn-ghost btn-md" onClick={onOpenHistory}>
+                    Open history
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         ) : (
           <>
             <iframe
               ref={ref}
-              src={src}
+              src={url}
               title={`${label} preview`}
               sandbox="allow-scripts"
               width={width}
@@ -154,7 +199,7 @@ const Frame = memo(function Frame({
               onLoad={() => setState((s) => (s === "error" ? s : "ready"))}
             />
             <div className="frame-overlay">
-              {pins.map((p) => {
+              {shownPins.map((p) => {
                 // Own keys only: the first state is a plain object, and an id may be "__proto__".
                 const r = Object.hasOwn(rects.pins, p.oid) ? rects.pins[p.oid] : null;
                 if (!r) return null;
@@ -163,7 +208,7 @@ const Frame = memo(function Frame({
                   <button
                     key={p.oid}
                     className="pin"
-                    style={{ left: r.x + r.width, top: r.y }}
+                    style={{ left: r.x + r.width, top: r.y, transform: `translate(-50%, -50%) scale(${1 / zoom})` }}
                     onClick={() => onPin(p.oid)}
                     aria-label={`Comment ${numbers} on ${p.oid}`}
                     title={`Comment ${numbers}`}
@@ -174,159 +219,245 @@ const Frame = memo(function Frame({
               })}
               {rects.hover && <div className="hover-box" style={boxStyle(rects.hover.rect)} />}
               {oid && rects.selected && (
-                <div
-                  className={`selection-box${rects.selected.y < TAG_ROOM / zoom ? " tag-inside" : ""}`}
-                  style={boxStyle(rects.selected)}
-                >
+                <div className={`selection-box${rects.selected.y < TAG_ROOM / zoom ? " tag-inside" : ""}`} style={boxStyle(rects.selected)}>
                   <span className="selection-tag">{oid}</span>
                 </div>
               )}
             </div>
           </>
         )}
-        {state === "loading" && <div className="frame-loading skeleton" aria-label="Loading design" />}
-      </div>
-    </figure>
-  );
-});
-
-/**
- * A read-only page on the canvas: a variant or an old version. No selection or pins here;
- * a pinch and the canvas keys still work over it.
- */
-const PageFrame = memo(function PageFrame({
-  id,
-  slot,
-  src,
-  title,
-  label,
-  className = "",
-  failed = null,
-  onWheel,
-  onKey,
-}: {
-  id: string;
-  slot: { x: number; y: number; width: number; height: number };
-  src: string;
-  title: string;
-  label: React.ReactNode;
-  className?: string;
-  /** A message instead of the page. */
-  failed?: string | null;
-  onWheel: (frame: FrameSpec, m: WheelMessage) => void;
-  onKey: (m: KeyMessage) => void;
-}) {
-  const ref = useRef<HTMLIFrameElement>(null);
-  const spec: FrameSpec = { id, label: title, ...slot };
-  const latest = useRef({ spec, onWheel, onKey });
-  latest.current = { spec, onWheel, onKey };
-  useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      if (event.source !== ref.current?.contentWindow) return;
-      const m = parseFrameMessage(event.data);
-      if (m?.type === "doi:wheel") latest.current.onWheel(latest.current.spec, m);
-      else if (m?.type === "doi:key") latest.current.onKey(m);
-    };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, []);
-  return (
-    <figure className={`frame page-frame ${className}`} style={{ left: slot.x, top: slot.y, width: slot.width, height: slot.height }}>
-      <figcaption className="frame-label page-label">{label}</figcaption>
-      <div className="frame-surface">
-        {failed ? (
-          <div className="frame-state">
-            <Icon name="alert" size={20} />
-            <p>{failed}</p>
+        {state === "loading" && (
+          <div className="frame-loading" aria-label={`Loading ${page}`}>
+            <div className="skeleton" style={{ width: "30%", height: "4%" }} />
+            <div className="skeleton" style={{ height: "28%" }} />
+            <div className="skeleton" style={{ height: "40%" }} />
+            <span className="frame-loading-chip" style={{ transform: `translate(-50%, -50%) scale(${1 / zoom})` }}>
+              <span className="spinner" />
+              Loading {page}
+            </span>
           </div>
-        ) : (
-          <iframe ref={ref} src={src} title={`${title} preview`} sandbox="allow-scripts" width={slot.width} height={slot.height} />
         )}
       </div>
     </figure>
   );
 });
 
-function variantLabel(v: VariantSetView["variants"][number], canPick: boolean, onPick: (n: number) => void) {
+/** One variant in the grid: the page at the size of the first frame, its text and Pick. */
+const VariantCard = memo(function VariantCard({
+  active,
+  setId,
+  v,
+  frame,
+  scale,
+  canPick,
+  onPick,
+}: {
+  active: Active;
+  setId: string;
+  v: VariantSetView["variants"][number];
+  frame: FrameSpec;
+  scale: number;
+  canPick: boolean;
+  onPick: (n: number) => void;
+}) {
   const u = v.usage;
-  const status = v.status === "running" ? "Working…" : v.status === "done" ? null : v.status === "stopped" ? "Stopped" : "Failed";
+  const state =
+    v.status === "running"
+      ? { tone: "dot-accent", label: "Working…", pulse: true }
+      : v.status === "done"
+        ? { tone: "dot-ok", label: "Done", pulse: false }
+        : v.status === "stopped"
+          ? { tone: "", label: "Stopped", pulse: false }
+          : { tone: "dot-err", label: "Failed", pulse: false };
   return (
-    <>
-      <span>Variant {v.n}</span>
-      <span className="muted truncate">{v.provider}:{v.model}</span>
-      {u.inputTokens + u.outputTokens > 0 && (
-        <span className="muted" title="Input and output tokens">{formatTokens(u.inputTokens)} in · {formatTokens(u.outputTokens)} out</span>
+    <article className={`vcard${v.status === "error" ? " is-failed" : ""}`} aria-label={`Variant ${v.n}`}>
+      <header className="vcard-head">
+        <span className="vcard-n">{v.n}</span>
+        <span className="vcard-model truncate" title={`${v.provider}:${v.model}`}>
+          {v.model}
+        </span>
+        <span className="spacer" />
+        <span className="status">
+          <span className={`dot ${state.tone}${state.pulse ? " is-pulsing" : ""}`} />
+          {state.label}
+        </span>
+      </header>
+      <div className="vcard-view" style={{ aspectRatio: `${frame.width} / ${frame.height}` }}>
+        {v.status === "error" ? (
+          <p className="vcard-error">{v.error ?? "This variant failed."}</p>
+        ) : v.status === "running" ? (
+          <div className="vcard-skeleton">
+            <div className="skeleton" style={{ height: "8%", width: "28%" }} />
+            <div className="skeleton" style={{ height: "34%", width: "55%" }} />
+            <div className="skeleton" style={{ height: "30%" }} />
+          </div>
+        ) : (
+          <iframe
+            src={`${variantPageUrl(active.project, active.design, setId, v.n)}?s=${v.status}`}
+            title={`Variant ${v.n} preview`}
+            sandbox="allow-scripts"
+            width={frame.width}
+            height={frame.height}
+            style={{ transform: `scale(${scale})` }}
+          />
+        )}
+      </div>
+      <div className="vcard-body">
+        <p className="vcard-text">{v.text || (v.status === "running" ? "The model is working on this variant." : "")}</p>
+        {u.inputTokens + u.outputTokens > 0 && (
+          <p className="vcard-tokens" title="Input and output tokens">
+            in {formatTokens(u.inputTokens)} · out {formatTokens(u.outputTokens)}
+          </p>
+        )}
+        {v.status === "done" && (
+          <div>
+            <button className="btn btn-primary" disabled={!canPick} onClick={() => onPick(v.n)}>
+              Pick {v.n}
+            </button>
+          </div>
+        )}
+      </div>
+    </article>
+  );
+});
+
+/** Variants replace the canvas in place, side by side at the size of the first frame. */
+function VariantsView({
+  active,
+  set,
+  frame,
+  error,
+  onPick,
+  onDiscard,
+}: {
+  active: Active;
+  set: VariantSetView;
+  frame: FrameSpec;
+  error: string | null;
+  onPick: (n: number) => void;
+  onDiscard: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [cardWidth, setCardWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current?.querySelector(".vcard-view");
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => setCardWidth(entry!.contentRect.width));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [set.id]);
+  const done = set.variants.filter((v) => v.status === "done").length;
+  return (
+    <div className="variants-view" ref={ref} role="region" aria-label="Variants">
+      <div className="variants-head">
+        <span className="variants-title">Variants</span>
+        <span className="variants-meta">
+          {done} of {set.variants.length} done · {frame.label} {frame.width} × {frame.height}
+        </span>
+        <span className="variants-prompt truncate">“{set.prompt}”</span>
+        <span className="variants-hint">New turns wait until you pick one or discard all.</span>
+        <button className="btn btn-danger-outline" disabled={set.running} onClick={onDiscard} title={set.running ? "Wait until the variants stop" : undefined}>
+          Discard all
+        </button>
+      </div>
+      {error && (
+        <div className="banner banner-err" role="alert">
+          <span className="dot dot-err" />
+          {error}
+        </div>
       )}
-      {status && <span className="muted">{status}</span>}
-      <button className="page-action" disabled={!canPick} onClick={() => onPick(v.n)} aria-label={`Pick variant ${v.n}`}>
-        Pick
-      </button>
-    </>
+      <div className="variants-grid" style={{ gridTemplateColumns: `repeat(${set.variants.length}, minmax(0, 1fr))` }}>
+        {set.variants.map((v) => (
+          <VariantCard
+            key={`${set.id}-${v.n}`}
+            active={active}
+            setId={set.id}
+            v={v}
+            frame={frame}
+            scale={cardWidth ? cardWidth / frame.width : 0}
+            canPick={!set.running}
+            onPick={onPick}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
 
-/** The "Add frame" menu: the presets, or a custom size. */
+/** The "+ Frame" menu: the presets, or a custom size. */
 function AddFrameMenu({ onAdd, onClose }: { onAdd: (label: string, width: number, height: number) => void; onClose: () => void }) {
   const [w, setW] = useState("1280");
   const [h, setH] = useState("800");
   const width = Number(w);
   const height = Number(h);
-  const valid =
-    Number.isInteger(width) && Number.isInteger(height) &&
-    width >= FRAME_LIMITS.min && width <= FRAME_LIMITS.maxWidth &&
-    height >= FRAME_LIMITS.min && height <= FRAME_LIMITS.maxHeight;
+  const validW = Number.isInteger(width) && width >= FRAME_LIMITS.min && width <= FRAME_LIMITS.maxWidth;
+  const validH = Number.isInteger(height) && height >= FRAME_LIMITS.min && height <= FRAME_LIMITS.maxHeight;
+  const hint = !validW
+    ? `Width ${FRAME_LIMITS.min}–${FRAME_LIMITS.maxWidth}.`
+    : !validH
+      ? `Height ${FRAME_LIMITS.min}–${FRAME_LIMITS.maxHeight}.`
+      : `${FRAME_LIMITS.min}–${FRAME_LIMITS.maxWidth} × ${FRAME_LIMITS.min}–${FRAME_LIMITS.maxHeight} px.`;
   return (
-    <div className="add-frame-menu" role="dialog" aria-label="Add frame" onKeyDown={(e) => e.key === "Escape" && onClose()}>
+    <div className="menu add-frame-menu" role="dialog" aria-label="Add frame" onPointerDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === "Escape" && onClose()}>
+      <div className="menu-label">Presets</div>
       {PRESETS.map((p) => (
         <button key={p.label} className="menu-item" onClick={() => onAdd(p.label, p.width, p.height)}>
-          <span>{p.label}</span>
-          <span className="muted">{p.width} × {p.height}</span>
+          {p.label}
+          <span className="meta">
+            {p.width} × {p.height}
+          </span>
         </button>
       ))}
+      <div className="menu-sep" />
+      <div className="menu-label">Custom</div>
       <form
         className="custom-size"
         onSubmit={(e) => {
           e.preventDefault();
-          if (valid) onAdd(`${width} × ${height}`, width, height);
+          if (validW && validH) onAdd(`${width} × ${height}`, width, height);
         }}
       >
-        <input aria-label="Custom width" inputMode="numeric" value={w} onChange={(e) => setW(e.target.value)} />
+        <input className="input mono" aria-label="Custom width" aria-invalid={!validW} inputMode="numeric" value={w} onChange={(e) => setW(e.target.value)} />
         <span className="muted">×</span>
-        <input aria-label="Custom height" inputMode="numeric" value={h} onChange={(e) => setH(e.target.value)} />
-        <button className="btn btn-secondary" disabled={!valid}>Add</button>
+        <input className="input mono" aria-label="Custom height" aria-invalid={!validH} inputMode="numeric" value={h} onChange={(e) => setH(e.target.value)} />
+        <button className="btn btn-primary btn-sm" disabled={!validW || !validH}>
+          Add
+        </button>
       </form>
-      {!valid && (
-        <p className="custom-size-hint">
-          Use {FRAME_LIMITS.min} to {FRAME_LIMITS.maxWidth} × {FRAME_LIMITS.min} to {FRAME_LIMITS.maxHeight} pixels.
-        </p>
-      )}
+      <p className={`custom-size-hint${validW && validH ? "" : " is-error"}`}>{hint}</p>
     </div>
   );
 }
 
-type Drag =
-  | { kind: "pan"; start: Point; view: View }
-  | { kind: "move"; id: string; start: Point; frame: FrameSpec; moved: boolean };
+type Drag = { kind: "pan"; start: Point; view: View } | { kind: "move"; id: string; start: Point; frame: FrameSpec; moved: boolean };
 
 export function Canvas({
   active,
+  page,
   revision,
   selection,
   pins,
   onSelect,
   onClear,
   onPin,
+  onComment,
+  onOpenHistory,
   variants = null,
   variantsError = null,
   onPickVariant,
   onDiscardVariants,
   preview = null,
+  previewLabel = "",
   previewBusy = false,
   previewError = null,
   onRestorePreview,
   onClosePreview,
+  overlay,
+  liveVars = NO_VARS,
 }: {
   active: Active | null;
+  /** The page of the design that the frames show. */
+  page: string;
   /** Changes when the design files changed; the frames load again. */
   revision: number;
   selection: Selection | null;
@@ -335,17 +466,26 @@ export function Canvas({
   onSelect: (s: Selection) => void;
   onClear: () => void;
   onPin: (oid: string) => void;
-  /** The open variant set of the design: its frames show under the design frames. */
+  /** The Comment tool picked an element: start a comment on it. */
+  onComment: (oid: string) => void;
+  onOpenHistory?: () => void;
+  /** The open variant set of the design: it replaces the frames until a pick or a discard. */
   variants?: VariantSetView | null;
   variantsError?: string | null;
   onPickVariant?: (n: number) => void;
   onDiscardVariants?: () => void;
-  /** An old version shown next to the design, from the History tab. */
+  /** An old version from the History tab: the frames show it, read-only. */
   preview?: VersionView | null;
+  /** "v11 · 2 Oct 10:12" */
+  previewLabel?: string;
   previewBusy?: boolean;
   previewError?: string | null;
   onRestorePreview?: () => void;
   onClosePreview?: () => void;
+  /** Floating panels over the canvas (Tweaks). */
+  overlay?: React.ReactNode;
+  /** CSS variables of a live tweak, set on every page. */
+  liveVars?: Record<string, string>;
 }) {
   const ref = useRef<HTMLElement>(null);
   const [frames, setFrames] = useState<FrameSpec[] | null>(null);
@@ -354,15 +494,10 @@ export function Canvas({
   const [drag, setDrag] = useState<Drag | null>(null);
   const [spaceDown, setSpaceDown] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [tool, setTool] = useState<Tool>("select");
   const needsFit = useRef(true);
-  const pageCount = (variants?.variants.length ?? 0) + (preview ? 1 : 0);
-  const pageSlots = frames && pageCount ? variantSlots(frames, pageCount) : [];
-  const slots = pageSlots.slice(0, variants?.variants.length ?? 0);
-  const previewSlot = preview ? pageSlots.at(-1) : undefined;
-  // Fit takes the variant frames too, so a new set is in view at once.
-  const allFrames: FrameSpec[] = [...(frames ?? []), ...pageSlots.map((s, i) => ({ id: `page-${i + 1}`, label: "", ...s }))];
-  const state = useRef({ view, frames, active, allFrames });
-  state.current = { view, frames, active, allFrames };
+  const state = useRef({ view, frames, active, tool });
+  state.current = { view, frames, active, tool };
 
   // Load the frames of the design; a new design fits to the screen once they are there.
   useEffect(() => {
@@ -378,7 +513,9 @@ export function Canvas({
         setLayoutError(`The frame layout cannot load: ${(e as Error).message}`);
         setFrames([]);
       });
-    return () => { live = false; };
+    return () => {
+      live = false;
+    };
   }, [active?.project, active?.design]);
 
   const size = () => {
@@ -390,8 +527,8 @@ export function Canvas({
     return { x: s.width / 2, y: s.height / 2 };
   };
   const fit = useCallback(() => {
-    const f = state.current.allFrames;
-    if (f.length) setView(fitView(f, size()));
+    const f = state.current.frames;
+    if (f?.length) setView(fitView(f, size()));
   }, []);
 
   useLayoutEffect(() => {
@@ -400,18 +537,6 @@ export function Canvas({
       fit();
     }
   }, [frames, fit]);
-
-  // A new variant set comes into view.
-  const setId = variants?.id ?? null;
-  useLayoutEffect(() => {
-    if (setId && frames?.length) fit();
-  }, [setId, frames !== null]);
-
-  // An opened preview comes into view.
-  const previewSha = preview?.sha ?? null;
-  useLayoutEffect(() => {
-    if (previewSha && frames?.length) fit();
-  }, [previewSha, frames !== null]);
 
   /** Changes the frames and stores them. A failed save shows a message and keeps the change. */
   const changeFrames = useCallback((next: FrameSpec[]) => {
@@ -431,6 +556,8 @@ export function Canvas({
     const el = ref.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
+      // The variants grid scrolls like a page.
+      if ((e.target as Element).closest(".variants-view")) return;
       e.preventDefault();
       const r = el.getBoundingClientRect();
       const at = { x: e.clientX - r.left, y: e.clientY - r.top };
@@ -459,6 +586,17 @@ export function Canvas({
       if (!down) return false;
       const step = shift ? ARROW_STEP * 4 : ARROW_STEP;
       const pan = (dx: number, dy: number) => setView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
+      if (!mod && !shift) {
+        const t = TOOLS.find((x) => x.key.toLowerCase() === key.toLowerCase());
+        if (t) {
+          setTool(t.id);
+          return true;
+        }
+        if (key.toLowerCase() === "f") {
+          setMenuOpen((o) => !o);
+          return true;
+        }
+      }
       switch (key) {
         case "=":
         case "+":
@@ -475,16 +613,34 @@ export function Canvas({
           if (!shift) return false;
           fit();
           return true;
-        case "ArrowLeft": pan(step, 0); return true;
-        case "ArrowRight": pan(-step, 0); return true;
-        case "ArrowUp": pan(0, step); return true;
-        case "ArrowDown": pan(0, -step); return true;
+        case "Escape":
+          setMenuOpen(false);
+          return false;
+        case "ArrowLeft":
+          pan(step, 0);
+          return true;
+        case "ArrowRight":
+          pan(-step, 0);
+          return true;
+        case "ArrowUp":
+          pan(0, step);
+          return true;
+        case "ArrowDown":
+          pan(0, -step);
+          return true;
       }
       return false;
     },
     [fit],
   );
-  const onFrameKey = useCallback((m: KeyMessage) => void onKey(m.key, m.down, m.shift, m.mod), [onKey]);
+  // A key the canvas does not use goes to the app's shortcuts, as if the app had the focus.
+  const onFrameKey = useCallback(
+    (m: KeyMessage) => {
+      if (onKey(m.key, m.down, m.shift, m.mod) || !m.down) return;
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: m.key, shiftKey: m.shift, ctrlKey: m.mod }));
+    },
+    [onKey],
+  );
 
   useEffect(() => {
     if (!active) return;
@@ -507,10 +663,20 @@ export function Canvas({
     };
   }, [active !== null, onKey]);
 
-  // Drag on the empty canvas, with the middle button, or with Space held: pan.
+  // The Comment tool turns a pick into the start of a comment.
+  const select = useCallback(
+    (s: Selection) => {
+      onSelect(s);
+      if (state.current.tool === "comment") onComment(s.oid);
+    },
+    [onSelect, onComment],
+  );
+
+  // Drag on the empty canvas, with the middle button, with Space held or with the Hand tool: pan.
   const onPointerDown = (e: React.PointerEvent) => {
+    if ((e.target as Element).closest(".canvas-toolbar, .menu, .preview-banner, .canvas-overlay")) return;
     const onBackground = e.target === e.currentTarget || (e.target as Element).classList.contains("canvas-world");
-    if (!(onBackground || e.button === 1 || spaceDown)) return;
+    if (!(onBackground || e.button === 1 || spaceDown || tool === "hand")) return;
     if (e.button !== 0 && e.button !== 1) return;
     e.preventDefault();
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
@@ -518,7 +684,7 @@ export function Canvas({
     setDrag({ kind: "pan", start: { x: e.clientX, y: e.clientY }, view });
   };
   const onMoveStart = useCallback((e: React.PointerEvent, id: string) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || state.current.tool === "hand") return;
     const frame = state.current.frames?.find((f) => f.id === id);
     if (!frame) return;
     e.preventDefault();
@@ -549,29 +715,35 @@ export function Canvas({
     changeFrames([...frames, { id: newFrameId(frames, label), label, width, height, ...at }]);
     setMenuOpen(false);
   };
-  const removeFrame = useCallback((id: string) => {
-    const f = state.current.frames;
-    if (f && f.length > 1) changeFrames(f.filter((x) => x.id !== id));
-  }, [changeFrames]);
+  const removeFrame = useCallback(
+    (id: string) => {
+      const f = state.current.frames;
+      if (f && f.length > 1) changeFrames(f.filter((x) => x.id !== id));
+    },
+    [changeFrames],
+  );
 
   if (!active) {
     return (
       <main className="canvas canvas-empty">
-        <div className="empty">
-          <Icon name="frame" size={24} />
+        <div className="canvas-empty-text">
           <h2>No design open</h2>
-          <p>Select a design in the sidebar.</p>
+          <p>Open the projects with the doi menu or {navigator.platform.includes("Mac") ? "⌘P" : "Ctrl+P"}.</p>
         </div>
       </main>
     );
   }
 
-  const src = `${designUrl(active.project, active.design)}?v=${revision}`;
+  const pagePath = page === "index.html" ? "" : page;
+  const src = preview
+    ? `${versionPageUrl(active.project, active.design, preview.sha)}${pagePath}`
+    : `${designUrl(active.project, active.design)}${pagePath}?v=${revision}`;
   const panning = drag?.kind === "pan" || spaceDown;
+  const showVariants = variants !== null && !!frames?.length;
   return (
     <main
       ref={ref}
-      className={`canvas${drag ? " is-dragging" : ""}${panning ? " is-panning" : ""}`}
+      className={`canvas tool-${tool}${drag ? " is-dragging" : ""}${panning ? " is-panning" : ""}`}
       aria-label="Canvas"
       style={{
         backgroundPosition: `${view.x}px ${view.y}px`,
@@ -582,141 +754,114 @@ export function Canvas({
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
     >
-      <div
-        className="canvas-world"
-        style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`, "--zoom": view.zoom } as React.CSSProperties}
-      >
-        {frames?.map((f) => (
-          <Frame
-            key={f.id}
-            frame={f}
-            src={src}
-            zoom={view.zoom}
-            selection={selection}
-            pins={pins}
-            canRemove={frames.length > 1}
-            onSelect={onSelect}
-            onClear={onClear}
-            onPin={onPin}
-            onRemove={removeFrame}
-            onMoveStart={onMoveStart}
-            onWheel={onFrameWheel}
-            onKey={onFrameKey}
-          />
-        ))}
-        {variants &&
-          slots.map((slot, i) => {
-            const v = variants.variants[i]!;
-            return (
-              <PageFrame
-                key={`${variants.id}-${v.n}`}
-                id={`variant-${v.n}`}
-                className={`is-${v.status}`}
-                slot={slot}
-                // A finished variant loads again with its changes.
-                src={`${variantPageUrl(active.project, active.design, variants.id, v.n)}?s=${v.status}`}
-                title={`Variant ${v.n}`}
-                label={variantLabel(v, !variants.running && v.status === "done", (n) => onPickVariant?.(n))}
-                failed={v.status === "error" ? (v.error ?? "This variant failed.") : null}
-                onWheel={onFrameWheel}
-                onKey={onFrameKey}
-              />
-            );
-          })}
-        {preview && previewSlot && (
-          <PageFrame
-            key={preview.sha}
-            id="preview"
-            slot={previewSlot}
-            src={versionPageUrl(active.project, active.design, preview.sha)}
-            title={`Version ${preview.sha.slice(0, 7)}`}
-            className="is-preview"
-            label={
-              <>
-                <span>Version {preview.sha.slice(0, 7)}</span>
-                <span className="muted truncate">{preview.message}</span>
-              </>
-            }
-            onWheel={onFrameWheel}
-            onKey={onFrameKey}
-          />
-        )}
-      </div>
-
-      {variants && (
-        <div className="variants-bar" role="region" aria-label="Variants">
-          <Icon name="sparkle" size={14} />
-          <span className="truncate">
-            Variants of <q>{variants.prompt}</q>
-          </span>
-          <span className="muted">{variants.running ? "Working…" : "Pick one under the frames."}</span>
-          <button className="btn btn-secondary" disabled={variants.running} onClick={onDiscardVariants}>
-            Discard all
-          </button>
-          {variantsError && <span className="variants-error" role="alert">{variantsError}</span>}
+      {showVariants ? (
+        <VariantsView
+          active={active}
+          set={variants}
+          frame={frames![0]!}
+          error={variantsError}
+          onPick={(n) => onPickVariant?.(n)}
+          onDiscard={() => onDiscardVariants?.()}
+        />
+      ) : (
+        <div className="canvas-world" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`, "--zoom": view.zoom } as React.CSSProperties}>
+          {frames?.map((f) => (
+            <Frame
+              key={f.id}
+              frame={f}
+              src={src}
+              page={page}
+              zoom={view.zoom}
+              selection={selection}
+              pins={pins}
+              canRemove={frames.length > 1}
+              readOnly={preview !== null}
+              onSelect={select}
+              onClear={onClear}
+              onPin={onPin}
+              onRemove={removeFrame}
+              onMoveStart={onMoveStart}
+              onWheel={onFrameWheel}
+              onKey={onFrameKey}
+              onOpenHistory={onOpenHistory}
+              liveVars={preview ? NO_VARS : liveVars}
+            />
+          ))}
         </div>
       )}
 
-      {preview && (
-        <div className={`variants-bar${variants ? " is-second" : ""}`} role="region" aria-label="Version preview">
-          <Icon name="history" size={14} />
-          <span className="truncate">
-            Version {preview.sha.slice(0, 7)}: <q>{preview.message}</q>
-          </span>
-          <button className="btn btn-primary" disabled={previewBusy || variants !== null} onClick={onRestorePreview} title={variants ? "Pick or discard the variants first" : "Make this version the current one, as a new version"}>
-            Restore
-          </button>
-          <button className="icon-btn" onClick={onClosePreview} aria-label="Close the preview" title="Close">
-            <Icon name="close" />
-          </button>
-          {previewError && <span className="variants-error" role="alert">{previewError}</span>}
-        </div>
+      {preview && !showVariants && (
+        <>
+          <div className="preview-edge" aria-hidden="true" />
+          <div className="preview-banner" role="status">
+            <span className="dot dot-warn" />
+            <strong>Preview of {previewLabel}</strong>
+            <span className="muted truncate">{preview.message} · read-only</span>
+            <button className="btn btn-primary btn-md" disabled={previewBusy || variants !== null} onClick={onRestorePreview}>
+              Restore this version
+            </button>
+            <button className="btn btn-secondary btn-md" onClick={onClosePreview} title="Close preview (Esc)">
+              Close
+            </button>
+            {previewError && (
+              <span className="field-error" role="alert">
+                {previewError}
+              </span>
+            )}
+          </div>
+        </>
       )}
 
       {layoutError && (
-        <p className="canvas-error notice notice-danger" role="alert">
-          <Icon name="alert" />
-          <span>{layoutError}</span>
-        </p>
+        <div className="banner banner-err canvas-error" role="alert">
+          <span className="dot dot-err" />
+          {layoutError}
+        </div>
       )}
 
-      {menuOpen && <AddFrameMenu onAdd={addFrame} onClose={() => setMenuOpen(false)} />}
+      {overlay && <div className="canvas-overlay">{overlay}</div>}
 
-      <div className="canvas-toolbar" role="toolbar" aria-label="Canvas">
-        <button
-          className="icon-btn"
-          onClick={() => setMenuOpen((o) => !o)}
-          aria-label="Add frame"
-          aria-expanded={menuOpen}
-          title="Add frame"
-          disabled={!frames || frames.length >= FRAME_LIMITS.count}
-        >
-          <Icon name="frame" />
-        </button>
-        <button
-          className="icon-btn"
-          onClick={() => frames && changeFrames(arrangeRow(frames))}
-          aria-label="Arrange frames in a row"
-          title="Arrange frames in a row"
-          disabled={!frames?.length}
-        >
-          <Icon name="arrange" />
-        </button>
-        <span className="toolbar-sep" />
-        <button className="icon-btn" onClick={() => zoomTo(stepZoom(view.zoom, -1))} aria-label="Zoom out" title="Zoom out (−)" disabled={view.zoom <= ZOOM_MIN}>
-          <Icon name="minus" />
-        </button>
-        <button className="zoom-value" onClick={() => zoomTo(1)} title="Zoom to 100% (0)" aria-label={`Zoom ${Math.round(view.zoom * 100)}%. Set to 100%`}>
-          {Math.round(view.zoom * 100)}%
-        </button>
-        <button className="icon-btn" onClick={() => zoomTo(stepZoom(view.zoom, 1))} aria-label="Zoom in" title="Zoom in (+)" disabled={view.zoom >= ZOOM_MAX}>
-          <Icon name="plus" />
-        </button>
-        <span className="toolbar-sep" />
-        <button className="icon-btn" onClick={fit} aria-label="Fit to screen" title="Fit to screen (Shift+1)">
-          <Icon name="fit" />
-        </button>
-      </div>
+      {menuOpen && !showVariants && <AddFrameMenu onAdd={addFrame} onClose={() => setMenuOpen(false)} />}
+
+      {!showVariants && (
+        <div className="canvas-toolbar" role="toolbar" aria-label="Canvas tools">
+          {TOOLS.map((t) => (
+            <button key={t.id} className="tool-btn" aria-pressed={tool === t.id} onClick={() => setTool(t.id)} title={`${t.label} (${t.key})`}>
+              {t.label}
+              <span className="kbd">{t.key}</span>
+            </button>
+          ))}
+          <span className="sep" />
+          <button
+            className="tool-btn"
+            onClick={() => setMenuOpen((o) => !o)}
+            aria-expanded={menuOpen}
+            title="Add frame (F)"
+            disabled={!frames || frames.length >= FRAME_LIMITS.count || preview !== null}
+          >
+            + Frame
+            <span className="kbd">
+              {frames?.length ?? 0}/{FRAME_LIMITS.count}
+            </span>
+          </button>
+          <button className="tool-btn" onClick={() => frames && changeFrames(arrangeRow(frames))} title="Arrange all in a row" disabled={!frames?.length || preview !== null}>
+            Arrange
+          </button>
+          <span className="sep" />
+          <button className="tool-btn tool-icon" onClick={() => zoomTo(stepZoom(view.zoom, -1))} aria-label="Zoom out" title="Zoom out (−)" disabled={view.zoom <= ZOOM_MIN}>
+            −
+          </button>
+          <button className="tool-btn zoom-value" onClick={() => zoomTo(1)} title="Zoom to 100% (0)" aria-label={`Zoom ${Math.round(view.zoom * 100)}%. Set to 100%`}>
+            {Math.round(view.zoom * 100)}%
+          </button>
+          <button className="tool-btn tool-icon" onClick={() => zoomTo(stepZoom(view.zoom, 1))} aria-label="Zoom in" title="Zoom in (+)" disabled={view.zoom >= ZOOM_MAX}>
+            +
+          </button>
+          <button className="tool-btn" onClick={fit} title="Fit all (⇧1)">
+            Fit<span className="kbd">⇧1</span>
+          </button>
+        </div>
+      )}
     </main>
   );
 }

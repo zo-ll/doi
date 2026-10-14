@@ -18,13 +18,21 @@ function elements(html: string): { tag: string; oid: string | null }[] {
 // Elements that the prompt says carry no data-oid.
 const NO_OID = new Set(["html", "head", "meta", "link", "title", "body", "strong", "em"]);
 
-describe("system prompt v1", () => {
+describe("system prompt v2", () => {
   test("is a versioned file with the required rules", () => {
-    expect(SYSTEM_PROMPT.version).toBe("v1");
+    expect(SYSTEM_PROMPT.version).toBe("v2");
     for (const rule of ["index.html", "styles.css", "plain HTML and CSS", "data-oid", "Keep existing ids", "`edit`", "`write`"]) {
       expect(text).toContain(rule);
     }
     for (const topic of ["Spacing:", "Type:", "Contrast:", "Layout:"]) expect(text).toContain(topic);
+  });
+
+  test("tells how to write tweaks.json, with a valid example", () => {
+    expect(text).toContain("`tweaks.json`");
+    const json = blocks("json");
+    expect(json).toHaveLength(1);
+    const controls = (JSON.parse(json[0]!) as { controls: { var: string; type: string }[] }).controls;
+    expect(controls.map((c) => c.type)).toEqual(["color", "slider", "select"]);
   });
 
   test("tells how to mark the slides of a deck for the PDF export", () => {

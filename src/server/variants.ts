@@ -1,4 +1,4 @@
-import { parseModelRef, type Config, type ModelRef, type ProviderId } from "../config.ts";
+import { parseModelChoice, type Config, type ModelRef, type ProviderId } from "../config.ts";
 import { ApplyError, runTurn, type TurnEvent } from "../generation/apply.ts";
 import { assembleContext, capabilitiesFor, ContextTooLargeError, readDesignFiles } from "../generation/context.ts";
 import { linkDesignSystemIn } from "../generation/ds-link.ts";
@@ -45,7 +45,6 @@ type Params = { project: string; design: string };
 const MAX_TEXT = 20_000;
 const OID = /^[A-Za-z0-9_-]{1,100}$/;
 /** A model name goes to a CLI as one argument: no leading "-", no spaces. */
-const MODEL = /^[A-Za-z0-9._@/][A-Za-z0-9._:@/-]{0,99}$/;
 
 const fail = (message: string, status = 400) => Response.json({ error: message }, { status });
 const sse = (e: VariantStreamEvent) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`;
@@ -56,13 +55,9 @@ function parseModels(raw: unknown, count: number, fallback: ModelRef): ModelRef[
   const out: ModelRef[] = [];
   for (const m of raw) {
     if (typeof m !== "string") return 'Each model must be "<provider>:<model>".';
-    try {
-      const ref = parseModelRef(m.trim());
-      if (!MODEL.test(ref.model)) return `The model name "${ref.model}" is not valid.`;
-      out.push(ref);
-    } catch (e) {
-      return (e as Error).message;
-    }
+    const ref = parseModelChoice(m);
+    if (typeof ref === "string") return ref;
+    out.push(ref);
   }
   return out;
 }

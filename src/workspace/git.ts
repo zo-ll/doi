@@ -22,6 +22,16 @@ async function git(workspace: string, args: string[]): Promise<string> {
   return result.stdout.toString();
 }
 
+/** Uncommitted changes in the workspace, for the status line; null when git is off. */
+export async function workspaceChanges(workspace: string): Promise<number | null> {
+  try {
+    const out = await serial(() => git(workspace, ["status", "--porcelain"]));
+    return out.split("\n").filter(Boolean).length;
+  } catch {
+    return null;
+  }
+}
+
 /** Makes the workspace its own git repo on first run. A repo around it does not count. */
 export async function ensureRepo(workspace: string): Promise<void> {
   if (await Bun.file(join(workspace, ".git", "HEAD")).exists()) return;
@@ -60,6 +70,46 @@ export function commitTurn(workspace: string, project: string, design: string, p
     [designDir(workspace, project, design), chatFile(workspace, project), uploadsDir(workspace, project)],
     prompt,
   );
+}
+
+/** Lines a commit added and removed in one file of a design. Binary files count 0. */
+export interface FileStat {
+  file: string;
+  add: number;
+  del: number;
+}
+
+/**
+ * The changed files of some commits, inside one design folder, with one git call. A commit
+ * that is not in the repo (a reset, another clone) has no entry.
+ */
+export async function commitStats(workspace: string, project: string, design: string, shas: string[]): Promise<Map<string, FileStat[]>> {
+  const out = new Map<string, FileStat[]>();
+  const valid = shas.filter(isSha);
+  if (!valid.length) return out;
+  const prefix = relative(workspace, designDir(workspace, project, design)).split(sep).join("/") + "/";
+  let text: string;
+  try {
+    // --no-walk: each commit only, not its parents; --ignore-missing: skip a commit that is gone.
+    // One "@<sha>" line, then one numstat line per file.
+    text = await serial(() => git(workspace, ["log", "--no-walk", "--ignore-missing", "--numstat", "--format=@%H", ...valid, "--", prefix]));
+  } catch {
+    return out; // a missing commit: no counts, the chat still loads
+  }
+  let current: FileStat[] | null = null;
+  for (const line of text.split("\n")) {
+    if (line.startsWith("@")) {
+      current = [];
+      const full = line.slice(1);
+      const asked = valid.find((s) => full.startsWith(s));
+      if (asked) out.set(asked, current);
+      continue;
+    }
+    const m = /^(\d+|-)\t(\d+|-)\t(.+)$/.exec(line);
+    if (!m || !current || !m[3]!.startsWith(prefix)) continue;
+    current.push({ file: m[3]!.slice(prefix.length), add: m[1] === "-" ? 0 : Number(m[1]), del: m[2] === "-" ? 0 : Number(m[2]) });
+  }
+  return out;
 }
 
 /** The last commit that changed the design folder, or null when there is none yet. */

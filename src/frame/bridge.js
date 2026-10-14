@@ -4,7 +4,8 @@
 // Frame → app: doi:ready, doi:select { oid }, doi:clear, doi:rects { selected, hover, pins },
 // doi:wheel { deltaY, x, y } (a pinch or Ctrl/⌘ + wheel), doi:key { key, down, shift, mod }.
 // App → frame: doi:track { oid, pins } names the selected element (or null) and the elements
-// with open comments.
+// with open comments; doi:vars { vars } sets CSS variables on the page for a live tweak
+// (a null value removes one).
 // Rects are in the coordinates of this frame's viewport.
 (() => {
   let selectedOid = null;
@@ -85,14 +86,19 @@
   });
 
   // The iframe has the keyboard focus after a click, so the app does not see these keys.
-  // Canvas keys go to the app too, except while the user types in a field of the page.
-  const CANVAS_KEYS = new Set([" ", "=", "+", "-", "0", "!", "1", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
+  // Canvas keys (zoom, pan, tools) and the app's own shortcuts go to the app too, except
+  // while the user types in a field of the page.
+  const CANVAS_KEYS = new Set([" ", "=", "+", "-", "0", "!", "1", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "v", "c", "h", "f", "n", "t"]);
+  const APP_KEYS = new Set(["p", "[", "]", "d", "e", ","]);
   const typing = (t) => t instanceof Element && (t.closest("input, textarea, select, [contenteditable]") !== null);
   const onKey = (event, down) => {
     if (down && event.key === "Escape") send({ type: "doi:clear" });
-    if (!CANVAS_KEYS.has(event.key) || typing(event.target)) return;
-    if (event.key === " ") event.preventDefault(); // no page scroll while the canvas pans
-    send({ type: "doi:key", key: event.key, down, shift: event.shiftKey, mod: event.ctrlKey || event.metaKey });
+    const mod = event.ctrlKey || event.metaKey;
+    const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+    const forward = mod ? APP_KEYS.has(key) || (event.shiftKey && key === "h") : CANVAS_KEYS.has(key);
+    if (!forward || typing(event.target)) return;
+    if (event.key === " " || mod) event.preventDefault(); // no page scroll, no browser shortcut (print)
+    send({ type: "doi:key", key: event.key, down, shift: event.shiftKey, mod });
   };
   document.addEventListener("keydown", (event) => onKey(event, true));
   document.addEventListener("keyup", (event) => onKey(event, false));
@@ -108,9 +114,19 @@
     { passive: false },
   );
 
+  const VAR = /^--[A-Za-z0-9_-]{1,60}$/;
   window.addEventListener("message", (event) => {
     if (event.source !== parent) return;
     const d = event.data;
+    if (d?.type === "doi:vars" && d.vars && typeof d.vars === "object") {
+      for (const [name, value] of Object.entries(d.vars)) {
+        if (!VAR.test(name)) continue;
+        if (value === null) document.documentElement.style.removeProperty(name);
+        else if (typeof value === "string" && value.length <= 200) document.documentElement.style.setProperty(name, value);
+      }
+      schedule(); // the boxes move when sizes change
+      return;
+    }
     if (d?.type !== "doi:track" || (d.oid !== null && typeof d.oid !== "string")) return;
     selectedOid = d.oid;
     pinOids = Array.isArray(d.pins) ? d.pins.filter((p) => typeof p === "string") : [];

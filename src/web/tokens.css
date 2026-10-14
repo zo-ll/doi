@@ -1,26 +1,34 @@
-/* All colors and sizes of the app shell. Components use only these variables.
-   The one exception: 1px hairlines (borders, separators, the canvas dot, outline offsets) stay literal. */
+/* All colors and sizes of the app shell (doi UI kit, Claude Design project "doi"). Components use
+   only these variables. The one exception: 1px hairlines (borders, separators, the canvas dot,
+   outline offsets) stay literal. The theme follows the system; `data-theme` on <html> overrides it. */
 
 :root {
-  /* Type */
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
-  --text-2xs: 10px;
+  /* Type: IBM Plex Sans for the UI, Plex Mono for values, paths, sizes and shortcuts */
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --text-2xs: 10.5px;
   --text-xs: 11px;
+  --text-meta: 11.5px;
   --text-sm: 12px;
+  --text-control: 12.5px;
   --text-md: 13px;
+  --text-heading: 14px;
   --text-lg: 15px;
   --text-xl: 18px;
+  --text-2xl: 24px;
   --leading: 1.5;
+  --leading-loose: 1.55;
   --weight-medium: 500;
   --weight-semibold: 600;
 
-  /* Space (4 px scale) */
+  /* Space (4 px grid) */
   --space-0-5: 2px;
   --space-1: 4px;
   --space-1-5: 6px;
   --space-2: 8px;
+  --space-2-5: 10px;
   --space-3: 12px;
+  --space-3-5: 14px;
   --space-4: 16px;
   --space-5: 20px;
   --space-6: 24px;
@@ -29,33 +37,40 @@
 
   /* Shape */
   --radius-xs: 3px;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
+  --radius-sm: 4px; /* chip */
+  --radius-md: 6px; /* control */
+  --radius-lg: 8px; /* card */
+  --radius-menu: 10px;
+  --radius-dialog: 12px;
   --radius-full: 999px;
 
   /* Layout */
   --topbar-h: 44px;
-  --sidebar-w: 232px;
-  --chat-w: 360px;
+  --chat-w: 356px;
+  --side-w: 308px;
+  --nav-w: 296px;
+  --sidebar-w: var(--nav-w);
   --app-min-w: 1280px;
   --panel-header-h: 40px;
+  --dialog-header-h: 48px;
+  --dialog-footer-h: 56px;
   --control-h: 28px;
   --control-h-sm: 24px;
+  --control-h-lg: 30px;
   --chip-h: 22px;
   --icon: 16px;
   --icon-box-sm: 18px;
   --icon-box-lg: 36px;
-  --status-dot: 6px;
+  --status-dot: 7px;
+  --pin-size: 22px;
   --skeleton-h: 12px;
-  --tree-indent: var(--space-8);
-  --composer-min-h: 44px;
-  --composer-max-h: 240px;
-  --zoom-label-w: 44px;
+  --tree-indent: 30px;
+  --composer-min-h: 64px;
+  --composer-max-h: 180px;
+  --zoom-label-w: 52px;
   --canvas-grid: 16px;
   --outline-w: 2px;
-  --pin-size: 20px;
-  --menu-w: 240px;
+  --menu-w: 280px;
   --menu-w-wide: 480px;
   --dialog-w: 1080px;
   --dialog-h: 760px;
@@ -70,70 +85,103 @@
   --fast: 120ms;
 
   /* Color: light */
-  --bg-canvas: #f3f3f1;
-  --surface-paper: #ffffff; /* design frames stay white in both themes */
-  --canvas-dot: #d6d6d1;
-  --surface: #ffffff;
-  --surface-sunken: #f8f8f7;
-  --surface-hover: #f1f1ef;
-  --surface-active: #ebebe8;
-  --border: #e6e6e3;
-  --border-strong: #d3d3cf;
-  --text: #1b1b19;
-  --text-secondary: #5f5f5a;
-  --text-tertiary: #93938d;
-  --accent: #5a54e0;
-  --accent-hover: #4b45cc;
-  --accent-text: #ffffff;
-  --accent-soft: rgba(90, 84, 224, 0.1);
-  --accent-soft-text: #4640c4;
-  --success: #2f9e5b;
-  --warning: #b7791f;
-  --warning-soft: rgba(214, 158, 46, 0.12);
-  --danger: #cf3b3b;
-  --danger-soft: rgba(207, 59, 59, 0.08);
-  --danger-border: rgba(207, 59, 59, 0.25);
-  --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px rgba(90, 84, 224, 0.45);
-  --shadow-frame: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.06);
-  --shadow-float: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.08);
-  --backdrop: rgba(20, 20, 18, 0.32);
-  --skeleton: #ececea;
-  --skeleton-shine: #f6f6f4;
+  --bg: #f3f2ee;
+  --panel: #faf9f6;
+  --raised: #ffffff;
+  --canvas: #e8e6e1;
+  --dot: #cfcbc3;
+  --paper: #ffffff; /* design frames stay white paper in both themes */
+  --line: #e1ded7;
+  --line-2: #cdc9c0;
+  --text: #1d1c19;
+  --text-2: #53504a;
+  --text-3: #6e6a62;
+  --hover: rgba(29, 28, 25, 0.055);
+  --active: rgba(29, 28, 25, 0.09);
+  --accent: oklch(0.5 0.1 190);
+  --accent-ink: #ffffff;
+  --accent-soft: oklch(0.94 0.03 190);
+  --accent-text: oklch(0.44 0.1 190);
+  --ok: oklch(0.56 0.13 150);
+  --warn: oklch(0.64 0.14 70);
+  --err: oklch(0.55 0.18 28);
+  --ok-soft: oklch(0.95 0.03 150);
+  --warn-soft: oklch(0.95 0.04 80);
+  --err-soft: oklch(0.95 0.03 28);
+  --err-ink: #ffffff;
+  --pin-done: #8a8780;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 10px 30px rgba(0, 0, 0, 0.1);
+  --frame-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 2px 10px rgba(0, 0, 0, 0.06);
+  --scrim: rgba(20, 19, 17, 0.35);
+  --skeleton: #eeede9;
+  --skeleton-shine: #f6f5f2;
+  --focus-ring: 0 0 0 var(--ring-w) var(--accent-soft);
 
   color-scheme: light;
 }
 
+/* Dark: the system asks for it and the user did not choose light, or the user chose dark. */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg-canvas: #0f0f10;
-    --canvas-dot: #26262a;
-    --surface: #18181a;
-    --surface-sunken: #141416;
-    --surface-hover: #222225;
-    --surface-active: #2a2a2e;
-    --border: #28282c;
-    --border-strong: #37373c;
-    --text: #ececec;
-    --text-secondary: #a3a3a9;
-    --text-tertiary: #6f6f76;
-    --accent: #7b75f2;
-    --accent-hover: #8e89f5;
-    --accent-text: #ffffff;
-    --accent-soft: rgba(123, 117, 242, 0.16);
-    --accent-soft-text: #b3afff;
-    --success: #4cc27b;
-    --warning: #e3b341;
-    --warning-soft: rgba(227, 179, 65, 0.12);
-    --danger: #f06767;
-    --danger-soft: rgba(240, 103, 103, 0.1);
-    --danger-border: rgba(240, 103, 103, 0.3);
-    --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px rgba(123, 117, 242, 0.55);
-    --shadow-frame: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 8px 24px rgba(0, 0, 0, 0.4);
-    --shadow-float: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 4px 16px rgba(0, 0, 0, 0.5);
-    --backdrop: rgba(0, 0, 0, 0.55);
-    --skeleton: #222225;
-    --skeleton-shine: #2a2a2e;
+  :root:not([data-theme="light"]) {
+    --bg: #141413;
+    --panel: #1a1a18;
+    --raised: #222220;
+    --canvas: #0e0e0d;
+    --dot: #2b2a27;
+    --line: #2a2926;
+    --line-2: #3b3a36;
+    --text: #eceae4;
+    --text-2: #b4b0a7;
+    --text-3: #8f8b82;
+    --hover: rgba(255, 255, 255, 0.05);
+    --active: rgba(255, 255, 255, 0.09);
+    --accent: oklch(0.76 0.1 190);
+    --accent-ink: #0b1615;
+    --accent-soft: oklch(0.32 0.05 190);
+    --accent-text: oklch(0.8 0.09 190);
+    --ok: oklch(0.74 0.14 150);
+    --warn: oklch(0.8 0.13 78);
+    --err: oklch(0.71 0.16 28);
+    --ok-soft: oklch(0.3 0.05 150);
+    --warn-soft: oklch(0.31 0.05 78);
+    --err-soft: oklch(0.3 0.06 28);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 36px rgba(0, 0, 0, 0.5);
+    --frame-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 4px 18px rgba(0, 0, 0, 0.5);
+    --scrim: rgba(0, 0, 0, 0.55);
+    --skeleton: #222220;
+    --skeleton-shine: #2a2926;
 
     color-scheme: dark;
   }
+}
+:root[data-theme="dark"] {
+  --bg: #141413;
+  --panel: #1a1a18;
+  --raised: #222220;
+  --canvas: #0e0e0d;
+  --dot: #2b2a27;
+  --line: #2a2926;
+  --line-2: #3b3a36;
+  --text: #eceae4;
+  --text-2: #b4b0a7;
+  --text-3: #8f8b82;
+  --hover: rgba(255, 255, 255, 0.05);
+  --active: rgba(255, 255, 255, 0.09);
+  --accent: oklch(0.76 0.1 190);
+  --accent-ink: #0b1615;
+  --accent-soft: oklch(0.32 0.05 190);
+  --accent-text: oklch(0.8 0.09 190);
+  --ok: oklch(0.74 0.14 150);
+  --warn: oklch(0.8 0.13 78);
+  --err: oklch(0.71 0.16 28);
+  --ok-soft: oklch(0.3 0.05 150);
+  --warn-soft: oklch(0.31 0.05 78);
+  --err-soft: oklch(0.3 0.06 28);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 36px rgba(0, 0, 0, 0.5);
+  --frame-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 4px 18px rgba(0, 0, 0, 0.5);
+  --scrim: rgba(0, 0, 0, 0.55);
+  --skeleton: #222220;
+  --skeleton-shine: #2a2926;
+
+  color-scheme: dark;
 }

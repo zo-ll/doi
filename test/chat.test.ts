@@ -57,6 +57,29 @@ describe("chat panel logic", () => {
     expect(msgs[1]).toMatchObject({ status: "error", text: "b", usage });
   });
 
+  test("answers carry time, model, task and line counts", () => {
+    let id = 0;
+    const stats = [{ file: "styles.css", add: 6, del: 2 }];
+    const msgs = fromEntries(
+      [
+        user("t1", "a page"),
+        { ...answer("t1", "made"), stats },
+        user("t2", "bigger", "home", "title"),
+        answer("t2", "done"),
+        user("t3", "variants"),
+        { ...answer("t3", "picked"), variant: 2 } as ChatEntry,
+      ],
+      () => ++id,
+    );
+    expect(msgs[0]).toMatchObject({ kind: "user", at });
+    expect(msgs[1]).toMatchObject({ at, model: "m", task: "generate", stats });
+    expect(msgs[3]).toMatchObject({ task: "edit" });
+    expect(msgs[3]).not.toHaveProperty("stats");
+    expect(msgs[5]).toMatchObject({ task: "variant 2" });
+    const live = applyEvent(newAnswer(9, "small", "edit"), { type: "commit", sha: "abc1234", stats });
+    expect(live).toMatchObject({ model: "small", task: "edit", commit: "abc1234", stats });
+  });
+
   test("stream events build the answer", () => {
     let a = newAnswer(1);
     for (const e of [

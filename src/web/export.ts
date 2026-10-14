@@ -62,20 +62,28 @@ export function bundleRequest(project: string, design: string, markdown: string)
   };
 }
 
-/** Runs the export and saves the file through the browser. Returns the file name and the report. */
-export async function runExport(url: string, fallback: string, init?: RequestInit): Promise<ExportReport & { file: string }> {
+/** "412 KB", "1.9 MB". */
+export function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/** Runs the export and saves the file through the browser. Returns the file name, its size and the report. */
+export async function runExport(url: string, fallback: string, init?: RequestInit): Promise<ExportReport & { file: string; size: number }> {
   const res = await fetch(url, init);
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { error?: string } | null;
     throw new Error(body?.error ?? `${res.status} ${res.statusText}`);
   }
   const file = fileNameOf(res.headers.get("content-disposition"), fallback);
-  const href = URL.createObjectURL(await res.blob());
+  const blob = await res.blob();
+  const href = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = href;
   a.download = file;
   a.click();
   // The click starts the download at once; the URL is not needed after that.
   setTimeout(() => URL.revokeObjectURL(href), 0);
-  return { file, ...parseReport(res.headers.get(REPORT_HEADER)) };
+  return { file, size: blob.size, ...parseReport(res.headers.get(REPORT_HEADER)) };
 }

@@ -1,5 +1,5 @@
 import { mkdir, readdir } from "node:fs/promises";
-import { join, normalize, sep } from "node:path";
+import { join, normalize, relative, sep } from "node:path";
 
 const NAME = /^[a-z0-9][a-z0-9-]*$/;
 
@@ -28,6 +28,8 @@ export interface ProjectSummary {
   id: string;
   name: string;
   designs: string[];
+  /** The designs that are slide decks: their index.html marks slides with data-slide (#48). */
+  decks: string[];
   /** The selected design system, or null. */
   designSystem: string | null;
 }
@@ -39,6 +41,19 @@ async function subdirs(dir: string): Promise<string[]> {
   } catch {
     return [];
   }
+}
+
+const SLIDE = /\bdata-slide(?![\w-])/;
+
+/** The HTML pages of a design, index.html first, then by path. Hidden files and folders do not count. */
+export async function designPages(workspace: string, project: string, design: string): Promise<string[]> {
+  const dir = designDir(workspace, project, design);
+  const entries = await readdir(dir, { recursive: true, withFileTypes: true });
+  const pages = entries
+    .filter((e) => e.isFile() && /\.html?$/i.test(e.name))
+    .map((e) => relative(dir, join(e.parentPath, e.name)).split(sep).join("/"))
+    .filter((p) => !p.split("/").some((part) => part.startsWith(".")));
+  return pages.sort((a, b) => Number(b === "index.html") - Number(a === "index.html") || a.localeCompare(b));
 }
 
 /** Lists projects and their designs. A design is a folder with an index.html. */
@@ -58,10 +73,14 @@ export async function listProjects(workspace: string): Promise<ProjectSummary[]>
       // A hand-edited project.json with bad JSON must not hide the other projects.
     }
     const designs: string[] = [];
+    const decks: string[] = [];
     for (const design of await subdirs(join(workspace, "projects", id, "designs"))) {
-      if (await Bun.file(join(designDir(workspace, id, design), "index.html")).exists()) designs.push(design);
+      const index = Bun.file(join(designDir(workspace, id, design), "index.html"));
+      if (!(await index.exists())) continue;
+      designs.push(design);
+      if (SLIDE.test(await index.text())) decks.push(design);
     }
-    projects.push({ id, name, designs, designSystem });
+    projects.push({ id, name, designs, decks, designSystem });
   }
   return projects;
 }

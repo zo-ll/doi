@@ -27,8 +27,14 @@ base_url = "http://localhost:11434"
 generate = "claude-code:claude-opus-5-5"   # full designs
 edit     = "claude-code:claude-sonnet-5-5" # small targeted edits
 extract  = "claude-code:claude-haiku-5-5"  # design system extraction (needs vision for the screenshot import)
+# Settings (Ctrl/⌘ + ,) in the app writes these three lines.
 # With a ChatGPT plan instead, for example:
 # generate = "codex:default"   # "default" uses the model from the Codex config
 # With an API key, for example:
 # generate = "anthropic:claude-opus-5-5"
 
+# Prices for the usage report, in USD per 1M tokens. Subscriptions and local models show
+# tokens only. Without an entry, an API model shows "No price".
+# [prices]
+# "anthropic:claude-opus-5-5" = { input = 5, output = 25, cached = 0.5 }
+# "openai:gpt-6" = { input = 2, output = 8 }

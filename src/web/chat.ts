@@ -1,4 +1,7 @@
-import type { ChatEntry, TurnStreamEvent, Usage, VariantStreamEvent } from "./api.ts";
+import type { ChatEntryView, FileStat, TurnStreamEvent, Usage, VariantStreamEvent } from "./api.ts";
+
+/** Which model setting made an answer: generate (a new design), edit (one element), or a picked variant. */
+export type Task = "generate" | "edit" | `variant ${number}`;
 
 export type AnswerStatus = "running" | "done" | "error" | "stopped";
 
@@ -7,6 +10,8 @@ export type ChatMessage =
       id: number;
       kind: "user";
       text: string;
+      /** ISO time; absent for a message sent in this session before the server stored it. */
+      at?: string;
       target?: string;
       images?: string[];
       /** Comments the turn applied: element and text. */
@@ -17,7 +22,13 @@ export type ChatMessage =
       kind: "assistant";
       text: string;
       status: AnswerStatus;
+      at?: string;
+      /** The model name, without the provider. */
+      model?: string;
+      task?: Task;
       files: string[];
+      /** Lines added and removed per file, once the turn is a commit. */
+      stats?: FileStat[];
       usage: Usage | null;
       retries: number;
       error?: string;
@@ -92,13 +103,26 @@ export function applyVariantEvent(m: VariantsMessage, e: VariantStreamEvent): Va
   }
 }
 
-export function newAnswer(id: number): Answer {
-  return { id, kind: "assistant", text: "", status: "running", files: [], usage: null, retries: 0 };
+export function newAnswer(id: number, model?: string, task?: Task): Answer {
+  return {
+    id,
+    kind: "assistant",
+    text: "",
+    status: "running",
+    at: new Date().toISOString(),
+    ...(model ? { model } : {}),
+    ...(task ? { task } : {}),
+    files: [],
+    usage: null,
+    retries: 0,
+  };
 }
 
 /** The stored chat as panel messages. A user line without an answer is a turn that never ended. */
-export function fromEntries(entries: ChatEntry[], nextId: () => number, imageUrl: (name: string) => string = (n) => n): ChatMessage[] {
+export function fromEntries(entries: ChatEntryView[], nextId: () => number, imageUrl: (name: string) => string = (n) => n): ChatMessage[] {
   const answered = new Set(entries.filter((e) => e.role === "assistant").map((e) => e.turn));
+  // The server uses the edit model for a turn with a target element, else the generate model.
+  const targeted = new Set(entries.flatMap((e) => (e.role === "user" && e.target ? [e.turn] : [])));
   const out: ChatMessage[] = [];
   for (const e of entries) {
     if (e.role === "user") {
@@ -106,6 +130,7 @@ export function fromEntries(entries: ChatEntry[], nextId: () => number, imageUrl
         id: nextId(),
         kind: "user",
         text: e.text,
+        at: e.at,
         ...(e.target ? { target: e.target } : {}),
         ...(e.images?.length ? { images: e.images.map(imageUrl) } : {}),
         ...(e.comments?.length ? { comments: e.comments.map(({ oid, text }) => ({ oid, text })) } : {}),
@@ -117,7 +142,11 @@ export function fromEntries(entries: ChatEntry[], nextId: () => number, imageUrl
         kind: "assistant",
         text: e.text,
         status: e.status,
+        at: e.at,
+        model: e.model,
+        task: e.variant ? `variant ${e.variant}` : targeted.has(e.turn) ? "edit" : "generate",
         files: e.files,
+        ...(e.stats ? { stats: e.stats } : {}),
         usage: e.usage,
         retries: 0,
         ...(e.error ? { error: e.error } : {}),
@@ -160,7 +189,7 @@ export function applyEvent(a: Answer, e: TurnStreamEvent): Answer {
     case "error":
       return { ...a, status: "error", error: errorText(e.kind, e.message) };
     case "commit":
-      return e.sha ? { ...a, commit: e.sha } : e.error ? { ...a, commitError: e.error } : a;
+      return e.sha ? { ...a, commit: e.sha, ...(e.stats ? { stats: e.stats } : {}) } : e.error ? { ...a, commitError: e.error } : a;
     case "comments":
       return { ...a, commentsDone: e.done.length };
   }

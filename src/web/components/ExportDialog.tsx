@@ -1,51 +1,48 @@
 import { useEffect, useRef, useState } from "react";
 import { getJSON } from "../api.ts";
-import { bundleRequest, exportUrl, fallbackName, runExport, type ExportChoice, type ExportFormat, type ExportReport } from "../export.ts";
+import { exportUrl, fallbackName, formatSize, runExport, type ExportChoice, type ExportFormat, type ExportReport } from "../export.ts";
 import type { Frame } from "../../workspace/frames.ts";
-import { Icon } from "./Icon.tsx";
+import { MOD } from "./TopBar.tsx";
 
-/** "prompt" is the text for a coding agent (#53, #54); "bundle" is the handoff ZIP with HANDOFF.md (#49). */
-type Choice = ExportFormat | "prompt" | "bundle";
-
-const FORMATS: { id: Choice; title: string; text: string }[] = [
-  { id: "folder", title: "Folder (.zip)", text: "All pages and files, with the design system files they link." },
-  { id: "page", title: "Single HTML file", text: "index.html with its CSS, scripts, images and fonts inline. Links to other pages do not work." },
-  { id: "png", title: "PNG", text: "A picture of one frame, or a ZIP with one picture per frame." },
-  { id: "pdf", title: "PDF", text: "A deck gives one page per slide. Other designs give one page as wide as the frame and as high as the whole design." },
-  {
-    id: "bundle",
-    title: "Handoff bundle (.zip)",
-    text: "HANDOFF.md, the design files, screenshots and tokens.css, for an agent that cannot reach doi (a cloud agent) or for a person.",
-  },
-  { id: "prompt", title: "Prompt for a coding agent", text: "Paste it into any agent in your repo. The agent reads the design through the doi MCP server while doi runs." },
+const FORMATS: { id: ExportFormat; title: string; sub: string }[] = [
+  { id: "folder", title: "Folder", sub: "ZIP" },
+  { id: "page", title: "HTML", sub: "Single file" },
+  { id: "png", title: "PNG", sub: "Images" },
+  { id: "pdf", title: "PDF", sub: "Page per slide" },
 ];
+const NOTE: Record<ExportFormat, string> = {
+  folder: "All pages and files, with the design system files they link.",
+  page: "index.html with its CSS, scripts, images and fonts inline. Links to other pages do not work.",
+  png: "A picture of each chosen frame. More than one frame gives a ZIP.",
+  pdf: "A deck gives one page per slide. Other designs give one page as wide as the frame and as high as the whole design.",
+};
 
-/** Export of the open design (#46, #47, #48): files, one HTML file, PNG or PDF, or the agent prompt. */
-export function ExportDialog({ project, design, initial = "folder", onClose }: {
-  project: string;
-  design: string;
-  /** The choice that is selected when the dialog opens. */
-  initial?: Choice;
-  onClose: () => void;
-}) {
+type Done = ExportReport & { file: string; size: number };
+
+/** Export of the open design (#46, #47, #48): a folder, one HTML file, PNG or PDF. */
+export function ExportDialog({ project, design, onClose }: { project: string; design: string; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [choice, setChoice] = useState<ExportChoice>({ format: initial === "prompt" || initial === "bundle" ? "folder" : initial, stripOids: false, frame: "all", scale: 2, fullPage: false });
+  const [choice, setChoice] = useState<ExportChoice>({ format: "folder", stripOids: false, frame: "all", scale: 2, fullPage: false });
   const [frames, setFrames] = useState<Frame[] | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<(ExportReport & { file: string }) | null>(null);
-  const [kind, setKind] = useState<Choice>(initial);
-  const [prompt, setPrompt] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [handoff, setHandoff] = useState<string | null>(null);
-  const set = (patch: Partial<ExportChoice>) => setChoice((c) => ({ ...c, ...patch }));
+  const [done, setDone] = useState<Done | null>(null);
+  const abort = useRef<AbortController | null>(null);
+  const set = (patch: Partial<ExportChoice>) => {
+    setChoice((c) => ({ ...c, ...patch }));
+    setDone(null);
+    setError(null);
+  };
 
   useEffect(() => {
     ref.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") running ? abort.current?.abort() : onClose();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, running]);
+  useEffect(() => () => abort.current?.abort(), []);
 
   useEffect(() => {
     getJSON<Frame[]>(`/api/projects/${project}/designs/${design}/layout`)
@@ -53,255 +50,210 @@ export function ExportDialog({ project, design, initial = "folder", onClose }: {
       .catch((e: Error) => setError(e.message));
   }, [project, design]);
 
-  // "All frames" is a PNG choice only. A PDF shows one frame: the first one, also when the
-  // frames were not loaded yet when PDF was picked.
+  // "All frames" is a PNG choice only. A PDF shows one frame: the first one by default.
   const frame = choice.format === "pdf" && choice.frame === "all" ? (frames?.[0]?.id ?? "all") : choice.frame;
   const effective: ExportChoice = { ...choice, frame };
+  const rendered = choice.format === "png" || choice.format === "pdf";
+  const pngCount = choice.format === "png" ? (frame === "all" ? (frames?.length ?? 0) : 1) : 0;
+  const action =
+    choice.format === "folder" ? "Export ZIP" : choice.format === "page" ? "Export HTML" : choice.format === "pdf" ? "Export PDF" : pngCount > 1 ? `Export ${pngCount} PNGs` : "Export PNG";
 
   const start = async () => {
+    const controller = new AbortController();
+    abort.current = controller;
     setRunning(true);
     setError(null);
     setDone(null);
     try {
-      setDone(await runExport(exportUrl(project, design, effective), fallbackName(design, effective)));
+      setDone(await runExport(exportUrl(project, design, effective), fallbackName(design, effective), { signal: controller.signal }));
     } catch (e) {
-      setError((e as Error).message);
+      setError(controller.signal.aborted ? "Stopped. Nothing was saved." : (e as Error).message);
     } finally {
       setRunning(false);
+      abort.current = null;
     }
   };
 
-  useEffect(() => {
-    if (kind !== "prompt" || prompt !== null) return;
-    getJSON<{ prompt: string }>(`/api/projects/${project}/designs/${design}/handoff/prompt`)
-      .then((r) => setPrompt(r.prompt))
-      .catch((e: Error) => setError(e.message));
-  }, [kind, prompt, project, design]);
-
-  useEffect(() => {
-    if (kind !== "bundle" || handoff !== null) return;
-    getJSON<{ markdown: string }>(`/api/projects/${project}/designs/${design}/handoff`)
-      .then((r) => setHandoff(r.markdown))
-      .catch((e: Error) => setError(e.message));
-  }, [kind, handoff, project, design]);
-
-  const downloadBundle = async () => {
-    if (handoff === null) return;
-    setRunning(true);
-    setError(null);
-    setDone(null);
-    try {
-      const { url, init } = bundleRequest(project, design, handoff);
-      setDone(await runExport(url, `${design}-handoff.zip`, init));
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setRunning(false);
-    }
-  };
-
-  const copy = async () => {
-    if (prompt === null) return;
-    setError(null);
-    try {
-      await navigator.clipboard.writeText(prompt);
-      setCopied(true);
-    } catch {
-      setError("The browser did not allow the copy. Select the text and copy it.");
-    }
-  };
-
-  const isPrompt = kind === "prompt";
-  const isBundle = kind === "bundle";
-  const rendered = !isPrompt && !isBundle && (choice.format === "png" || choice.format === "pdf");
+  const frameLabel = (f: Frame) => f.label;
 
   return (
-    <div className="dialog-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="export-dialog" role="dialog" aria-modal="true" aria-label="Export" tabIndex={-1} ref={ref}>
-        <header className="ds-head">
-          <h2>Export</h2>
-          <span className="muted truncate">
-            {project} / {design}
-          </span>
-          <button className="icon-btn" onClick={onClose} aria-label="Close" title="Close (Esc)">
-            <Icon name="close" />
-          </button>
-        </header>
+    <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && !running && onClose()}>
+      <div className="dialog export-dialog" role="dialog" aria-modal="true" aria-label="Export" tabIndex={-1} ref={ref}>
         <form
           className="export-form"
           onSubmit={(e) => {
             e.preventDefault();
-            if (isPrompt) void copy();
-            else if (running) return;
-            else if (isBundle) void downloadBundle();
-            else void start();
+            if (done) onClose();
+            else if (!running) void start();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !running && !done) {
+              e.preventDefault();
+              void start();
+            }
           }}
         >
-          <fieldset className="export-choices">
-            <legend>Format</legend>
-            {FORMATS.map((f) => (
-              <label key={f.id} className="export-choice">
-                <input
-                  type="radio"
-                  name="format"
-                  checked={kind === f.id}
-                  onChange={() => {
-                    setKind(f.id);
-                    setError(null);
-                    setCopied(false);
-                    setDone(null);
-                    if (f.id !== "prompt" && f.id !== "bundle") set({ format: f.id });
-                  }}
-                />
-                <span>
-                  <span className="export-choice-title">{f.title}</span>
-                  <span className="muted">{f.text}</span>
-                </span>
-              </label>
-            ))}
-          </fieldset>
+          <div className="dialog-head">
+            <h2>Export {design}</h2>
+            <span className="spacer" />
+            <button type="button" className="icon-btn" onClick={onClose} aria-label="Close" title="Close (Esc)" disabled={running}>
+              ×
+            </button>
+          </div>
 
-          {isPrompt && (
-            <label className="export-field">
-              Prompt
-              <textarea
-                className="export-prompt"
-                value={prompt ?? "Loading…"}
-                readOnly={prompt === null}
-                rows={12}
-                onChange={(e) => {
-                  setPrompt(e.target.value);
-                  setCopied(false);
-                }}
-              />
-            </label>
-          )}
-
-          {isBundle && (
-            <label className="export-field">
-              HANDOFF.md
-              <textarea
-                className="export-prompt"
-                value={handoff ?? "Loading…"}
-                readOnly={handoff === null}
-                rows={12}
-                onChange={(e) => {
-                  setHandoff(e.target.value);
-                  setDone(null);
-                }}
-              />
-            </label>
-          )}
-
-          {!rendered && !isPrompt && !isBundle && (
-            <label className="export-choice">
-              <input type="checkbox" checked={choice.stripOids} onChange={(e) => set({ stripOids: e.target.checked })} />
-              <span>
-                <span className="export-choice-title">Remove data-oid attributes</span>
-                <span className="muted">doi needs them for selection and comments. The exported page does not.</span>
-              </span>
-            </label>
-          )}
-
-          {rendered && (
-            <div className="export-options">
-              <label className="export-field">
-                Frame
-                <select value={frame} onChange={(e) => set({ frame: e.target.value })} disabled={!frames}>
-                  {choice.format === "png" && <option value="all">All frames</option>}
-                  {frames?.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.label} ({f.width} × {f.height})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {choice.format === "png" && (
-                <>
-                  <label className="export-field">
-                    Scale
-                    <select value={choice.scale} onChange={(e) => set({ scale: e.target.value === "1" ? 1 : 2 })}>
-                      <option value="1">1×</option>
-                      <option value="2">2× (sharp on high-density screens)</option>
-                    </select>
-                  </label>
-                  <label className="export-choice">
-                    <input type="checkbox" checked={choice.fullPage} onChange={(e) => set({ fullPage: e.target.checked })} />
-                    <span>
-                      <span className="export-choice-title">Whole page</span>
-                      <span className="muted">The full height of the design, not only the frame.</span>
-                    </span>
-                  </label>
-                </>
-              )}
+          <div className="export-body">
+            <div className="format-cards" role="radiogroup" aria-label="Format">
+              {FORMATS.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={choice.format === f.id}
+                  className="format-card"
+                  disabled={running}
+                  onClick={() => set({ format: f.id })}
+                >
+                  <span className="format-title">{f.title}</span>
+                  <span className="format-sub">{f.sub}</span>
+                </button>
+              ))}
             </div>
-          )}
+            <p className="export-note">{NOTE[choice.format]}</p>
 
-          {error && (
-            <div className="notice notice-danger" role="alert">
-              <Icon name="alert" size={14} />
-              <span className="notice-text">{error}</span>
-            </div>
-          )}
-          {copied && (
-            <div className="export-result" role="status">
-              <p>
-                <Icon name="check" size={14} />
-                <span>Copied. Keep doi running while the agent works.</span>
-              </p>
-            </div>
-          )}
-          {done && !isPrompt && (
-            <div className="export-result" role="status">
-              <p>
-                <Icon name="check" size={14} />
-                <span>
-                  Saved <code>{done.file}</code>.
-                </span>
-              </p>
-              {(done.missing.length > 0 || done.warnings.length > 0) && (
-                <div className="composer-warning">
-                  <Icon name="alert" size={14} />
-                  <div>
-                    {done.warnings.map((w) => (
-                      <p key={w}>{w}</p>
-                    ))}
-                    {done.missing.length > 0 && (
-                      <p>
-                        Files not found: {done.missing.map((m, i) => (
-                          <span key={m}>
-                            {i > 0 && ", "}
-                            <code>{m}</code>
-                          </span>
-                        ))}
-                      </p>
+            {rendered && (
+              <div className="export-options">
+                <div className="option-row">
+                  <span className="option-label">{choice.format === "pdf" ? "Frame" : "Frames"}</span>
+                  <div className="seg" role="radiogroup" aria-label="Frames">
+                    {choice.format === "png" && (
+                      <button type="button" className="seg-item" role="radio" aria-checked={frame === "all"} disabled={!frames || running} onClick={() => set({ frame: "all" })}>
+                        All · {frames?.length ?? "…"}
+                      </button>
                     )}
+                    {frames?.map((f) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        className="seg-item"
+                        role="radio"
+                        aria-checked={frame === f.id}
+                        disabled={running}
+                        onClick={() => set({ frame: f.id })}
+                        title={`${f.width} × ${f.height}`}
+                      >
+                        {frameLabel(f)}
+                      </button>
+                    ))}
                   </div>
                 </div>
-              )}
-            </div>
-          )}
+                {choice.format === "png" && (
+                  <>
+                    <div className="option-row">
+                      <span className="option-label">Scale</span>
+                      <div className="seg" role="radiogroup" aria-label="Scale">
+                        {([1, 2] as const).map((s) => (
+                          <button key={s} type="button" className="seg-item" role="radio" aria-checked={choice.scale === s} disabled={running} onClick={() => set({ scale: s })}>
+                            {s}×
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="option-row">
+                      <span className="option-label">Area</span>
+                      <div className="seg" role="radiogroup" aria-label="Area">
+                        <button type="button" className="seg-item" role="radio" aria-checked={!choice.fullPage} disabled={running} onClick={() => set({ fullPage: false })}>
+                          Viewport
+                        </button>
+                        <button type="button" className="seg-item" role="radio" aria-checked={choice.fullPage} disabled={running} onClick={() => set({ fullPage: true })}>
+                          Whole page
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
 
-          <div className="export-actions">
-            <button type="button" className="btn btn-secondary" onClick={onClose}>
-              Close
-            </button>
-            {isPrompt ? (
-              <button type="submit" className="btn btn-primary" disabled={prompt === null}>
-                Copy prompt
+            {!rendered && (
+              <label className="check-card">
+                <input type="checkbox" checked={choice.stripOids} disabled={running} onChange={(e) => set({ stripOids: e.target.checked })} />
+                <span>
+                  <span className="check-title">Remove element ids</span>
+                  <span className="check-sub">Strips data-oid from the HTML. Keep them for a handoff: comments name elements by them.</span>
+                </span>
+              </label>
+            )}
+
+            {running && (
+              <div className="export-progress" role="status">
+                <span className="spinner" />
+                {rendered ? `Rendering ${choice.format.toUpperCase()}…` : "Packing the files…"}
+              </div>
+            )}
+            {error && (
+              <div className="banner banner-err" role="alert">
+                <span className="dot dot-err" />
+                {error}
+              </div>
+            )}
+            {done && <ExportResult done={done} />}
+          </div>
+
+          <div className="dialog-foot">
+            <span className="spacer" />
+            {running ? (
+              <button type="button" className="btn btn-secondary" onClick={() => abort.current?.abort()}>
+                <span className="stop-square" />
+                Stop
               </button>
+            ) : done ? (
+              <button className="btn btn-primary">Done</button>
             ) : (
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={running || (rendered && !frames) || (isBundle && !handoff?.trim())}
-              >
-                {running ? "Exporting…" : "Export"}
-              </button>
+              <>
+                <button type="button" className="btn btn-ghost" onClick={onClose}>
+                  Cancel
+                </button>
+                <button className="btn btn-primary" disabled={rendered && !frames} title={`${action} (${MOD}↵)`}>
+                  {action}
+                  <span className="kbd">{MOD}↵</span>
+                </button>
+              </>
             )}
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+/** The saved file and the report: missing files and warnings. */
+export function ExportResult({ done }: { done: Done }) {
+  return (
+    <div className="export-result" role="status">
+      <p className="export-result-head">
+        <span className={`dot ${done.missing.length || done.warnings.length ? "dot-warn" : "dot-ok"}`} />
+        <strong>Saved {done.file}</strong>
+        <span className="mono muted">{formatSize(done.size)} · in your browser's downloads</span>
+      </p>
+      {(done.missing.length > 0 || done.warnings.length > 0) && (
+        <div className="report-list">
+          {done.missing.map((m) => (
+            <div key={m} className="report-item">
+              <span className="dot dot-err" />
+              <div>
+                <p>Missing file</p>
+                <p className="mono muted">{m}</p>
+              </div>
+            </div>
+          ))}
+          {done.warnings.map((w) => (
+            <div key={w} className="report-item">
+              <span className="dot dot-warn" />
+              <p>{w}</p>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -91,6 +91,63 @@ export async function appendCommit(workspace: string, project: string, line: Omi
   });
 }
 
+/** One answer's token use, for the usage report. */
+export interface UsageEntry {
+  at: string;
+  project: string;
+  design: string;
+  provider: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cachedTokens: number;
+}
+
+/** The token use of every stored answer of a project, all designs. Bad lines are skipped. */
+export async function usageEntries(workspace: string, project: string): Promise<UsageEntry[]> {
+  const file = Bun.file(chatFile(workspace, project));
+  if (!(await file.exists())) return [];
+  const out: UsageEntry[] = [];
+  for (const line of (await file.text()).split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const e = JSON.parse(line);
+      if (e.role !== "assistant" || typeof e.at !== "string" || typeof e.usage !== "object" || e.usage === null) continue;
+      const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+      out.push({
+        at: e.at,
+        project,
+        design: String(e.design),
+        provider: String(e.provider),
+        model: String(e.model),
+        inputTokens: n(e.usage.inputTokens),
+        outputTokens: n(e.usage.outputTokens),
+        cachedTokens: n(e.usage.cachedTokens),
+      });
+    } catch {
+      // A bad line does not hide the others.
+    }
+  }
+  return out;
+}
+
+/** The commit of each turn of one design that made one: turn id → commit id. */
+export async function turnCommits(workspace: string, project: string, design: string): Promise<Map<string, string>> {
+  const file = Bun.file(chatFile(workspace, project));
+  const out = new Map<string, string>();
+  if (!(await file.exists())) return out;
+  for (const line of (await file.text()).split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const e = JSON.parse(line);
+      if (e.role === "commit" && e.design === design && typeof e.turn === "string" && typeof e.sha === "string") out.set(e.turn, e.sha);
+    } catch {
+      // A bad line does not hide the others.
+    }
+  }
+  return out;
+}
+
 /** For each commit of a turn: the provider and model that made it, as "<provider>:<model>". */
 export async function commitModels(workspace: string, project: string): Promise<Map<string, string>> {
   const file = Bun.file(chatFile(workspace, project));

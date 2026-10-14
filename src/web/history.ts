@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { getJSON, historyUrl, sendJSON, type Load, type VersionView } from "./api.ts";
-import type { Active } from "./components/Sidebar.tsx";
+import type { Active } from "./api.ts";
 
 /** The versions of the open design and the one in the preview frame. */
 export function useHistory(active: Active | null, revision: number) {
@@ -61,4 +61,19 @@ export function useHistory(active: Active | null, revision: number) {
     },
     restore,
   };
+}
+
+export type VersionKind = "turn" | "pick" | "restore" | "rename" | "create" | "tweak";
+
+/**
+ * What made a version, from its commit message. Only the exact forms that doi writes count,
+ * so a prompt that starts with "Restore " is still a turn.
+ */
+export function versionKind(message: string): VersionKind {
+  if (/^Restore [0-9a-f]{7}: /.test(message)) return "restore";
+  if (/^Pick variant \d+: /.test(message)) return "pick";
+  if (/^Rename design [a-z0-9][a-z0-9-]* to [a-z0-9][a-z0-9-]*$/.test(message)) return "rename";
+  if (/^Create design [a-z0-9][a-z0-9-]*$/.test(message)) return "create";
+  if (/^Tweaks: --[A-Za-z0-9_-]+(, --[A-Za-z0-9_-]+)*$/.test(message)) return "tweak";
+  return "turn";
 }

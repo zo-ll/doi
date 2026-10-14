@@ -2,13 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { getJSON, sendJSON, type DesignSystemView, type ImportStreamEvent, type ProjectSummary } from "../api.ts";
 import { readEvents } from "../chat.ts";
 import { prepareImage, type PreparedImage } from "../images.ts";
+import { shortModel, type TaskStatus } from "../providers.ts";
 import { IMAGE_LIMITS } from "../../workspace/image-limits.ts";
 import type { Token } from "../../workspace/design-systems.ts";
-import { Icon } from "./Icon.tsx";
 
 type Mode = { kind: "view"; name: string | null } | { kind: "repo" } | { kind: "screenshots" };
+type Tab = "tokens" | "components" | "rules" | "files";
 
 const NAME = /^[a-z0-9][a-z0-9-]{0,59}$/;
+const TONE_DOT = { ok: "dot-ok", warn: "dot-warn", err: "dot-err", unknown: "" } as const;
 
 /** The editor link for a file: config.toml `editor_url`, with {path} replaced. */
 export function editorLink(template: string, dir: string, file: string): string {
@@ -16,9 +18,28 @@ export function editorLink(template: string, dir: string, file: string): string 
   return template.replace("{path}", path.split("/").map(encodeURIComponent).join("/"));
 }
 
-export function DesignSystemDialog({ project, editorUrl, onClose, onChanged }: {
+/**
+ * A type token on the sample text. The name says weight, line height or letter spacing; else
+ * a length is a font size and anything other is a font stack.
+ */
+export function typeStyle(t: Pick<Token, "name" | "resolved">): React.CSSProperties {
+  const n = t.name.toLowerCase();
+  const v = t.resolved.trim();
+  if (/weight/.test(n)) return { fontWeight: v as React.CSSProperties["fontWeight"] };
+  if (/leading|line-height/.test(n)) return { lineHeight: v };
+  if (/tracking|letter/.test(n)) return { letterSpacing: v };
+  if (/^-?[\d.]+(px|rem|em|%|pt)?$|^(clamp|calc|min|max)\(/i.test(v)) return { fontSize: v };
+  return { fontFamily: v };
+}
+
+/** The design systems dialog (⌘D): one system per project, or none. */
+export function DesignSystemDialog({ project, projects, editorUrl, extract, onClose, onChanged }: {
   project: ProjectSummary;
+  /** All projects, to say which ones use each system. */
+  projects: ProjectSummary[];
   editorUrl: string;
+  /** The extract model and its status, for the import forms. */
+  extract: TaskStatus | null;
   onClose: () => void;
   /** The project's design system changed, or a new one was imported. */
   onChanged: () => void;
@@ -62,86 +83,102 @@ export function DesignSystemDialog({ project, editorUrl, onClose, onChanged }: {
     onChanged();
   };
 
+  const usedBy = (name: string) => {
+    if (project.designSystem === name) return { text: "Used by this project", on: true };
+    const others = projects.filter((p) => p.designSystem === name).map((p) => p.name);
+    return { text: others.length ? `Used by ${others.join(", ")}` : "Not used", on: false };
+  };
+
   return (
-    <div className="dialog-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="ds-dialog" role="dialog" aria-modal="true" aria-label="Design systems" tabIndex={-1} ref={ref}>
-        <header className="ds-head">
-          <h2>Design systems</h2>
-          <span className="muted">
-            {project.name}: {project.designSystem ?? "none"}
-          </span>
-          <button className="icon-btn" onClick={onClose} aria-label="Close" title="Close (Esc)">
-            <Icon name="close" />
-          </button>
-        </header>
-        <div className="ds-body">
-          <nav className="ds-list" aria-label="Design system list">
-            {list === null && !error && <div className="skeleton comments-skeleton" aria-label="Loading" />}
-            {list?.length === 0 && <p className="muted ds-empty">No design systems yet. Import one.</p>}
-            {list?.map((name) => (
-              <button
-                key={name}
-                className={`ds-list-item${mode.kind === "view" && mode.name === name ? " is-active" : ""}`}
-                onClick={() => setMode({ kind: "view", name })}
-                aria-current={mode.kind === "view" && mode.name === name}
-              >
-                <span className="truncate">{name}</span>
-                {project.designSystem === name && <span className="badge-current">In use</span>}
-              </button>
-            ))}
-            <div className="ds-list-actions">
-              <button className={`btn btn-secondary${mode.kind === "repo" ? " is-active" : ""}`} onClick={() => setMode({ kind: "repo" })}>
-                Import from a repo
-              </button>
-              <button className={`btn btn-secondary${mode.kind === "screenshots" ? " is-active" : ""}`} onClick={() => setMode({ kind: "screenshots" })}>
-                Import from screenshots
-              </button>
+    <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="dialog ds-dialog" role="dialog" aria-modal="true" aria-label="Design systems" tabIndex={-1} ref={ref}>
+        <nav className="ds-side" aria-label="Design system list">
+          <div className="dialog-head">
+            <h2>Design systems</h2>
+          </div>
+          <div className="ds-list">
+            {list === null && !error && <div className="skeleton comment-skeleton" aria-label="Loading" />}
+            {list?.map((name) => {
+              const u = usedBy(name);
+              const current = mode.kind === "view" && mode.name === name;
+              return (
+                <button key={name} className="ds-item" aria-current={current} onClick={() => setMode({ kind: "view", name })}>
+                  <span className="ds-item-name truncate">{name}</span>
+                  <span className={`ds-item-meta${u.on ? " is-on" : ""}`}>{u.text}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="ds-side-actions">
+            <button className="btn btn-secondary" aria-pressed={mode.kind === "repo"} onClick={() => setMode({ kind: "repo" })}>
+              Import from a repo…
+            </button>
+            <button className="btn btn-secondary" aria-pressed={mode.kind === "screenshots"} onClick={() => setMode({ kind: "screenshots" })}>
+              Import from screenshots…
+            </button>
+          </div>
+        </nav>
+
+        <section className="ds-main">
+          {error && (
+            <div className="banner banner-err ds-error" role="alert">
+              <span className="dot dot-err" />
+              {error}
             </div>
-          </nav>
-          <section className="ds-main">
-            {error && (
-              <div className="notice notice-danger" role="alert">
-                <Icon name="alert" />
-                <span>{error}</span>
+          )}
+          {mode.kind === "view" && mode.name && (
+            <DesignSystemDetails
+              key={`${mode.name}-${reloads}`}
+              name={mode.name}
+              inUse={project.designSystem === mode.name}
+              projectName={project.name}
+              editorUrl={editorUrl}
+              onUse={() => void use(mode.name)}
+              onStop={() => void use(null)}
+              onClose={onClose}
+            />
+          )}
+          {mode.kind === "view" && !mode.name && list?.length === 0 && (
+            <div className="ds-empty">
+              <button className="icon-btn ds-close" onClick={onClose} aria-label="Close" title="Close (Esc)">
+                ×
+              </button>
+              <h3>No design systems yet</h3>
+              <p>A design system gives the model your colors, type, spacing, components and rules. Read one from a repo, or from screenshots of a product.</p>
+              <div className="ds-empty-actions">
+                <button className="btn btn-primary" onClick={() => setMode({ kind: "repo" })}>
+                  From a repo
+                </button>
+                <button className="btn btn-secondary" onClick={() => setMode({ kind: "screenshots" })}>
+                  From screenshots
+                </button>
               </div>
-            )}
-            {mode.kind === "view" && mode.name && (
-              <DesignSystemDetails
-                key={`${mode.name}-${reloads}`}
-                name={mode.name}
-                inUse={project.designSystem === mode.name}
-                projectName={project.name}
-                editorUrl={editorUrl}
-                onUse={() => void use(mode.name)}
-                onStop={() => void use(null)}
-              />
-            )}
-            {mode.kind === "view" && !mode.name && list?.length === 0 && (
-              <div className="chat-empty">
-                <h2>No design system</h2>
-                <p>A design system gives every design of a project the same colors, type, spacing and components. Import one from a repo or from screenshots of a product.</p>
-              </div>
-            )}
-            {mode.kind === "repo" && <RepoImport onImported={imported} />}
-            {mode.kind === "screenshots" && <ScreenshotImport onImported={imported} />}
-          </section>
-        </div>
+            </div>
+          )}
+          {mode.kind === "repo" && <RepoImport extract={extract} onImported={imported} onCancel={() => setMode({ kind: "view", name: project.designSystem ?? list?.[0] ?? null })} />}
+          {mode.kind === "screenshots" && (
+            <ScreenshotImport extract={extract} onImported={imported} onCancel={() => setMode({ kind: "view", name: project.designSystem ?? list?.[0] ?? null })} />
+          )}
+        </section>
       </div>
     </div>
   );
 }
 
-function DesignSystemDetails({ name, inUse, projectName, editorUrl, onUse, onStop }: {
+function DesignSystemDetails({ name, inUse, projectName, editorUrl, onUse, onStop, onClose }: {
   name: string;
   inUse: boolean;
   projectName: string;
   editorUrl: string;
   onUse: () => void;
   onStop: () => void;
+  onClose: () => void;
 }) {
   const [view, setView] = useState<DesignSystemView | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("tokens");
   const [preview, setPreview] = useState(0);
+  const [copied, setCopied] = useState<string | null>(null);
 
   useEffect(() => {
     getJSON<DesignSystemView>(`/api/design-systems/${name}`)
@@ -149,168 +186,223 @@ function DesignSystemDetails({ name, inUse, projectName, editorUrl, onUse, onSto
       .catch((e) => setError((e as Error).message));
   }, [name]);
 
-  if (error) return <p className="notice notice-danger" role="alert">{error}</p>;
-  if (!view) return <div className="skeleton comments-skeleton" aria-label="Loading the design system" />;
-  const group = (g: Token["group"]) => view.tokens.filter((t) => t.group === g);
-
-  return (
-    <div className="ds-details">
-      <div className="ds-details-head">
-        <h3>{view.name}</h3>
-        {inUse ? (
-          <>
-            <span className="muted">Used by {projectName}</span>
-            <button className="btn btn-secondary" onClick={onStop}>Stop using</button>
-          </>
-        ) : (
-          <button className="btn btn-primary" onClick={onUse}>Use for {projectName}</button>
-        )}
-      </div>
-
-      {view.tokens.length === 0 && <p className="muted">This design system has no tokens.css.</p>}
-      {group("color").length > 0 && (
-        <TokenSection title="Colors">
-          <div className="swatches">
-            {group("color").map((t) => (
-              <div key={t.name} className="swatch">
-                <span className="swatch-chip" style={{ background: t.resolved }} />
-                <code>{t.name}</code>
-                <span className="muted">{t.value}</span>
-              </div>
-            ))}
-          </div>
-        </TokenSection>
+  const head = (
+    <div className="dialog-head">
+      <h2>{name}</h2>
+      {view && <span className="ds-dir truncate" title={view.dir}>{view.dir}</span>}
+      <span className="spacer" />
+      {inUse ? (
+        <button className="btn btn-secondary" onClick={onStop}>
+          Stop using in {projectName}
+        </button>
+      ) : (
+        <button className="btn btn-primary" onClick={onUse}>
+          Use in {projectName}
+        </button>
       )}
-      {group("type").length > 0 && (
-        <TokenSection title="Type">
-          {group("type").map((t) => (
-            <div key={t.name} className="token-row">
-              <code>{t.name}</code>
-              <span className="type-sample" style={typeStyle(t)}>The quick brown fox</span>
-              <span className="muted">{t.value}</span>
-            </div>
-          ))}
-        </TokenSection>
-      )}
-      {group("space").length > 0 && (
-        <TokenSection title="Spacing">
-          {group("space").map((t) => (
-            <div key={t.name} className="token-row">
-              <code>{t.name}</code>
-              <span className="space-bar" style={{ width: t.resolved }} />
-              <span className="muted">{t.value}</span>
-            </div>
-          ))}
-        </TokenSection>
-      )}
-      {(group("radius").length > 0 || group("shadow").length > 0) && (
-        <TokenSection title="Radius and shadows">
-          <div className="shape-samples">
-            {group("radius").map((t) => (
-              <div key={t.name} className="shape-sample">
-                <span className="shape-box" style={{ borderRadius: t.resolved }} />
-                <code>{t.name}</code>
-                <span className="muted">{t.value}</span>
-              </div>
-            ))}
-            {group("shadow").map((t) => (
-              <div key={t.name} className="shape-sample">
-                <span className="shape-box" style={{ boxShadow: t.resolved }} />
-                <code>{t.name}</code>
-              </div>
-            ))}
-          </div>
-        </TokenSection>
-      )}
-      {group("other").length > 0 && (
-        <TokenSection title="Other tokens">
-          {group("other").map((t) => (
-            <div key={t.name} className="token-row">
-              <code>{t.name}</code>
-              <span className="muted">{t.value}</span>
-            </div>
-          ))}
-        </TokenSection>
-      )}
-
-      <TokenSection
-        title="Components"
-        action={
-          <button className="icon-btn" onClick={() => setPreview((n) => n + 1)} aria-label="Load the components again" title="Load again after an edit">
-            <Icon name="undo" />
-          </button>
-        }
-      >
-        {view.hasComponents ? (
-          <iframe
-            className="ds-preview"
-            src={`/ds/${view.name}/preview.html?v=${preview}`}
-            title={`${view.name} components`}
-            sandbox="allow-scripts"
-          />
-        ) : (
-          <p className="muted">This design system has no components.html.</p>
-        )}
-      </TokenSection>
-
-      {view.rules && (
-        <TokenSection title="Rules">
-          <p className="ds-rules">{view.rules}</p>
-        </TokenSection>
-      )}
-
-      <TokenSection title="Files">
-        <p className="muted ds-dir">{view.dir}</p>
-        {view.files.map((f) => (
-          <div key={f} className="token-row">
-            <code className="truncate">{f}</code>
-            <a className="link-btn" href={editorLink(editorUrl, view.dir, f)}>Open in editor</a>
-            <button className="link-btn" onClick={() => void navigator.clipboard?.writeText(`${view.dir}/${f}`)}>Copy path</button>
-          </div>
-        ))}
-      </TokenSection>
+      <button className="icon-btn" onClick={onClose} aria-label="Close" title="Close (Esc)">
+        ×
+      </button>
     </div>
   );
-}
 
-function TokenSection({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
+  if (error) {
+    return (
+      <>
+        {head}
+        <div className="banner banner-err ds-error" role="alert">
+          <span className="dot dot-err" />
+          {error}
+        </div>
+      </>
+    );
+  }
+  if (!view) {
+    return (
+      <>
+        {head}
+        <div className="ds-body" aria-busy="true" aria-label="Loading the design system">
+          <div className="skeleton comment-skeleton" />
+        </div>
+      </>
+    );
+  }
+  const group = (g: Token["group"]) => view.tokens.filter((t) => t.group === g);
+  const copy = (f: string) => {
+    void navigator.clipboard?.writeText(`${view.dir}/${f}`);
+    setCopied(f);
+  };
+
   return (
-    <section className="ds-section">
-      <h4>
-        {title}
-        {action}
-      </h4>
-      {children}
-    </section>
+    <>
+      {head}
+      <div className="tabs ds-tabs" role="tablist">
+        {(["tokens", "components", "rules", "files"] as const).map((t) => (
+          <button key={t} className="tab" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
+            {t === "files" ? `Files · ${view.files.length}` : t[0]!.toUpperCase() + t.slice(1)}
+          </button>
+        ))}
+      </div>
+      <div className="ds-body">
+        {tab === "tokens" &&
+          (view.tokens.length === 0 ? (
+            <p className="ds-none">This design system has no tokens.css.</p>
+          ) : (
+            <div className="ds-tokens">
+              <div className="ds-col">
+                {group("color").length > 0 && (
+                  <section>
+                    <h4>Colors · {group("color").length}</h4>
+                    <div className="swatches">
+                      {group("color").map((t) => (
+                        <div key={t.name} className="swatch">
+                          <span className="swatch-chip" style={{ background: t.resolved }} />
+                          <span className="swatch-name">{t.name.replace(/^--/, "")}</span>
+                          <span className="swatch-value">{t.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+                {group("type").length > 0 && (
+                  <section>
+                    <h4>Type</h4>
+                    <div className="type-card">
+                      {group("type").map((t) => (
+                        <div key={t.name} className="type-row">
+                          <span className="type-name">{t.name.replace(/^--/, "")}</span>
+                          <span className="type-sample" style={typeStyle(t)}>
+                            The quick brown fox
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+              </div>
+              <div className="ds-col">
+                {group("space").length > 0 && (
+                  <section>
+                    <h4>Spacing</h4>
+                    {group("space").map((t) => (
+                      <div key={t.name} className="space-row">
+                        <span className="space-name">{t.name.replace(/^--/, "")}</span>
+                        <span className="space-bar" style={{ width: t.resolved }} />
+                        <span className="space-value">{t.value}</span>
+                      </div>
+                    ))}
+                  </section>
+                )}
+                {group("radius").length > 0 && (
+                  <section>
+                    <h4>Radius</h4>
+                    <div className="shape-samples">
+                      {group("radius").map((t) => (
+                        <div key={t.name} className="shape-sample">
+                          <span className="shape-box" style={{ borderRadius: t.resolved }} />
+                          <span className="space-value">{t.name.replace(/^--/, "")}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+                {group("shadow").length > 0 && (
+                  <section>
+                    <h4>Shadows</h4>
+                    <div className="shadow-card">
+                      {group("shadow").map((t) => (
+                        <span key={t.name} className="shadow-box" style={{ boxShadow: t.resolved }}>
+                          {t.name.replace(/^--/, "")}
+                        </span>
+                      ))}
+                    </div>
+                  </section>
+                )}
+                {group("other").length > 0 && (
+                  <section>
+                    <h4>Other tokens</h4>
+                    {group("other").map((t) => (
+                      <div key={t.name} className="other-row">
+                        <span className="mono">{t.name}</span>
+                        <span className="space-value truncate">{t.value}</span>
+                      </div>
+                    ))}
+                  </section>
+                )}
+              </div>
+            </div>
+          ))}
+
+        {tab === "components" &&
+          (view.hasComponents ? (
+            <section className="ds-components">
+              <div className="ds-components-head">
+                <h4>Live preview · components.html</h4>
+                <span className="spacer" />
+                <span className="muted">Rendered with the system's own CSS</span>
+                <button className="btn btn-ghost btn-sm" onClick={() => setPreview((n) => n + 1)} title="Load again after an edit">
+                  Reload
+                </button>
+              </div>
+              <iframe className="ds-preview" src={`/ds/${view.name}/preview.html?v=${preview}`} title={`${view.name} components`} sandbox="allow-scripts" />
+            </section>
+          ) : (
+            <p className="ds-none">This design system has no components.html.</p>
+          ))}
+
+        {tab === "rules" &&
+          (view.rules ? (
+            <section className="ds-rules">
+              <h4>Rules · rules.md</h4>
+              <div className="ds-rules-text">{view.rules}</div>
+            </section>
+          ) : (
+            <p className="ds-none">This design system has no rules.md.</p>
+          ))}
+
+        {tab === "files" && (
+          <section className="ds-files">
+            <h4 className="truncate">Files · {view.dir}</h4>
+            <div className="ds-file-list">
+              {view.files.map((f) => (
+                <div key={f} className="ds-file">
+                  <span className="mono truncate spacer">{f}</span>
+                  <a className="btn btn-ghost btn-sm" href={editorLink(editorUrl, view.dir, f)}>
+                    Open in editor
+                  </a>
+                  <button className="btn btn-ghost btn-sm" onClick={() => copy(f)}>
+                    {copied === f ? "Copied" : "Copy path"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+    </>
   );
 }
 
-/**
- * A type token on the sample text. The name says weight, line height or letter spacing; else
- * a length is a font size and anything other is a font stack.
- */
-export function typeStyle(t: Pick<Token, "name" | "resolved">): React.CSSProperties {
-  const n = t.name.toLowerCase();
-  const v = t.resolved.trim();
-  if (/weight/.test(n)) return { fontWeight: v as React.CSSProperties["fontWeight"] };
-  if (/leading|line-height/.test(n)) return { lineHeight: v };
-  if (/tracking|letter/.test(n)) return { letterSpacing: v };
-  if (/^-?[\d.]+(px|rem|em|%|pt)?$|^(clamp|calc|min|max)\(/i.test(v)) return { fontSize: v };
-  return { fontFamily: v };
-}
+type ImportStatus = {
+  running: boolean;
+  text: string;
+  sources: string[];
+  seen: number;
+  error: string | null;
+  started: number;
+};
 
-/** Streams an import and reports its progress. */
+/** Streams an import and reports its progress. Stop aborts it. */
 function useImport(onImported: (name: string) => void) {
-  const [status, setStatus] = useState<{ running: boolean; text: string; sources: string[]; error: string | null }>({
-    running: false,
-    text: "",
-    sources: [],
-    error: null,
-  });
+  const [status, setStatus] = useState<ImportStatus>({ running: false, text: "", sources: [], seen: 0, error: null, started: 0 });
+  const abort = useRef<AbortController | null>(null);
+  useEffect(() => () => abort.current?.abort(), []);
   const run = async (url: string, body: unknown) => {
-    setStatus({ running: true, text: "", sources: [], error: null });
+    const controller = new AbortController();
+    abort.current = controller;
+    setStatus({ running: true, text: "", sources: [], seen: 0, error: null, started: Date.now() });
     try {
-      const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: controller.signal });
       if (!res.ok || !res.body) {
         const b = (await res.json().catch(() => null)) as { error?: string } | null;
         setStatus((s) => ({ ...s, running: false, error: b?.error ?? `The import failed: ${res.status}` }));
@@ -318,7 +410,7 @@ function useImport(onImported: (name: string) => void) {
       }
       let done = false;
       for await (const e of readEvents<ImportStreamEvent>(res.body)) {
-        if (e.type === "sources") setStatus((s) => ({ ...s, sources: e.files }));
+        if (e.type === "sources") setStatus((s) => ({ ...s, sources: e.files, seen: e.seen }));
         if (e.type === "text") setStatus((s) => ({ ...s, text: s.text + e.delta }));
         if (e.type === "error") {
           done = true;
@@ -332,33 +424,111 @@ function useImport(onImported: (name: string) => void) {
       }
       if (!done) setStatus((s) => ({ ...s, running: false, error: "The connection closed before the import ended." }));
     } catch (e) {
-      setStatus((s) => ({ ...s, running: false, error: `The import failed: ${(e as Error).message}` }));
+      setStatus((s) => ({ ...s, running: false, error: controller.signal.aborted ? "Stopped. No design system was made." : `The import failed: ${(e as Error).message}` }));
+    } finally {
+      if (abort.current === controller) abort.current = null;
     }
   };
-  return { status, run };
+  return { status, run, stop: () => abort.current?.abort() };
 }
 
-function ImportProgress({ status }: { status: ReturnType<typeof useImport>["status"] }) {
+/** Seconds since the start, as m:ss, while the import runs. */
+function useElapsed(started: number, running: boolean): string {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!running) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [running]);
+  const s = Math.max(0, Math.round((now - started) / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function ImportProgress({ status, extract, label }: { status: ImportStatus; extract: TaskStatus | null; label: string }) {
+  const elapsed = useElapsed(status.started, status.running);
   if (!status.running && !status.error && !status.text) return null;
   return (
     <div className="import-progress" role="status">
-      {status.sources.length > 0 && <p className="muted">Read {status.sources.join(", ")}</p>}
-      {status.running && <p className="msg-info">The extract model is writing the design system. This can take a minute or two…</p>}
-      {status.text && <p className="variant-text">{status.text}</p>}
-      {status.error && (
-        <div className="notice notice-danger" role="alert">
-          <Icon name="alert" />
-          <span>{status.error}</span>
-        </div>
+      <div className="import-progress-head">
+        {status.running ? <span className="spinner" /> : status.error ? <span className="dot dot-err" /> : <span className="dot dot-ok" />}
+        <strong>{status.running ? label : status.error ? "The import failed" : "Imported"}</strong>
+        {extract && (
+          <span className="mono muted">
+            {shortModel(extract.model)} · extract{status.running ? ` · ${elapsed}` : ""}
+          </span>
+        )}
+        <span className="spacer" />
+        {status.sources.length > 0 && <span className="mono muted">{status.sources.length} files read</span>}
+      </div>
+      {status.error && <p className="import-error">{status.error}</p>}
+      <div className="import-panes">
+        {status.sources.length > 0 && (
+          <div className="import-files">
+            <h4>Files read</h4>
+            {status.sources.map((f) => (
+              <div key={f} className="import-file">
+                <span className="import-check">✓</span>
+                <span className="truncate">{f}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {status.text && (
+          <div className="import-model">
+            <h4>Model</h4>
+            <p>{status.text}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ImportFooter({ extract, running, canStart, start, onStop, onCancel, note }: {
+  extract: TaskStatus | null;
+  running: boolean;
+  canStart: boolean;
+  start: string;
+  onStop: () => void;
+  onCancel: () => void;
+  note?: string;
+}) {
+  return (
+    <div className="dialog-foot">
+      {note ? (
+        <span className="muted">{note}</span>
+      ) : (
+        extract && (
+          <span className="status mono">
+            <span className={`dot ${TONE_DOT[extract.tone]}`} />
+            {shortModel(extract.model)} · extract
+          </span>
+        )
+      )}
+      <span className="spacer" />
+      {running ? (
+        <button type="button" className="btn btn-secondary" onClick={onStop}>
+          <span className="stop-square" />
+          Stop
+        </button>
+      ) : (
+        <>
+          <button type="button" className="btn btn-ghost" onClick={onCancel}>
+            Cancel
+          </button>
+          <button className="btn btn-primary" disabled={!canStart}>
+            {start}
+          </button>
+        </>
       )}
     </div>
   );
 }
 
-function RepoImport({ onImported }: { onImported: (name: string) => void }) {
+function RepoImport({ extract, onImported, onCancel }: { extract: TaskStatus | null; onImported: (name: string) => void; onCancel: () => void }) {
   const [name, setName] = useState("");
   const [repo, setRepo] = useState("");
-  const { status, run } = useImport(onImported);
+  const { status, run, stop } = useImport(onImported);
   const valid = NAME.test(name) && repo.startsWith("/");
   return (
     <form
@@ -368,37 +538,50 @@ function RepoImport({ onImported }: { onImported: (name: string) => void }) {
         if (valid && !status.running) void run("/api/design-systems/import", { name, repo });
       }}
     >
-      <h3>Import from a repo</h3>
-      <p className="muted">
-        doi reads the theme files, stylesheets with tokens and main components of a local repo, and the extract model writes a design system from them. The repo is not changed.
-      </p>
-      <label>
-        Name
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="my-product" spellCheck={false} />
-      </label>
-      <label>
-        Repo folder (absolute path)
-        <input value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="/home/me/code/my-product" spellCheck={false} />
-      </label>
-      {name && !NAME.test(name) && <p className="composer-image-error">Use a-z, 0-9 and "-".</p>}
-      <button className="btn btn-primary" disabled={!valid || status.running}>Import</button>
-      <ImportProgress status={status} />
+      <div className="dialog-head">
+        <h2>Import from a local repo</h2>
+      </div>
+      <div className="import-body">
+        <div className="import-fields">
+          <label className="field">
+            Name
+            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="my-product" spellCheck={false} aria-invalid={!!name && !NAME.test(name)} disabled={status.running} />
+            {name && !NAME.test(name) && <span className="field-error">Use a-z, 0-9 and "-".</span>}
+          </label>
+          <label className="field">
+            Folder (absolute path)
+            <input className="input mono" value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="/home/me/code/my-product" spellCheck={false} disabled={status.running} />
+          </label>
+        </div>
+        <p className="muted import-help">doi reads the theme files, the stylesheets with tokens and the main components. The extract model writes a design system from them.</p>
+        <ImportProgress status={status} extract={extract} label="Reading source files" />
+      </div>
+      <ImportFooter
+        extract={extract}
+        running={status.running}
+        canStart={valid}
+        start={status.error ? "Retry import" : "Import"}
+        onStop={stop}
+        onCancel={onCancel}
+        note="doi reads files only. Nothing in the repo changes."
+      />
     </form>
   );
 }
 
-function ScreenshotImport({ onImported }: { onImported: (name: string) => void }) {
+function ScreenshotImport({ extract, onImported, onCancel }: { extract: TaskStatus | null; onImported: (name: string) => void; onCancel: () => void }) {
   const [name, setName] = useState("");
   const [notes, setNotes] = useState("");
   const [images, setImages] = useState<PreparedImage[]>([]);
   const [imageError, setImageError] = useState<string | null>(null);
-  const { status, run } = useImport(onImported);
+  const [over, setOver] = useState(false);
+  const { status, run, stop } = useImport(onImported);
   const valid = NAME.test(name) && images.length > 0;
 
   const add = async (files: File[]) => {
     setImageError(null);
     const out: PreparedImage[] = [];
-    for (const f of files.slice(0, IMAGE_LIMITS.count - images.length)) {
+    for (const f of files.filter((x) => x.type.startsWith("image/")).slice(0, IMAGE_LIMITS.count - images.length)) {
       try {
         out.push(await prepareImage(f));
       } catch (e) {
@@ -417,45 +600,75 @@ function ScreenshotImport({ onImported }: { onImported: (name: string) => void }
           void run("/api/design-systems/import-screenshots", { name, notes, images: images.map(({ mediaType, data }) => ({ mediaType, data })) });
         }
       }}
+      onPaste={(e) => {
+        const files = [...e.clipboardData.files];
+        if (files.some((f) => f.type.startsWith("image/"))) {
+          e.preventDefault();
+          void add(files);
+        }
+      }}
     >
-      <h3>Import from screenshots</h3>
-      <p className="muted">The extract model reads colors, type, spacing and components from 1 to {IMAGE_LIMITS.count} screenshots of one product. It needs a model with vision.</p>
-      <label>
-        Name
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="my-product" spellCheck={false} />
-      </label>
-      <label>
-        Screenshots
-        <input
-          type="file"
-          accept="image/png,image/jpeg,image/webp,image/gif"
-          multiple
-          onChange={(e) => {
-            void add([...(e.target.files ?? [])]);
-            e.target.value = "";
+      <div className="dialog-head">
+        <h2>Import from screenshots</h2>
+      </div>
+      <div className="import-body">
+        <label className="field">
+          Name
+          <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="my-product" spellCheck={false} aria-invalid={!!name && !NAME.test(name)} disabled={status.running} />
+          {name && !NAME.test(name) && <span className="field-error">Use a-z, 0-9 and "-".</span>}
+        </label>
+        <label
+          className={`dropzone${over ? " is-over" : ""}`}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setOver(true);
           }}
-        />
-      </label>
-      {images.length > 0 && (
-        <div className="composer-images">
-          {images.map((img, i) => (
-            <span key={i} className="composer-thumb">
-              <img src={img.url} alt={`Screenshot ${i + 1}`} />
-              <button type="button" className="chip-close" aria-label={`Remove screenshot ${i + 1}`} onClick={() => setImages((l) => l.filter((_, j) => j !== i))}>
-                <Icon name="close" size={12} />
-              </button>
+          onDragLeave={() => setOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setOver(false);
+            void add([...e.dataTransfer.files]);
+          }}
+        >
+          <strong>Drop 1–{IMAGE_LIMITS.count} screenshots</strong>
+          <span className="muted">
+            PNG or JPG · or <span className="link-text">choose files</span> · paste works too
+          </span>
+          <input
+            type="file"
+            className="visually-hidden"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            multiple
+            disabled={status.running || images.length >= IMAGE_LIMITS.count}
+            onChange={(e) => {
+              void add([...(e.target.files ?? [])]);
+              e.target.value = "";
+            }}
+          />
+        </label>
+        {images.length > 0 && (
+          <div className="shot-list">
+            {images.map((img, i) => (
+              <span key={i} className="shot">
+                <img src={img.url} alt={`Screenshot ${i + 1}`} />
+                <button type="button" aria-label={`Remove screenshot ${i + 1}`} onClick={() => setImages((l) => l.filter((_, j) => j !== i))}>
+                  ×
+                </button>
+              </span>
+            ))}
+            <span className="muted shot-count">
+              {images.length} of {IMAGE_LIMITS.count}
             </span>
-          ))}
-        </div>
-      )}
-      {imageError && <p className="composer-image-error">{imageError}</p>}
-      <label>
-        Notes (optional)
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="For example: the brand font is Inter." />
-      </label>
-      {name && !NAME.test(name) && <p className="composer-image-error">Use a-z, 0-9 and "-".</p>}
-      <button className="btn btn-primary" disabled={!valid || status.running}>Import</button>
-      <ImportProgress status={status} />
+          </div>
+        )}
+        {imageError && <p className="field-error">{imageError}</p>}
+        <label className="field">
+          Notes for the model (optional)
+          <textarea className="textarea" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="For example: headings are GT Sectra; ignore the cookie banner." disabled={status.running} />
+        </label>
+        <ImportProgress status={status} extract={extract} label="Reading the screenshots" />
+      </div>
+      <ImportFooter extract={extract} running={status.running} canStart={valid} start={status.error ? "Retry import" : "Extract design system"} onStop={stop} onCancel={onCancel} />
     </form>
   );
 }

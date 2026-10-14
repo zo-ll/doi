@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { commentsUrl, getJSON, sendJSON, type CommentView, type Load } from "./api.ts";
-import type { Active } from "./components/Sidebar.tsx";
+import type { Active } from "./api.ts";
 
 /** A pin on the canvas: one element and the numbers of its open comments. */
 export interface Pin {
@@ -62,6 +62,7 @@ export function useComments(active: Active | null, revision: number) {
     reload,
     add: (oid: string, text: string) => change("POST", undefined, { oid, text }),
     setStatus: (id: string, status: "open" | "done") => change("PATCH", id, { status }),
+    edit: (id: string, text: string) => change("PATCH", id, { text }),
     remove: (id: string) => change("DELETE", id),
   };
 }
