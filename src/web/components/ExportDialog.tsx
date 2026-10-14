@@ -185,7 +185,10 @@ export function ExportDialog({ project, design, initial = "folder", onClose }: {
                 value={handoff ?? "Loading…"}
                 readOnly={handoff === null}
                 rows={12}
-                onChange={(e) => setHandoff(e.target.value)}
+                onChange={(e) => {
+                  setHandoff(e.target.value);
+                  setDone(null);
+                }}
               />
             </label>
           )}
