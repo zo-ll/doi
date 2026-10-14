@@ -618,6 +618,8 @@ a:hover { color: var(--text); }
 .composer-actions { display: flex; align-items: center; gap: var(--space-1); padding: var(--space-1-5); }
 .composer-actions > .btn, .composer-actions > .seg, .composer-actions > label { flex: none; }
 .composer-actions > .spacer { flex: 1 1 0; min-width: 0; }
+.composer-actions .seg-item { min-width: 20px; padding: 0 var(--space-1-5); }
+.composer-actions label.btn { padding: 0 var(--space-1-5); }
 .composer-actions label.btn { position: relative; }
 .composer-actions .is-disabled { opacity: 0.5; cursor: not-allowed; }
 .model-chip {

@@ -528,7 +528,7 @@ export function ChatPanel({
               >
                 <span className={`dot ${TONE_DOT[current.tone]}`} />
                 <span className="truncate">{shortModel(current.model)}</span>
-                <span className="model-chip-task">· {chosen ? "chosen" : currentTask}</span>
+                {(chosen || currentTask === "edit") && <span className="model-chip-task">· {chosen ? "chosen" : "edit"}</span>}
               </button>
             )}
             {running ? (
