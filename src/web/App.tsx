@@ -136,6 +136,8 @@ export function App() {
     [open, retryProjects, retryWorkspace],
   );
 
+  // The preview lives in the history hook below; Esc reads the latest close through a ref.
+  const closePreview = useRef<() => void>(() => {});
   const togglePanel = useCallback((key: keyof Panels) => {
     setPanels((p) => {
       const next = { ...p, [key]: !p[key] };
@@ -183,7 +185,10 @@ export function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
-      if (e.key === "Escape" && !(e.target instanceof HTMLTextAreaElement)) setSelection(null);
+      if (e.key === "Escape" && !(e.target instanceof HTMLTextAreaElement)) {
+        setSelection(null);
+        if (!document.querySelector('[aria-modal="true"]')) closePreview.current();
+      }
       if (!mod) return;
       const key = e.key.toLowerCase();
       const act: Record<string, () => void> = {
@@ -204,7 +209,22 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [toggleNav, togglePanel, activeProject, active]);
 
-  const versionCount = history.versions.state === "ready" ? history.versions.data.length : null;
+  closePreview.current = () => history.preview && history.setPreview(null);
+  const versionList = history.versions.state === "ready" ? history.versions.data : null;
+  const versionCount = versionList ? versionList.length : null;
+  // Versions are numbered from the oldest (v1); the list comes newest first.
+  const previewIndex = history.preview && versionList ? versionList.findIndex((v) => v.sha === history.preview!.sha) : -1;
+  const previewLabel =
+    history.preview && versionList && previewIndex >= 0
+      ? `v${versionList.length - previewIndex} · ${new Date(history.preview.at).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
+      : "an old version";
+  const showSide = useCallback(
+    (tab: "comments" | "history") => {
+      setSideTab(tab);
+      if (!panels.side) togglePanel("side");
+    },
+    [panels.side, togglePanel],
+  );
 
   return (
     <div className="app">
@@ -292,6 +312,7 @@ export function App() {
 
         <Canvas
           active={active}
+          page={page}
           revision={revision}
           selection={selection}
           pins={pins}
@@ -303,6 +324,7 @@ export function App() {
           onRestorePreview={() => {
             history.restore().catch(() => {}); // the bar shows the error
           }}
+          previewLabel={previewLabel}
           onClosePreview={() => history.setPreview(null)}
           variants={variants.set}
           variantsError={variants.error}
@@ -314,9 +336,10 @@ export function App() {
           }}
           onPin={(oid) => {
             setSelection({ oid });
-            setSideTab("comments");
-            if (!panels.side) togglePanel("side");
+            showSide("comments");
           }}
+          onComment={() => showSide("comments")}
+          onOpenHistory={() => showSide("history")}
         />
         {!panels.chat && (
           <button className="btn btn-secondary reopen-btn reopen-chat" onClick={() => togglePanel("chat")} title={`Show chat (${MOD}[)`}>

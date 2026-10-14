@@ -57,6 +57,10 @@ describe("frame messages", () => {
     });
     expect(parseFrameMessage({ type: "doi:key", key: " ", down: "yes" })).toEqual({ type: "doi:key", key: " ", down: false, shift: false, mod: false });
     for (const key of ["a", "Enter", "Tab", 1]) expect(parseFrameMessage({ type: "doi:key", key, down: true })).toBeNull();
+    // Tool keys and the app's shortcuts reach the app from a page too.
+    for (const key of ["v", "C", "h", "f", "n", "t", "p", "[", "]", ","]) {
+      expect(parseFrameMessage({ type: "doi:key", key, down: true, mod: false })).toMatchObject({ type: "doi:key", key });
+    }
   });
 
   test("other data is not a frame message", () => {

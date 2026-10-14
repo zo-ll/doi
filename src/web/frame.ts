@@ -29,7 +29,10 @@ const OID = /^[A-Za-z0-9_-]{1,100}$/;
 
 const MAX_PINS = 500;
 /** Keys the canvas uses; a page cannot send other keys to the app. */
+/** Keys a page may forward: canvas keys, tool keys, and the app's shortcuts (with ⌘/Ctrl). */
 const CANVAS_KEYS = new Set([" ", "=", "+", "-", "0", "!", "1", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
+const LETTER_KEYS = new Set(["v", "c", "h", "f", "n", "t", "p", "d", "e", "[", "]", ","]);
+const forwardable = (key: string) => CANVAS_KEYS.has(key) || LETTER_KEYS.has(key.toLowerCase());
 
 const isOid = (v: unknown): v is string => typeof v === "string" && OID.test(v);
 
@@ -57,7 +60,7 @@ export function parseFrameMessage(data: unknown): FrameMessage | null {
       return { type: "doi:wheel", deltaY: d.deltaY as number, x: d.x as number, y: d.y as number };
     }
     case "doi:key":
-      if (typeof d.key !== "string" || !CANVAS_KEYS.has(d.key)) return null;
+      if (typeof d.key !== "string" || !forwardable(d.key)) return null;
       return { type: "doi:key", key: d.key, down: d.down === true, shift: d.shift === true, mod: d.mod === true };
     case "doi:select":
       return isOid(d.oid) ? { type: "doi:select", oid: d.oid } : null;

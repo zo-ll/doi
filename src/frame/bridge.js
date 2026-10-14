@@ -85,14 +85,19 @@
   });
 
   // The iframe has the keyboard focus after a click, so the app does not see these keys.
-  // Canvas keys go to the app too, except while the user types in a field of the page.
-  const CANVAS_KEYS = new Set([" ", "=", "+", "-", "0", "!", "1", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
+  // Canvas keys (zoom, pan, tools) and the app's own shortcuts go to the app too, except
+  // while the user types in a field of the page.
+  const CANVAS_KEYS = new Set([" ", "=", "+", "-", "0", "!", "1", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "v", "c", "h", "f", "n", "t"]);
+  const APP_KEYS = new Set(["p", "[", "]", "d", "e", ","]);
   const typing = (t) => t instanceof Element && (t.closest("input, textarea, select, [contenteditable]") !== null);
   const onKey = (event, down) => {
     if (down && event.key === "Escape") send({ type: "doi:clear" });
-    if (!CANVAS_KEYS.has(event.key) || typing(event.target)) return;
-    if (event.key === " ") event.preventDefault(); // no page scroll while the canvas pans
-    send({ type: "doi:key", key: event.key, down, shift: event.shiftKey, mod: event.ctrlKey || event.metaKey });
+    const mod = event.ctrlKey || event.metaKey;
+    const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+    const forward = mod ? APP_KEYS.has(key) || (event.shiftKey && key === "h") : CANVAS_KEYS.has(key);
+    if (!forward || typing(event.target)) return;
+    if (event.key === " " || mod) event.preventDefault(); // no page scroll, no browser shortcut (print)
+    send({ type: "doi:key", key: event.key, down, shift: event.shiftKey, mod });
   };
   document.addEventListener("keydown", (event) => onKey(event, true));
   document.addEventListener("keyup", (event) => onKey(event, false));
