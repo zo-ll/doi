@@ -148,13 +148,19 @@ export function App() {
     write(LAST_DESIGN, a);
   }, []);
 
+  /** Projects deleted in this session: the old list can still name them until it loads again. */
+  const deleted = useRef(new Set<string>());
   // When the project list arrives, open the last design again, or else the first one.
   useEffect(() => {
-    if (active || projects.state !== "ready") return;
+    if (projects.state !== "ready") return;
+    // A list without the project is the new one: the guard is done (the id can come back later).
+    for (const id of deleted.current) if (!projects.data.some((p) => p.id === id)) deleted.current.delete(id);
+    if (active) return;
+    const list = projects.data.filter((p) => !deleted.current.has(p.id));
     const last = read(LAST_DESIGN, isActive);
-    const exists = (a: Active) => projects.data.some((p) => p.id === a.project && p.designs.includes(a.design));
+    const exists = (a: Active) => list.some((p) => p.id === a.project && p.designs.includes(a.design));
     if (last && exists(last)) return open(last);
-    const first = projects.data.find((p) => p.designs.length > 0);
+    const first = list.find((p) => p.designs.length > 0);
     if (first) open({ project: first.id, design: first.designs[0]! });
   }, [projects, active, open]);
 
@@ -448,6 +454,12 @@ export function App() {
             onOpen={open}
             onRetry={retryProjects}
             onChanged={onProjectsChanged}
+            onDeleted={(project) => {
+              deleted.current.add(project);
+              // The open design went with its project: the app opens the first design left.
+              if (active?.project === project) setActive(null);
+              onProjectsChanged();
+            }}
             onClose={() => setNavOpen(false)}
             onExport={(project) => {
               setNavOpen(false);
