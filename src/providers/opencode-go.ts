@@ -8,7 +8,14 @@ import { streamDesign, type CacheMarker } from "./ai-sdk.ts";
 import { supportsVision, wireFormat, type WireFormat } from "./opencode-go-formats.ts";
 import type { Provider, ProviderCapabilities } from "./types.ts";
 
-export const OPENCODE_GO_BASE_URL = "https://opencode.ai/zen/go/v1";
+// Source: https://opencode.ai/docs/go/ (checked 2026-10-15). The old /zen/go/v1 prefix still answers.
+export const OPENCODE_GO_BASE_URL = "https://opencode.ai/inference/go/v1";
+
+/**
+ * OpenCode Go asks each client to name itself in the user agent and to send a stable
+ * `x-opencode-session` per conversation, for routing and the prompt cache.
+ */
+export const DOI_USER_AGENT = "doi/0.1";
 
 const ANTHROPIC_CACHE: CacheMarker = { anthropic: { cacheControl: { type: "ephemeral" } } };
 
@@ -17,14 +24,15 @@ export interface OpenCodeGoDeps {
   fetch?: typeof globalThis.fetch;
 }
 
-function model(format: WireFormat, id: string, apiKey: string, baseURL: string, deps: OpenCodeGoDeps): LanguageModel {
+function model(format: WireFormat, id: string, apiKey: string, baseURL: string, session: string, deps: OpenCodeGoDeps): LanguageModel {
+  const headers = { "user-agent": DOI_USER_AGENT, "x-opencode-session": session };
   switch (format) {
     case "messages":
-      return createAnthropicSDK({ apiKey, baseURL, fetch: deps.fetch })(id);
+      return createAnthropicSDK({ apiKey, baseURL, headers, fetch: deps.fetch })(id);
     case "responses":
-      return createOpenAISDK({ apiKey, baseURL, fetch: deps.fetch }).responses(id);
+      return createOpenAISDK({ apiKey, baseURL, headers, fetch: deps.fetch }).responses(id);
     case "chat":
-      return createOpenAICompatible({ name: "opencode-go", apiKey, baseURL, includeUsage: true, fetch: deps.fetch })(id);
+      return createOpenAICompatible({ name: "opencode-go", apiKey, baseURL, headers, includeUsage: true, fetch: deps.fetch })(id);
   }
 }
 
@@ -53,7 +61,8 @@ export function createOpenCodeGo(config: Config, deps: OpenCodeGoDeps = {}): Pro
       const apiKey = await requireKey("opencode-go", config, "OpenCode Go");
       const format = formatOf(req.model);
       yield* streamDesign(
-        model(format, req.model, apiKey, baseURL, deps),
+        // A request without a conversation (a manual check) gets its own id.
+        model(format, req.model, apiKey, baseURL, req.session ?? crypto.randomUUID(), deps),
         req,
         format === "messages" ? ANTHROPIC_CACHE : undefined,
       );

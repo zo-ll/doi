@@ -87,13 +87,25 @@ describe("opencode-go provider requests", () => {
   for (const c of cases) {
     test(`${c.model} calls ${c.path} with the key`, async () => {
       const { fn, calls } = fakeFetch();
-      await expect(collect(createOpenCodeGo(config, { fetch: fn }).generate(req(c.model)))).rejects.toThrow();
+      await expect(collect(createOpenCodeGo(config, { fetch: fn }).generate({ ...req(c.model), session: "s-123" }))).rejects.toThrow();
       expect(calls).toHaveLength(1);
+      expect(calls[0]!.headers.get("x-opencode-session")).toBe("s-123");
+      expect(calls[0]!.headers.get("user-agent")).toStartWith("doi/");
       expect(calls[0]!.url).toBe(`${OPENCODE_GO_BASE_URL}${c.path}`);
       expect(calls[0]!.headers.get(c.auth[0])).toBe(c.auth[1]);
       expect(calls[0]!.body.model).toBe(c.model);
     });
   }
+
+  test("a request without a session gets a new id each time", async () => {
+    const { fn, calls } = fakeFetch();
+    const p = createOpenCodeGo(config, { fetch: fn });
+    await expect(collect(p.generate(req("glm-5.3")))).rejects.toThrow();
+    await expect(collect(p.generate(req("glm-5.3")))).rejects.toThrow();
+    const [a, b] = calls.map((c) => c.headers.get("x-opencode-session"));
+    expect(a).toMatch(/^[0-9a-f-]{36}$/);
+    expect(a).not.toBe(b);
+  });
 
   test("the messages format sends the cache marker on each system part", async () => {
     const { fn, calls } = fakeFetch();

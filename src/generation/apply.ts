@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { GenerateEvent, GenerateRequest, Message, Provider } from "../providers/types.ts";
@@ -137,7 +138,17 @@ function attemptSummary(text: string, changes: FileChange[]): Message {
  * Providers with `editsFiles` change the files themselves: their events pass through, and
  * `applied` lists the files they reported. Every completed turn ends with `applied` and `done`.
  */
+/**
+ * One id per design chat: the same for every turn of a design, different between designs and
+ * workspaces. A hash, so the provider never sees project or design names.
+ */
+export function sessionId(ref: Pick<DesignRef, "workspace" | "project" | "design">): string {
+  const h = createHash("sha256").update(`doi-session\0${ref.workspace}\0${ref.project}\0${ref.design}`).digest("hex");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+}
+
 export async function* runTurn(provider: Provider, req: GenerateRequest, ref: DesignRef): AsyncGenerator<TurnEvent> {
+  req = { ...req, session: req.session ?? sessionId(ref) };
   if (provider.capabilities.editsFiles) {
     // The CLI already changed the files. Its edit and write events say which ones.
     const files = new Set<string>();

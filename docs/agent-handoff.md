@@ -88,7 +88,7 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 | `src/providers/ai-sdk.ts` | Shared AI SDK helper: a cache marker on each system part (max 4), `edit`/`write` tools without `execute`, stream mapping |
 | `src/providers/anthropic.ts` | Anthropic API key adapter |
 | `src/providers/openai.ts` | OpenAI API key adapter (Responses API, automatic cache) |
-| `src/providers/opencode-go.ts`, `opencode-go-formats.ts` | OpenCode Go: three wire formats chosen per model |
+| `src/providers/opencode-go.ts`, `opencode-go-formats.ts` | OpenCode Go: three wire formats chosen per model. Base `https://opencode.ai/inference/go/v1`. Each request sends `user-agent: doi/…` and `x-opencode-session` (OpenCode Go refuses to route without it): `GenerateRequest.session`, which `runTurn()` fills with `sessionId()` (a hash of workspace, project and design, so one id per design chat) |
 | `src/providers/claude-code.ts` | Claude subscription through `claude -p` (stream-json, `--restricted`) |
 | `src/providers/codex.ts` | ChatGPT subscription through `codex exec --json` |
 | `src/providers/cli.ts` | Process helpers shared by the two CLI backends |

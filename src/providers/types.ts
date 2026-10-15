@@ -29,6 +29,8 @@ export interface GenerateRequest {
   cwd?: string;
   /** Folders that a provider with `editsFiles` may read too: the linked repo's clone (#112). */
   readDirs?: string[];
+  /** A stable id of the conversation (one per design chat), for providers that route or cache by it. Not a secret, no names. */
+  session?: string;
 }
 
 export type GenerateEvent =

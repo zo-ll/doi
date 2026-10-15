@@ -17,7 +17,7 @@ api_key_env = "OPENAI_API_KEY"
 
 [providers.opencode-go]
 api_key_env = "OPENCODE_API_KEY"
-# base_url = "https://opencode.ai/zen/go/v1"
+# base_url = "https://opencode.ai/inference/go/v1"
 # Wire format per model, when a new model is not in the built-in table:
 # formats = { "new-model-id" = "chat" }   # chat | messages | responses
 

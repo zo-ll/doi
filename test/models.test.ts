@@ -32,7 +32,7 @@ describe("listModels", () => {
 
   test("OpenCode Go: the models endpoint with the stored key", async () => {
     const { d, calls } = deps(
-      { "https://opencode.ai/zen/go/v1/models": { data: [{ id: "glm-5.3" }, { id: "kimi-k3" }, { id: "glm-5.3" }, { id: "--flag" }, { id: 7 }] } },
+      { "https://opencode.ai/inference/go/v1/models": { data: [{ id: "glm-5.3" }, { id: "kimi-k3" }, { id: "glm-5.3" }, { id: "--flag" }, { id: 7 }] } },
       { "opencode-go": "sk-go" },
     );
     expect(await listModels("opencode-go", config, d)).toEqual({ ok: true, fixed: false, models: ["glm-5.3", "kimi-k3"] });
@@ -86,7 +86,7 @@ describe("listModels", () => {
 });
 
 test("GET /api/providers/:id/models", async () => {
-  const { d } = deps({ "https://opencode.ai/zen/go/v1/models": { data: [{ id: "glm-5.3" }] } }, { "opencode-go": "sk-hidden" });
+  const { d } = deps({ "https://opencode.ai/inference/go/v1/models": { data: [{ id: "glm-5.3" }] } }, { "opencode-go": "sk-hidden" });
   const res = await getProviderModels(config, { id: "opencode-go" }, d);
   const text = await res.text();
   expect(JSON.parse(text)).toEqual({ models: ["glm-5.3"], fixed: false });

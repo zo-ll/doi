@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ApplyError, applyChanges, runTurn, type DesignRef, type TurnEvent } from "../src/generation/apply.ts";
+import { ApplyError, applyChanges, runTurn, sessionId, type DesignRef, type TurnEvent } from "../src/generation/apply.ts";
 import type { GenerateEvent, GenerateRequest, Provider } from "../src/providers/types.ts";
 import { designDir } from "../src/workspace/paths.ts";
 
@@ -128,6 +128,9 @@ describe("runTurn", () => {
     const events = await run(provider);
     expect(events.map((e) => e.type)).toEqual(["text", "edit", "retry", "edit", "applied", "done"]);
     expect(requests).toHaveLength(2);
+    // The retry is the same conversation.
+    expect(requests[0]!.session).toBe(sessionId(ref));
+    expect(requests[1]!.session).toBe(sessionId(ref));
     const followUp = requests[1]!.messages.slice(-2);
     expect(followUp[0]).toMatchObject({ role: "assistant", content: [{ text: expect.stringContaining("edit styles.css") }] });
     expect(followUp[1]).toMatchObject({ role: "user", content: [{ text: expect.stringContaining("does not occur") }] });
@@ -156,4 +159,13 @@ describe("runTurn", () => {
     expect(requests).toHaveLength(1);
     expect(await read("styles.css")).toBe(CSS);
   });
+});
+
+test("sessionId: one stable id per design chat, without names", () => {
+  const a = sessionId({ workspace: "/w", project: "shop", design: "home" });
+  expect(a).toBe(sessionId({ workspace: "/w", project: "shop", design: "home" }));
+  expect(a).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+  expect(a).not.toBe(sessionId({ workspace: "/w", project: "shop", design: "cart" }));
+  expect(a).not.toBe(sessionId({ workspace: "/x", project: "shop", design: "home" }));
+  expect(a).not.toContain("shop");
 });

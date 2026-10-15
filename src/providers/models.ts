@@ -1,6 +1,6 @@
 import { MODEL_NAME, type Config, type ProviderId } from "../config.ts";
 import { keyStore, resolveKey, type KeyStore } from "./keys.ts";
-import { OPENCODE_GO_BASE_URL } from "./opencode-go.ts";
+import { DOI_USER_AGENT, OPENCODE_GO_BASE_URL } from "./opencode-go.ts";
 
 /**
  * The models a provider offers, for the model field in Settings. API providers answer from their
@@ -43,7 +43,7 @@ function clean(ids: unknown[]): string[] {
 }
 
 async function getJSON(deps: ModelListDeps, url: string, headers: Record<string, string>): Promise<any> {
-  const res = await deps.fetch(url, { headers, signal: AbortSignal.timeout(TIMEOUT_MS) });
+  const res = await deps.fetch(url, { headers: { "user-agent": DOI_USER_AGENT, ...headers }, signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (res.status === 401 || res.status === 403) throw new Error(`The provider refused the API key (${res.status}).`);
   if (!res.ok) throw new Error(`The models endpoint answered ${res.status}.`);
   return res.json();
