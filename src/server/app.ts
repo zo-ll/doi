@@ -19,7 +19,7 @@ import { MAX_IMPORT_BYTES, postExport, postImport, postImportInspect } from "./a
 import { deleteProjectRepo, getGithubRepos, getGithubStatus, putProjectRepo, syncProjectRepo } from "./github.ts";
 import { excludeClones } from "../github/gh.ts";
 import { handleMcp, MCP_PATH } from "../mcp/server.ts";
-import { getHistory, restoreVersion } from "./history.ts";
+import { getHistory, reopenVariants, restoreVersion } from "./history.ts";
 import { getLayout, putLayout } from "./layout.ts";
 import { createVariantHandlers } from "./variants.ts";
 import { DesignLocks } from "./locks.ts";
@@ -279,6 +279,7 @@ export async function startServer(config: Config, options: { port?: number; deve
       "/api/projects/:project/designs/:design/handoff/bundle": { POST: (req) => postBundle(config.workspace, req, req.params) },
       "/api/projects/:project/designs/:design/history": (req) => getHistory(historyDeps, req.params),
       "/api/projects/:project/designs/:design/history/:sha/restore": { POST: (req) => restoreVersion(historyDeps, req.params) },
+      "/api/projects/:project/designs/:design/history/:sha/reopen-variants": { POST: (req) => reopenVariants(historyDeps, req.params) },
       "/api/projects/:project/designs/:design/layout": {
         GET: (req) => getLayout(config.workspace, req.params),
         PUT: (req) => putLayout(config.workspace, req, req.params),

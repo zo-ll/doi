@@ -169,6 +169,26 @@ export async function designFilesAt(workspace: string, project: string, design: 
     .filter((p) => p && !p.split("/").some((part) => part.startsWith(".")));
 }
 
+/** The folders directly under `dir` that commit `sha` deleted files from (a picked variant set). */
+export function deletedFolders(workspace: string, sha: string, dir: string): Promise<string[]> {
+  if (!isSha(sha)) throw new Error("Invalid commit id.");
+  const rel = relPath(workspace, dir);
+  return serial(async () => {
+    const out = await git(workspace, ["diff-tree", "-r", "--no-commit-id", "--name-only", "--diff-filter=D", sha, "--", `${rel}/`]);
+    const names = out.split("\n").filter(Boolean).map((p) => p.slice(rel.length + 1).split("/")[0]!);
+    return [...new Set(names.filter(Boolean))];
+  });
+}
+
+/** Puts a folder back as it was in the parent of commit `sha`. The caller commits it. */
+export function checkoutBefore(workspace: string, sha: string, dir: string): Promise<void> {
+  if (!isSha(sha)) throw new Error("Invalid commit id.");
+  const rel = relPath(workspace, dir);
+  return serial(async () => {
+    await git(workspace, ["checkout", `${sha}^`, "--", `${rel}/`]);
+  });
+}
+
 /** One file of a design at a commit, or null when it was not there. */
 export async function designFileAt(workspace: string, project: string, design: string, sha: string, file: string): Promise<Uint8Array<ArrayBuffer> | null> {
   if (!isSha(sha)) throw new Error("Invalid commit id.");
