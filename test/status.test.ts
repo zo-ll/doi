@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { parseConfig } from "../src/config.ts";
+import { memoryKeyStore } from "../src/providers/keys.ts";
 import { LOGGED_IN, providerStatus, safeHost, type StatusDeps } from "../src/providers/status.ts";
 
 function deps(over: Partial<StatusDeps> = {}): StatusDeps & { calls: string[][] } {
@@ -13,6 +14,7 @@ function deps(over: Partial<StatusDeps> = {}): StatusDeps & { calls: string[][] 
       return { code: 0, stdout: "", stderr: "" };
     },
     fetch: async () => ({ ok: false }),
+    keys: memoryKeyStore(),
     ...over,
   };
 }
@@ -29,7 +31,23 @@ describe("providerStatus", () => {
   test("API key providers are ready when their variable is set, and name it when it is not", async () => {
     const s = await byId(deps({ env: { ANTHROPIC_API_KEY: "sk-test" } }));
     expect(s.anthropic).toMatchObject({ source: "api_key", ready: true, detail: "Key from ANTHROPIC_API_KEY" });
-    expect(s["opencode-go"]).toMatchObject({ source: "api_key", ready: false, detail: "Set OPENCODE_API_KEY" });
+    expect(s["opencode-go"]).toMatchObject({ source: "api_key", ready: false, detail: "No API key. Add one, or set OPENCODE_API_KEY", keyFrom: null });
+  });
+
+  test("a stored key makes a provider ready; the variable wins over it", async () => {
+    const keys = memoryKeyStore({ "opencode-go": "sk-stored", anthropic: "sk-stored" });
+    const s = await byId(deps({ keys, env: { ANTHROPIC_API_KEY: "sk-env" } }));
+    expect(s["opencode-go"]).toMatchObject({ ready: true, keyFrom: "keychain", detail: "Key in the system keychain" });
+    expect(s.anthropic).toMatchObject({ ready: true, keyFrom: "env", keyEnv: "ANTHROPIC_API_KEY" });
+    const f = await byId(deps({ keys: memoryKeyStore({ openai: "sk-stored" }, "file") }));
+    expect(f.openai).toMatchObject({ ready: true, keyFrom: "file" });
+    expect(JSON.stringify([s, f])).not.toContain("sk-stored");
+  });
+
+  test("a store that fails counts as no key", async () => {
+    const keys = { ...memoryKeyStore(), get: async () => Promise.reject(new Error("locked")) };
+    const s = await byId(deps({ keys }));
+    expect(s.openai).toMatchObject({ ready: false, keyFrom: null });
   });
 
   test("api_key_env in config.toml overrides the default variable", async () => {

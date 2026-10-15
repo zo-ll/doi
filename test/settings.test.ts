@@ -3,7 +3,8 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "../src/config.ts";
-import { getUsage, putModels } from "../src/server/settings.ts";
+import { memoryKeyStore } from "../src/providers/keys.ts";
+import { deleteProviderKey, getUsage, postProviderLogin, putModels, putProviderKey } from "../src/server/settings.ts";
 import { appendChat } from "../src/workspace/chat.ts";
 
 const put = (body: unknown) =>
@@ -49,4 +50,38 @@ test("usage lists the token use of every answer in every project", async () => {
     ["a", "home", 100],
     ["b", "deck", 100],
   ]);
+});
+
+const keyReq = (body: unknown) =>
+  new Request("http://127.0.0.1/api/providers/x/key", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+
+test("PUT and DELETE a provider key; the answer never holds the key", async () => {
+  const keys = memoryKeyStore({}, "file");
+  const res = await putProviderKey(keyReq({ key: " sk-secret " }), { id: "opencode-go" }, keys);
+  expect(res.status).toBe(200);
+  const text = await res.text();
+  expect(JSON.parse(text)).toEqual({ where: "file" });
+  expect(text).not.toContain("sk-secret");
+  expect(await keys.get("opencode-go")).toEqual({ value: "sk-secret", where: "file" });
+  expect(await (await deleteProviderKey({ id: "opencode-go" }, keys)).json()).toEqual({ removed: true });
+  expect(await keys.get("opencode-go")).toBeNull();
+});
+
+test("bad keys and providers without keys are refused", async () => {
+  const keys = memoryKeyStore();
+  expect((await putProviderKey(keyReq({ key: "a b" }), { id: "openai" }, keys)).status).toBe(400);
+  expect((await putProviderKey(keyReq({}), { id: "openai" }, keys)).status).toBe(400);
+  for (const id of ["claude-code", "ollama", "nobody", "__proto__"]) {
+    expect((await putProviderKey(keyReq({ key: "sk" }), { id }, keys)).status).toBe(404);
+    expect((await deleteProviderKey({ id }, keys)).status).toBe(404);
+  }
+  expect(await keys.get("openai")).toBeNull();
+});
+
+test("login only for the CLI backends", async () => {
+  const deps = { which: () => null, spawn: () => { throw new Error("no spawn"); } };
+  for (const id of ["opencode-go", "anthropic", "nobody"]) expect((await postProviderLogin({ id }, deps)).status).toBe(404);
+  const res = await postProviderLogin({ id: "codex" }, deps);
+  expect(res.status).toBe(502);
+  expect((await res.json()).error).toContain("not on PATH");
 });

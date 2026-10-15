@@ -81,7 +81,7 @@ describe("openai provider requests", () => {
   test("a missing key fails before any request", async () => {
     delete process.env.OPENAI_API_KEY;
     const { fn, calls } = fakeFetch();
-    await expect(collect(createOpenAI(config, { fetch: fn }).generate(req))).rejects.toThrow("Set OPENAI_API_KEY");
+    await expect(collect(createOpenAI(config, { fetch: fn }).generate(req))).rejects.toThrow("No API key for the OpenAI API");
     expect(calls).toHaveLength(0);
   });
 });

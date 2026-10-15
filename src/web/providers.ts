@@ -64,3 +64,43 @@ export function taskStatuses(models: AppConfig["models"], providers: ProviderSta
     return { task: id, provider: ref.provider, model: ref.model, ...s };
   });
 }
+
+/** How the user connects a vendor: OAuth through the official CLI, an API key, or a local server. */
+export type AuthMethod = "oauth" | "api_key" | "local";
+
+export interface Vendor {
+  id: string;
+  name: string;
+  /** The provider id behind each method. */
+  methods: Partial<Record<AuthMethod, string>>;
+  /** OAuth only: what the login uses. */
+  oauthLabel?: string;
+}
+
+/** The providers that Settings lists, each with its ways to connect. */
+export const VENDORS: Vendor[] = [
+  { id: "anthropic", name: "Anthropic", methods: { oauth: "claude-code", api_key: "anthropic" }, oauthLabel: "Claude subscription · Claude Code CLI" },
+  { id: "openai", name: "OpenAI", methods: { oauth: "codex", api_key: "openai" }, oauthLabel: "ChatGPT plan · Codex CLI" },
+  { id: "opencode-go", name: "OpenCode Go", methods: { api_key: "opencode-go" } },
+  { id: "google", name: "Google Gemini", methods: { api_key: "google" } },
+  { id: "openrouter", name: "OpenRouter", methods: { api_key: "openrouter" } },
+  { id: "ollama", name: "Ollama", methods: { local: "ollama" } },
+];
+
+export const METHOD_LABEL: Record<AuthMethod, string> = { oauth: "OAuth", api_key: "API key", local: "Local server" };
+
+/** The methods of a vendor in display order. */
+export function methodsOf(v: Vendor): AuthMethod[] {
+  return (["oauth", "api_key", "local"] as const).filter((m) => v.methods[m]);
+}
+
+/** The method to show first: one that is ready, else the first one. */
+export function defaultMethod(v: Vendor, providers: ProviderStatus[]): AuthMethod {
+  const all = methodsOf(v);
+  return all.find((m) => providers.some((p) => p.id === v.methods[m] && p.ready)) ?? all[0]!;
+}
+
+/** The vendor to show first: the one of the generate model. */
+export function vendorOf(providerId: string): Vendor {
+  return VENDORS.find((v) => Object.values(v.methods).includes(providerId)) ?? VENDORS[0]!;
+}

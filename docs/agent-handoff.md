@@ -15,7 +15,7 @@ doi is a local, single-user design tool like Claude Design. The user describes a
 ## 2. Rules you must follow
 
 1. **Commit identity.** Commit only with the git identity that is configured in the repo (the user's own). Do not add AI attribution anywhere: no `Co-Authored-By` trailers, no "Generated with" lines, no AI or vendor names in commit messages, PR bodies or issue text.
-2. **Credentials.** Never read, copy or store OAuth tokens or credential files of other apps (Claude Code, Codex, pi, OpenCode). Anthropic's terms forbid other apps to use Claude subscription credentials (https://code.claude.com/docs/en/legal-and-compliance). API keys come only from environment variables. Subscriptions go only through the official CLIs.
+2. **Credentials.** Never read, copy or store OAuth tokens or credential files of other apps (Claude Code, Codex, pi, OpenCode). Anthropic's terms forbid other apps to use Claude subscription credentials (https://code.claude.com/docs/en/legal-and-compliance). An API key comes from its environment variable, or from Settings (system keychain, else `~/.config/doi/credentials.json` with mode 0600). The variable wins. Subscriptions go only through the official CLIs; the OAuth button in Settings runs only `claude auth login` or `codex login`.
 3. **Designs are plain HTML and CSS.** No React or other framework output for designs. Every meaningful element has a `data-oid`.
 4. **Sandbox.** Design iframes use `sandbox="allow-scripts"` without `allow-same-origin`. They talk to the app only through `postMessage`.
 5. **Layers.** Vendor SDKs and agent CLIs only in `src/providers/*` (`claude-code.ts`, `codex.ts`, for generation).
@@ -92,7 +92,10 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 | `src/providers/claude-code.ts` | Claude subscription through `claude -p` (stream-json, `--restricted`) |
 | `src/providers/codex.ts` | ChatGPT subscription through `codex exec --json` |
 | `src/providers/cli.ts` | Process helpers shared by the two CLI backends |
-| `src/providers/status.ts` | Provider readiness without secrets or account details |
+| `src/providers/status.ts` | Provider readiness without secrets or account details; `keyFrom` (env, keychain, file) for API providers |
+| `src/providers/keys.ts` | Keys added in Settings: `systemKeyStore()` (keychain via `Bun.secrets`, else a 0600 file), `resolveKey()` (variable first), `requireKey()` for the adapters. Tests use `memoryKeyStore()` (preload `test/setup.ts`) |
+| `src/providers/login.ts` | OAuth through the official CLIs: `startLogin()` runs `claude auth login` or `codex login`, returns only the first https URL of the output, joins a login that runs, stops after 10 minutes |
+| `src/web/components/ProviderAuth.tsx` | Settings: select a provider (`VENDORS` in `web/providers.ts`), then OAuth or API key. Routes `PUT/DELETE /api/providers/:id/key`, `POST /api/providers/:id/login` (`server/settings.ts`) |
 | `src/providers/registry.ts` | Provider factories, `isImplemented()` |
 | `src/mcp/server.ts` | MCP server (#54) at `/mcp` on the doi server: Streamable HTTP, stateless (one `McpServer` and transport per request, JSON answers), SDK `@modelcontextprotocol/sdk` 1.32.1. Tools: `list_designs`, `get_design` (files with text, binary files by name, pages, frames, design system name, last 20 requests, the folder on disk; 400 000 characters of text at most), `get_design_system`, `get_comments` (open ones, `all` for done ones too; `detached`), `export_png` (one page in one frame, whole page, scale 1). A bad name or a missing design is a tool error. `checkRequest()` checks `/mcp` like `/api/`, so a web page or a sandboxed design cannot call it |
 | `src/handoff/prompt.ts`, `src/handoff/prompt-v0.md` | The prompt for any coding agent (`AGENT_PROMPT`, versioned file): the design, the MCP URL, the steps (tools first, then the repo's own framework and components, no `data-oid` in product code, run the repo's checks, report). `GET …/handoff/prompt` → `{ prompt, template }` with the URL of the running server. Export dialog → "Prompt for a coding agent": an editable text and "Copy prompt" |

@@ -1,9 +1,11 @@
 import { keyEnvFor, PROVIDERS, type Config, type ProviderId } from "../config.ts";
+import { keyStore, resolveKey, type KeySource, type KeyStore } from "./keys.ts";
 import { isImplemented } from "./registry.ts";
 
 /**
  * Where a provider's credentials come from.
- * - api_key: an environment variable named in config.toml.
+ * - api_key: an environment variable named in config.toml, or a key the user added in Settings
+ *   (system keychain, else a 0600 file). The variable wins.
  * - cli: a subscription through the official CLI. doi only asks the CLI for its login state;
  *   it never reads, copies or stores the CLI's tokens.
  * - local: a local server (Ollama), no credentials.
@@ -17,6 +19,10 @@ export interface ProviderStatus {
   /** Why the provider is not ready, or what it uses when it is. Never contains secrets. */
   detail: string;
   implemented: boolean;
+  /** api_key only: where the key comes from, null when there is none. Never the key. */
+  keyFrom?: KeySource | null;
+  /** api_key only: the environment variable that wins over a stored key. */
+  keyEnv?: string;
 }
 
 export interface RunResult {
@@ -30,6 +36,7 @@ export interface StatusDeps {
   which: (bin: string) => string | null;
   run: (cmd: string[]) => Promise<RunResult>;
   fetch: (url: string) => Promise<{ ok: boolean }>;
+  keys: KeyStore;
 }
 
 const CLI_TIMEOUT_MS = 10_000;
@@ -60,6 +67,9 @@ export const defaultDeps: StatusDeps = {
     return { code, stdout, stderr };
   },
   fetch: (url) => fetch(url, { signal: AbortSignal.timeout(1000) }),
+  get keys() {
+    return keyStore();
+  },
 };
 
 async function claudeCode(deps: StatusDeps): Promise<Pick<ProviderStatus, "ready" | "detail">> {
@@ -84,6 +94,13 @@ async function codex(deps: StatusDeps): Promise<Pick<ProviderStatus, "ready" | "
   return { ready: true, detail: LOGGED_IN };
 }
 
+const KEY_DETAIL: Record<KeySource | "none", (env: string) => string> = {
+  env: (env) => `Key from ${env}`,
+  keychain: () => "Key in the system keychain",
+  file: () => "Key in the doi credentials file (0600)",
+  none: (env) => `No API key. Add one, or set ${env}`,
+};
+
 async function statusOf(id: ProviderId, config: Config, deps: StatusDeps): Promise<ProviderStatus> {
   const implemented = isImplemented(id);
   if (id === "claude-code") return { id, source: "cli", implemented, ...(await claudeCode(deps)) };
@@ -95,8 +112,9 @@ async function statusOf(id: ProviderId, config: Config, deps: StatusDeps): Promi
     return { id, source: "local", implemented, ready: ok, detail: ok ? host : `No Ollama server at ${host}` };
   }
   const env = keyEnvFor(id, config)!;
-  const ready = Boolean(deps.env[env]);
-  return { id, source: "api_key", implemented, ready, detail: ready ? `Key from ${env}` : `Set ${env}` };
+  const key = await resolveKey(id, config, deps.env, deps.keys).catch(() => null);
+  const from = key?.from ?? null;
+  return { id, source: "api_key", implemented, ready: Boolean(key), detail: KEY_DETAIL[from ?? "none"](env), keyFrom: from, keyEnv: env };
 }
 
 export function providerStatus(config: Config, deps: StatusDeps = defaultDeps): Promise<ProviderStatus[]> {

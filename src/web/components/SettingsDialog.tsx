@@ -3,6 +3,7 @@ import { sendJSON, type AppConfig, type Load, type ProviderStatus } from "../api
 import { providerName, statusOf, TASKS, type Task } from "../providers.ts";
 import type { ThemeChoice } from "../theme.ts";
 import type { WorkspaceState } from "./ProjectsNav.tsx";
+import { ProviderAuth } from "./ProviderAuth.tsx";
 import { MOD } from "./TopBar.tsx";
 
 type Section = "models" | "appearance" | "workspace" | "shortcuts";
@@ -13,7 +14,6 @@ const SECTIONS: { id: Section; label: string }[] = [
   { id: "shortcuts", label: "Shortcuts" },
 ];
 const TONE_DOT = { ok: "dot-ok", warn: "dot-warn", err: "dot-err", unknown: "" } as const;
-const SOURCE = { cli: "CLI · subscription", api_key: "API key", local: "local server" } as const;
 /** A model name that goes to a CLI as an argument must not look like a flag. */
 const MODEL = /^[A-Za-z0-9._@/][A-Za-z0-9._:@/-]{0,99}$/;
 
@@ -117,6 +117,22 @@ export function SettingsDialog({ config, providers, workspace, themeChoice, onTh
           <div className="settings-body">
             {section === "models" && (
               <>
+                <h4>Providers</h4>
+                {providers.state === "error" && (
+                  <div className="banner banner-err" role="alert">
+                    <span className="dot dot-err" />
+                    The providers cannot load: {providers.message}
+                  </div>
+                )}
+                {providers.state === "loading" ? (
+                  <div className="skeleton comment-skeleton" aria-label="Checking the providers" />
+                ) : (
+                  <ProviderAuth providers={list} initial={config.models.generate.provider} onRecheck={onRecheck} />
+                )}
+                <p className="settings-note">
+                  doi never shows a key or an account detail. A key that you add goes to the system keychain, or to a file that only you can read when there is no keychain. An OAuth login goes through the official CLI, which keeps the token.
+                </p>
+
                 <h4>Model per task</h4>
                 <div className="task-list">
                   {TASKS.map((t) => {
@@ -183,37 +199,6 @@ export function SettingsDialog({ config, providers, workspace, themeChoice, onTh
                   </button>
                 </div>
 
-                <h4>Providers</h4>
-                {providers.state === "loading" && <div className="skeleton comment-skeleton" aria-label="Checking the providers" />}
-                {providers.state === "error" && (
-                  <div className="banner banner-err" role="alert">
-                    <span className="dot dot-err" />
-                    The providers cannot load: {providers.message}
-                  </div>
-                )}
-                <div className="provider-list">
-                  {list.map((p) => {
-                    const s = statusOf(p);
-                    return (
-                      <div key={p.id} className="provider-item">
-                        <span className={`dot ${TONE_DOT[s.tone]}`} />
-                        <div className="provider-text">
-                          <p>
-                            <strong>{providerName(p.id)}</strong>
-                            <span className="muted"> · {SOURCE[p.source]}</span>
-                          </p>
-                          <p className="muted">{p.implemented ? p.detail : "doi has no adapter for this provider yet."}</p>
-                        </div>
-                        {!p.ready && p.implemented && (
-                          <button className="btn btn-secondary btn-md" onClick={onRecheck}>
-                            Check again
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                <p className="settings-note">doi never asks for, stores or shows a key or an account detail. It only checks that one exists.</p>
               </>
             )}
 

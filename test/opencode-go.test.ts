@@ -118,7 +118,7 @@ describe("opencode-go provider requests", () => {
     delete process.env.OPENCODE_API_KEY;
     const { fn, calls } = fakeFetch();
     await expect(collect(createOpenCodeGo(config, { fetch: fn }).generate(req("glm-5.3")))).rejects.toThrow(
-      "Set OPENCODE_API_KEY",
+      "No API key for OpenCode Go. Add one in Settings (Models and providers), or set OPENCODE_API_KEY.",
     );
     expect(calls).toHaveLength(0);
   });

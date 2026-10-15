@@ -2,7 +2,8 @@ import { createAnthropic as createAnthropicSDK } from "@ai-sdk/anthropic";
 import { createOpenAI as createOpenAISDK } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
-import { keyEnvFor, type Config } from "../config.ts";
+import type { Config } from "../config.ts";
+import { requireKey } from "./keys.ts";
 import { streamDesign, type CacheMarker } from "./ai-sdk.ts";
 import { supportsVision, wireFormat, type WireFormat } from "./opencode-go-formats.ts";
 import type { Provider, ProviderCapabilities } from "./types.ts";
@@ -29,7 +30,6 @@ function model(format: WireFormat, id: string, apiKey: string, baseURL: string, 
 
 export function createOpenCodeGo(config: Config, deps: OpenCodeGoDeps = {}): Provider {
   const settings = config.providers["opencode-go"] ?? {};
-  const keyEnv = keyEnvFor("opencode-go", config)!;
   const baseURL = settings.base_url ?? OPENCODE_GO_BASE_URL;
   const formatOf = (id: string) => wireFormat(id, settings.formats);
 
@@ -50,8 +50,7 @@ export function createOpenCodeGo(config: Config, deps: OpenCodeGoDeps = {}): Pro
     capabilities: capabilities(""),
     forModel: capabilities,
     async *generate(req) {
-      const apiKey = process.env[keyEnv];
-      if (!apiKey) throw new Error(`Set ${keyEnv} to use the OpenCode Go provider.`);
+      const apiKey = await requireKey("opencode-go", config, "OpenCode Go");
       const format = formatOf(req.model);
       yield* streamDesign(
         model(format, req.model, apiKey, baseURL, deps),
