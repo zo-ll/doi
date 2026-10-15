@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DesignLocks, designKey } from "../src/server/locks.ts";
-import { patchDesign, patchProject, postDesign, postProject, type ProjectDeps } from "../src/server/projects.ts";
+import { deleteProject, patchDesign, patchProject, postDesign, postProject, type ProjectDeps } from "../src/server/projects.ts";
 import { appendChat, readChat } from "../src/workspace/chat.ts";
 import { listProjects, designDir } from "../src/workspace/paths.ts";
 import { slugify } from "../src/workspace/projects.ts";
@@ -157,5 +157,54 @@ describe("projects API", () => {
     expect(results.slice(0, designs.length).map((r) => (r as Response).status)).toEqual([200, 200, 200, 200]);
     for (const d of designs) expect((await readChat(deps.workspace, "shop", `${d}-new`)).map((e) => e.turn)).toEqual([`t-${d}`]);
     expect(await readChat(deps.workspace, "shop", "home")).toHaveLength(20);
+  });
+});
+
+describe("delete project", () => {
+  const linkRepo = async (project: string, name: string) => {
+    const file = join(deps.workspace, "projects", project, "project.json");
+    const meta = await Bun.file(file).json();
+    await Bun.write(file, JSON.stringify({ ...meta, repo: { name, commit: "c1", syncedAt: "2026-10-15T00:00:00Z" } }));
+  };
+  const clone = (name: string) => join(deps.workspace, ".repos", name);
+
+  test("removes the folder with its designs, chat and variants, and commits it", async () => {
+    await postProject(deps, json("POST", { name: "Shop" }));
+    await postProject(deps, json("POST", { name: "Blog" }));
+    await appendChat(deps.workspace, "shop", { role: "user", turn: "t", design: "home", at: "2026-10-15T00:00:00Z", text: "Hi", target: null });
+    await Bun.write(join(deps.workspace, "projects/shop/variants/home/s1/set.json"), "{}");
+    commits = [];
+    const res = await deleteProject(deps, { project: "shop" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: "shop" });
+    expect(existsSync(join(deps.workspace, "projects/shop"))).toBe(false);
+    expect((await listProjects(deps.workspace)).map((p) => p.id)).toEqual(["blog"]);
+    expect(commits).toEqual([{ paths: ["projects/shop"], message: "Delete project Shop" }]);
+  });
+
+  test("unknown, bad or busy projects are refused", async () => {
+    expect((await deleteProject(deps, { project: "nobody" })).status).toBe(404);
+    expect((await deleteProject(deps, { project: "../x" })).status).toBe(400);
+    await postProject(deps, json("POST", { name: "Shop" }));
+    deps.locks.tryLock(designKey("shop", "home"));
+    expect((await deleteProject(deps, { project: "shop" })).status).toBe(409);
+    expect(existsSync(join(deps.workspace, "projects/shop"))).toBe(true);
+    deps.locks.unlock(designKey("shop", "home"));
+    // A clone or update of its repo holds the repo lock.
+    await linkRepo("shop", "me/app");
+    deps.locks.tryLock("repo:me/app");
+    expect((await deleteProject(deps, { project: "shop" })).status).toBe(409);
+  });
+
+  test("the repo clone goes with the last project that links it", async () => {
+    await postProject(deps, json("POST", { name: "Shop" }));
+    await postProject(deps, json("POST", { name: "Blog" }));
+    await linkRepo("shop", "me/app");
+    await linkRepo("blog", "Me/App");
+    await Bun.write(join(clone("me/app"), ".git/HEAD"), "ref: refs/heads/main\n");
+    await deleteProject(deps, { project: "shop" });
+    expect(existsSync(clone("me/app"))).toBe(true); // blog still uses it
+    await deleteProject(deps, { project: "blog" });
+    expect(existsSync(clone("me/app"))).toBe(false);
   });
 });

@@ -1,4 +1,8 @@
-import { createDesign, createProject, renameDesign, renameProject, WorkspaceError } from "../workspace/projects.ts";
+import { existsSync } from "node:fs";
+import { rm } from "node:fs/promises";
+import { cloneDir } from "../github/gh.ts";
+import { assertName, listProjects } from "../workspace/paths.ts";
+import { createDesign, createProject, projectDir, renameDesign, renameProject, WorkspaceError } from "../workspace/projects.ts";
 import { designKey, type DesignLocks } from "./locks.ts";
 
 export interface ProjectDeps {
@@ -92,4 +96,37 @@ export async function patchDesign(deps: ProjectDeps, req: Request, params: Param
   } finally {
     deps.locks.unlock(...keys);
   }
+}
+
+/**
+ * DELETE /api/projects/:project: removes the project folder (designs, variants, chat, uploads)
+ * and commits the removal, so the history keeps it. A linked repo's clone goes when no other
+ * project links that repo. Refused while a turn runs on one of its designs.
+ */
+export async function deleteProject(deps: ProjectDeps, params: Params): Promise<Response> {
+  const id = String(params.project);
+  let dir: string;
+  try {
+    assertName("project", id);
+    dir = projectDir(deps.workspace, id);
+  } catch (e) {
+    return Response.json({ error: (e as Error).message }, { status: 400 });
+  }
+  const all = await listProjects(deps.workspace);
+  const project = all.find((p) => p.id === id);
+  if (!project || !existsSync(dir)) return Response.json({ error: `No project "${id}".` }, { status: 404 });
+  const repo = project.repo?.name ?? null;
+  const keys = [...project.designs.map((d) => designKey(id, d)), ...(repo ? [`repo:${repo.toLowerCase()}`] : [])];
+  if (!deps.locks.tryLock(...keys)) {
+    return Response.json({ error: "A turn, or a clone or update of its repo, is running. Delete the project when it ends." }, { status: 409 });
+  }
+  try {
+    await rm(dir, { recursive: true, force: true });
+    if (repo && !all.some((p) => p.id !== id && p.repo?.name.toLowerCase() === repo.toLowerCase())) {
+      await rm(cloneDir(deps.workspace, repo), { recursive: true, force: true });
+    }
+  } finally {
+    deps.locks.unlock(...keys);
+  }
+  return Response.json({ id, ...(await commit(deps, [dir], `Delete project ${project.name}`)) });
 }

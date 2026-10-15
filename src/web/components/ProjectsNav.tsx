@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { sendJSON, type Active, type Load, type ProjectSummary } from "../api.ts";
+import { Confirm } from "./Confirm.tsx";
 
 /** What the inline editor is open for, if anything. */
 type Editing =
@@ -82,7 +83,7 @@ function InlineInput({ initial, label, placeholder, project, onSubmit, onCancel 
 }
 
 /** The projects drawer (⌘P): it opens over the chat, so navigation never takes canvas width. */
-export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onChanged, onClose, onExport, onImport }: {
+export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onChanged, onDeleted, onClose, onExport, onImport }: {
   projects: Load<ProjectSummary[]>;
   active: Active | null;
   workspace: Load<WorkspaceState>;
@@ -90,6 +91,8 @@ export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onCh
   onRetry: () => void;
   /** The project list changed; `open` is the design to open next, if any. */
   onChanged: (open?: Active) => void;
+  /** A project was deleted. */
+  onDeleted: (project: string) => void;
   onClose: () => void;
   /** Export one project to a file. */
   onExport: (project: string) => void;
@@ -97,6 +100,10 @@ export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onCh
   onImport: () => void;
 }) {
   const [editing, setEditing] = useState<Editing | null>(null);
+  /** The project that the delete question is open for. */
+  const [deleting, setDeleting] = useState<ProjectSummary | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   // Projects start open; the user can fold them.
   const [folded, setFolded] = useState<Set<string>>(new Set());
   const close = () => setEditing(null);
@@ -109,10 +116,25 @@ export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onCh
     });
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    // While the delete question is open, Esc closes only the question.
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !deleting && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, deleting]);
+
+  const deleteProject = async (p: ProjectSummary) => {
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      await sendJSON("DELETE", `/api/projects/${p.id}`);
+      setDeleting(null);
+      onDeleted(p.id);
+    } catch (e) {
+      setDeleteError((e as Error).message);
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
 
   const createProject = async (name: string) => {
     const r = await sendJSON<{ id: string; design: string }>("POST", "/api/projects", { name });
@@ -233,6 +255,16 @@ export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onCh
                     <button className="btn btn-ghost btn-sm nav-export" onClick={() => onExport(p.id)} title={`Export ${p.name} to a file`}>
                       Export
                     </button>
+                    <button
+                      className="btn btn-ghost btn-sm nav-export nav-delete"
+                      onClick={() => {
+                        setDeleteError(null);
+                        setDeleting(p);
+                      }}
+                      title={`Delete ${p.name}`}
+                    >
+                      Delete
+                    </button>
                     <span className="nav-count">{p.designs.length}</span>
                   </div>
                 )}
@@ -320,6 +352,18 @@ export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onCh
           </div>
         )}
       </div>
+      {deleting && (
+        <Confirm
+          title={`Delete ${deleting.name}?`}
+          body={`doi removes the project with its ${deleting.designs.length === 1 ? "design" : `${deleting.designs.length} designs`}, variants, chat and uploads${deleting.repo ? `, and the clone of ${deleting.repo.name} when no other project links it` : ""}. The workspace history keeps the old versions, so git can bring the project back.`}
+          action="Delete project"
+          danger
+          busy={deleteBusy}
+          error={deleteError}
+          onCancel={() => setDeleting(null)}
+          onConfirm={() => void deleteProject(deleting)}
+        />
+      )}
     </>
   );
 }
