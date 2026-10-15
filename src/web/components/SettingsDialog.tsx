@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { sendJSON, type AppConfig, type Load, type ProviderStatus } from "../api.ts";
+import { getJSON, sendJSON, type AppConfig, type Load, type ProviderStatus } from "../api.ts";
 import { providerName, statusOf, TASKS, type Task } from "../providers.ts";
 import type { ThemeChoice } from "../theme.ts";
 import type { WorkspaceState } from "./ProjectsNav.tsx";
@@ -31,6 +31,30 @@ const SHORTCUTS: [string, string][] = [
   ["Send / stop", `${MOD}↵  Esc`],
   ["Select the parent element", "⇧-click"],
 ];
+
+type ModelList = { state: "loading" } | { state: "ready"; models: string[] } | { state: "error"; message: string };
+
+/**
+ * The model ids of each provider that a task uses, from GET /api/providers/:id/models. A list
+ * loads again when its provider becomes ready (for example after a key was added).
+ */
+function useModelLists(ids: string[], providers: ProviderStatus[]): Record<string, ModelList> {
+  const [lists, setLists] = useState<Record<string, ModelList>>({});
+  const wanted = [...new Set(ids)].map((id) => `${id}:${providers.find((p) => p.id === id)?.ready ? 1 : 0}`).sort().join(",");
+  const loaded = useRef(new Set<string>());
+  useEffect(() => {
+    for (const entry of wanted.split(",").filter(Boolean)) {
+      if (loaded.current.has(entry)) continue;
+      loaded.current.add(entry);
+      const id = entry.slice(0, entry.lastIndexOf(":"));
+      setLists((l) => ({ ...l, [id]: l[id]?.state === "ready" ? l[id] : { state: "loading" } }));
+      getJSON<{ models: string[] }>(`/api/providers/${id}/models`)
+        .then(({ models }) => setLists((l) => ({ ...l, [id]: { state: "ready", models } })))
+        .catch((e: unknown) => setLists((l) => ({ ...l, [id]: { state: "error", message: e instanceof Error ? e.message : String(e) } })));
+    }
+  }, [wanted]);
+  return lists;
+}
 
 /** Settings (⌘,): the model per task (#61), the theme, the workspace and the shortcuts. */
 export function SettingsDialog({ config, providers, workspace, themeChoice, onTheme, onRecheck, onSaved, onClose, onExportWorkspace, onImport }: {
@@ -66,8 +90,14 @@ export function SettingsDialog({ config, providers, workspace, themeChoice, onTh
   const status = (id: string) => statusOf(list.find((p) => p.id === id));
   const changed = TASKS.some((t) => draft[t.id].provider !== config.models[t.id].provider || draft[t.id].model !== config.models[t.id].model);
   const valid = TASKS.every((t) => MODEL.test(draft[t.id].model.trim()));
-  // Model names the user has used, offered in each field.
-  const known = [...new Set(TASKS.flatMap((t) => [config.models[t.id].model, draft[t.id].model]).concat(Object.keys(config.prices).map((r) => r.split(":").slice(1).join(":"))))];
+  const lists = useModelLists(TASKS.map((t) => draft[t.id].provider), list);
+  // The provider's models first, then names the user has used with that provider.
+  const suggestions = (provider: string) => {
+    const l = lists[provider];
+    const used = TASKS.flatMap((t) => (config.models[t.id].provider === provider ? [config.models[t.id].model] : []))
+      .concat(Object.keys(config.prices).flatMap((r) => (r.startsWith(`${provider}:`) ? [r.slice(provider.length + 1)] : [])));
+    return [...new Set([...(l?.state === "ready" ? l.models : []), ...used])];
+  };
 
   const save = async () => {
     setBusy(true);
@@ -149,7 +179,8 @@ export function SettingsDialog({ config, providers, workspace, themeChoice, onTh
                           className="select task-provider"
                           value={d.provider}
                           aria-label={`${t.label} provider`}
-                          onChange={(e) => setTask(t.id, { provider: e.target.value })}
+                          // A model id of one provider means nothing to another: the field starts empty and lists the models.
+                          onChange={(e) => setTask(t.id, { provider: e.target.value, model: "" })}
                         >
                           {options.map((p) => (
                             <option key={p.id} value={p.id}>
@@ -159,13 +190,20 @@ export function SettingsDialog({ config, providers, workspace, themeChoice, onTh
                         </select>
                         <input
                           className="input mono task-model"
-                          list="doi-known-models"
+                          list={`doi-models-${t.id}`}
+                          placeholder={lists[d.provider]?.state === "loading" ? "Loading the models…" : "Select or type a model"}
+                          title={lists[d.provider]?.state === "error" ? `The models cannot load: ${(lists[d.provider] as { message: string }).message}` : undefined}
                           value={d.model}
                           aria-label={`${t.label} model`}
                           aria-invalid={!MODEL.test(d.model.trim())}
                           spellCheck={false}
                           onChange={(e) => setTask(t.id, { model: e.target.value })}
                         />
+                        <datalist id={`doi-models-${t.id}`}>
+                          {suggestions(d.provider).map((m) => (
+                            <option key={m} value={m} />
+                          ))}
+                        </datalist>
                         <span className="status task-status">
                           <span className={`dot ${TONE_DOT[s.tone]}`} />
                           {s.label}
@@ -173,14 +211,17 @@ export function SettingsDialog({ config, providers, workspace, themeChoice, onTh
                       </div>
                     );
                   })}
-                  <datalist id="doi-known-models">
-                    {known.map((m) => (
-                      <option key={m} value={m} />
-                    ))}
-                  </datalist>
                 </div>
+                {[...new Set(TASKS.map((t) => draft[t.id].provider))].map((id) => {
+                  const l = lists[id];
+                  return l?.state === "error" ? (
+                    <p key={id} className="settings-note" role="status">
+                      <span className="dot dot-warn" /> {providerName(id)}: the models cannot load. {l.message} Type a model id.
+                    </p>
+                  ) : null;
+                })}
                 <p className="settings-note">
-                  Menus list only providers that are ready. {config.configPath ? <>doi writes the choice to <span className="mono">{config.configPath}</span>, only its [models] lines.</> : "doi runs without a config file, so the choice lasts until it stops."}
+                  Menus list only providers that are ready. The model field lists the models of the provider; you can also type an id. {config.configPath ? <>doi writes the choice to <span className="mono">{config.configPath}</span>, only its [models] lines.</> : "doi runs without a config file, so the choice lasts until it stops."}
                 </p>
                 {error && (
                   <div className="banner banner-err" role="alert">

@@ -1,6 +1,7 @@
 import { DEFAULT_KEY_ENV, parseModelChoice, PROVIDERS, withModels, type Config, type ModelRef, type ModelTask, type ProviderId } from "../config.ts";
 import { checkKey, keyStore, type KeyStore } from "../providers/keys.ts";
 import { defaultLoginDeps, LOGIN_COMMANDS, startLogin, type LoginDeps } from "../providers/login.ts";
+import { defaultModelListDeps, listModels, type ModelListDeps } from "../providers/models.ts";
 import { usageEntries, type UsageEntry } from "../workspace/chat.ts";
 import { listProjects } from "../workspace/paths.ts";
 
@@ -101,4 +102,12 @@ export async function postProviderLogin(params: { id: string }, deps: LoginDeps 
   if (!PROVIDERS.includes(id) || !LOGIN_COMMANDS[id]) return fail("This provider has no OAuth login.", 404);
   const result = await startLogin(id, deps);
   return result.ok ? Response.json({ url: result.url }) : fail(result.error, 502);
+}
+
+/** GET /api/providers/:id/models: the model ids of a provider. The key stays on the server. */
+export async function getProviderModels(config: Config, params: { id: string }, deps: ModelListDeps = defaultModelListDeps): Promise<Response> {
+  const id = params.id as ProviderId;
+  if (!PROVIDERS.includes(id)) return fail("Unknown provider.", 404);
+  const list = await listModels(id, config, deps);
+  return list.ok ? Response.json({ models: list.models, fixed: list.fixed }) : fail(list.error, 502);
 }

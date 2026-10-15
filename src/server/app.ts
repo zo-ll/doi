@@ -13,7 +13,7 @@ import { deleteCommentRoute, getComments, patchComment, postComment } from "./co
 import { getDesignSystem, importFromRepo, importFromScreenshots, putProjectDesignSystem } from "./design-systems.ts";
 import { getExport } from "./export.ts";
 import { getHandoff, getPrompt, postBundle } from "./handoff.ts";
-import { configView, deleteProviderKey, getUsage, postProviderLogin, putModels, putProviderKey } from "./settings.ts";
+import { configView, deleteProviderKey, getProviderModels, getUsage, postProviderLogin, putModels, putProviderKey } from "./settings.ts";
 import { getTweaks, putTweaks } from "./tweaks.ts";
 import { MAX_IMPORT_BYTES, postExport, postImport, postImportInspect } from "./archive.ts";
 import { deleteProjectRepo, getGithubRepos, getGithubStatus, putProjectRepo, syncProjectRepo } from "./github.ts";
@@ -223,6 +223,7 @@ export async function startServer(config: Config, options: { port?: number; deve
         DELETE: (req) => deleteProviderKey(req.params),
       },
       "/api/providers/:id/login": { POST: (req) => postProviderLogin(req.params) },
+      "/api/providers/:id/models": (req) => getProviderModels(config, req.params),
       // The workspace path and its git state, for the projects navigator. `changes` is null without git.
       "/api/workspace": async () => Response.json({ path: config.workspace, changes: await workspaceChanges(config.workspace) }),
       "/api/events": (req, srv) => designEvents(watcher, req, srv),
