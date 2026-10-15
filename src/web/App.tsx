@@ -560,6 +560,17 @@ export function App() {
                   preview={history.preview?.sha ?? null}
                   onPreview={history.setPreview}
                   onRestore={() => setAskRestore(true)}
+                  busy={history.busy}
+                  onReopen={(v) => {
+                    history.reopenVariants(v).then(
+                      () => {
+                        history.setPreview(null);
+                        variants.reload();
+                        setToast("The variants are back. Pick one on the canvas.");
+                      },
+                      (e: Error) => setToast(e.message),
+                    );
+                  }}
                   onRetry={history.reload}
                 />
               )}

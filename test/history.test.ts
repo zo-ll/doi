@@ -3,11 +3,12 @@ import { mkdir, mkdtemp } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getHistory, restoreVersion, type VersionView } from "../src/server/history.ts";
+import { getHistory, reopenVariants, restoreVersion, type VersionView } from "../src/server/history.ts";
 import { DesignLocks, designKey } from "../src/server/locks.ts";
 import { appendChat, appendCommit, commitModels, readChat } from "../src/workspace/chat.ts";
 import { commitPaths, commitTurn, designFileAt, designFilesAt, designLog, ensureRepo } from "../src/workspace/git.ts";
 import { designDir } from "../src/workspace/paths.ts";
+import { openSet, pickVariant, removeSet, setDir } from "../src/workspace/variants.ts";
 
 const saved = { global: process.env.GIT_CONFIG_GLOBAL, nosystem: process.env.GIT_CONFIG_NOSYSTEM };
 beforeAll(async () => {
@@ -119,5 +120,49 @@ describe("version history", () => {
     expect((await restoreVersion(deps(), { ...params, sha: first!.sha })).status).toBe(409);
     expect(await read("index.html")).toBe('<h1 data-oid="t">Two</h1>');
     expect((await getHistory(deps(), { project: "p", design: "nope" })).status).toBe(404);
+  });
+});
+
+describe("reopen variants", () => {
+  const SET = "20261015-blue";
+  /** A set with two variants, committed; then a pick of variant 2 that removes it. */
+  async function pickTwo(): Promise<string> {
+    const folder = setDir(ws, "p", "d", SET);
+    for (const n of [1, 2]) await Bun.write(join(folder, String(n), "index.html"), `<h1 data-oid="t">Variant ${n}</h1>`);
+    await Bun.write(join(folder, "set.json"), JSON.stringify({ id: SET, prompt: "Make it blue", variants: [{ n: 1, status: "done" }, { n: 2, status: "done" }] }));
+    await commitPaths(ws, [folder], "Variants: Make it blue");
+    await pickVariant(ws, "p", "d", SET, 2);
+    await removeSet(ws, "p", "d", SET);
+    const sha = await commitPaths(ws, [dir, folder], "Pick variant 2: Make it blue");
+    return sha!;
+  }
+
+  test("brings the set back as it was before the pick and commits it; the design stays", async () => {
+    const pick = await pickTwo();
+    expect(await openSet(ws, "p", "d")).toBeNull();
+    const res = await reopenVariants(deps(), { ...params, sha: pick.slice(0, 7) });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ set: SET, commit: expect.stringMatching(/^[0-9a-f]{40}$/) });
+    expect((await openSet(ws, "p", "d"))?.prompt).toBe("Make it blue");
+    expect(await Bun.file(join(setDir(ws, "p", "d", SET), "1", "index.html")).text()).toContain("Variant 1");
+    expect(await read("index.html")).toContain("Variant 2");
+    // The folder is committed: nothing stays uncommitted.
+    expect((await Bun.$`git status --porcelain`.cwd(ws).text()).trim()).toBe("");
+    expect((await Bun.$`git log -1 --format=%s`.cwd(ws).text()).trim()).toBe("Reopen variants: Make it blue");
+  });
+
+  test("only a pick, only without open variants or a running turn", async () => {
+    const pick = await pickTwo();
+    const turn = (await designLog(ws, "p", "d")).find((v) => v.message === "Second page")!;
+    expect((await reopenVariants(deps(), { ...params, sha: turn.sha })).status).toBe(400);
+    expect((await reopenVariants(deps(), { ...params, sha: "nothex" })).status).toBe(400);
+    expect((await reopenVariants(deps(), { ...params, sha: "f".repeat(40) })).status).toBe(404);
+    open = true;
+    expect((await reopenVariants(deps(), { ...params, sha: pick })).status).toBe(409);
+    open = false;
+    locks.tryLock(designKey("p", "d"));
+    expect((await reopenVariants(deps(), { ...params, sha: pick })).status).toBe(409);
+    expect(await openSet(ws, "p", "d")).toBeNull();
   });
 });
