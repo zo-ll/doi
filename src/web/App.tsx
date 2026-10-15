@@ -217,6 +217,8 @@ export function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Chrome sends a keydown without a key when the user picks a datalist or autofill entry.
+      if (typeof e.key !== "string") return;
       const mod = e.metaKey || e.ctrlKey;
       if (e.key === "Escape" && !(e.target instanceof HTMLTextAreaElement)) {
         setSelection(null);

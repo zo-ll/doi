@@ -60,7 +60,7 @@ export function keyEnvFor(id: ProviderId, config: Pick<Config, "providers">): st
 }
 
 /** A model name that goes to a CLI as an argument: it must not look like a flag. */
-const MODEL_NAME = /^[A-Za-z0-9._@/][A-Za-z0-9._:@/-]{0,99}$/;
+export const MODEL_NAME = /^[A-Za-z0-9._@/][A-Za-z0-9._:@/-]{0,99}$/;
 
 /** A model the user chose in the UI ("<provider>:<model>"), or the reason it is not valid. */
 export function parseModelChoice(raw: unknown): ModelRef | string {

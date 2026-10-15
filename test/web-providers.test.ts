@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ProviderStatus } from "../src/providers/status.ts";
-import { shortModel, statusOf, taskStatuses } from "../src/web/providers.ts";
+import { defaultMethod, methodsOf, shortModel, statusOf, taskStatuses, vendorOf, VENDORS } from "../src/web/providers.ts";
 
 const p = (over: Partial<ProviderStatus>): ProviderStatus => ({ id: "claude-code", source: "cli", ready: true, detail: "Logged in", implemented: true, ...over });
 
@@ -35,4 +35,20 @@ test("short model names", () => {
   expect(shortModel("claude-haiku-5-5")).toBe("Haiku 5.5");
   expect(shortModel("gpt-6-luna")).toBe("gpt-6-luna");
   expect(shortModel("claude-opus")).toBe("claude-opus");
+});
+
+test("every provider belongs to one vendor, with its methods in order", () => {
+  const ids = VENDORS.flatMap((v) => Object.values(v.methods));
+  expect(new Set(ids).size).toBe(ids.length);
+  expect(ids.toSorted()).toEqual(["anthropic", "claude-code", "codex", "google", "ollama", "openai", "opencode-go", "openrouter"]);
+  expect(methodsOf(vendorOf("codex"))).toEqual(["oauth", "api_key"]);
+  expect(methodsOf(vendorOf("opencode-go"))).toEqual(["api_key"]);
+  expect(vendorOf("nobody").id).toBe("anthropic");
+});
+
+test("the first method shown is one that is ready", () => {
+  const anthropic = vendorOf("anthropic");
+  expect(defaultMethod(anthropic, [])).toBe("oauth");
+  expect(defaultMethod(anthropic, [p({ ready: false }), p({ id: "anthropic", source: "api_key", ready: true })])).toBe("api_key");
+  expect(defaultMethod(anthropic, [p({}), p({ id: "anthropic", source: "api_key", ready: true })])).toBe("oauth");
 });

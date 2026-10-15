@@ -33,9 +33,13 @@ export interface Active {
 /** Result of an async load, so each view can show its loading, error and ready states. */
 export type Load<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: T };
 
+/** Gets JSON. Throws with the server's error message when it gives one. */
 export async function getJSON<T>(url: string): Promise<T> {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { error?: unknown } | null;
+    throw new Error(typeof data?.error === "string" ? data.error : `${res.status} ${res.statusText}`);
+  }
   return res.json() as Promise<T>;
 }
 

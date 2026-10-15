@@ -135,6 +135,6 @@ describe("anthropic provider", () => {
     const config = parseConfig({ providers: { anthropic: { api_key_env: "DOI_TEST_MISSING_KEY" } } });
     const provider = createAnthropic(config);
     expect(provider.capabilities.promptCache).toBe("explicit");
-    await expect(collect(provider.generate(req))).rejects.toThrow("Set DOI_TEST_MISSING_KEY");
+    await expect(collect(provider.generate(req))).rejects.toThrow("or set DOI_TEST_MISSING_KEY.");
   });
 });

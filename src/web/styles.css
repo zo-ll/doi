@@ -1328,3 +1328,14 @@ a:hover { color: var(--text); }
 .archive-list h4 + p, .archive-list p + h4 { margin-top: var(--space-1); }
 .archive-list p { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: baseline; }
 .archive-list .mono { font-size: var(--text-xs); }
+
+/* Settings: connect a provider with OAuth or an API key. */
+.provider-auth { border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.provider-auth-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2-5); padding: var(--space-2-5) var(--space-3); border-bottom: 1px solid var(--line); }
+.provider-auth-head > .select { width: 160px; }
+.provider-auth-body { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); font-size: var(--text-control); }
+.provider-auth-body p { margin: 0; line-height: var(--leading); }
+.provider-auth-body a { color: var(--accent); }
+.key-form { display: flex; gap: var(--space-2); }
+.key-form > .input { flex: 1; min-width: 0; }
+.per-task-toggle { align-self: flex-start; margin-top: var(--space-1); }

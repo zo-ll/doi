@@ -10,7 +10,7 @@ Agents working on the repo: start with [docs/agent-handoff.md](docs/agent-handof
 
 In progress (M5, breadth). The core loop (M1), precision tools (M2), design systems (M3) and the handoff (M4) work. See [docs/agent-handoff.md](docs/agent-handoff.md).
 
-doi uses your subscriptions through the official CLIs by default: `claude-code:<model>` (`claude -p`) and `codex:<model>` (`codex exec`). Log in to the CLI first. API keys are optional; see `config.example.toml`.
+doi uses your subscriptions through the official CLIs by default: `claude-code:<model>` (`claude -p`) and `codex:<model>` (`codex exec`). Log in to the CLI first, or use the Log in button in Settings. To use an API key, select the provider in Settings (Models and providers), select API key, and paste the key. doi keeps it in the system keychain, or in `~/.config/doi/credentials.json` (mode 0600) when there is no keychain. An environment variable (see `config.example.toml`) wins over a stored key.
 
 ## Run
 
