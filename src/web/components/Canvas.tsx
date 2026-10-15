@@ -645,6 +645,7 @@ export function Canvas({
   useEffect(() => {
     if (!active) return;
     const handle = (e: KeyboardEvent, down: boolean) => {
+      if (typeof e.key !== "string") return; // a datalist or autofill pick
       if (typing(e.target) || (e.target instanceof HTMLButtonElement && e.key === " ")) return;
       // A dialog over the canvas has the keys.
       if (document.querySelector('[aria-modal="true"]')) return;

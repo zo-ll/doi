@@ -1338,3 +1338,4 @@ a:hover { color: var(--text); }
 .provider-auth-body a { color: var(--accent); }
 .key-form { display: flex; gap: var(--space-2); }
 .key-form > .input { flex: 1; min-width: 0; }
+.per-task-toggle { align-self: flex-start; margin-top: var(--space-1); }

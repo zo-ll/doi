@@ -32,6 +32,15 @@ const SHORTCUTS: [string, string][] = [
   ["Select the parent element", "⇧-click"],
 ];
 
+/** The same provider and model for every task. */
+function sameForAll(ref: { provider: string; model: string }): AppConfig["models"] {
+  return Object.fromEntries(TASKS.map((t) => [t.id, { ...ref }])) as AppConfig["models"];
+}
+
+function allSame(models: AppConfig["models"]): boolean {
+  return TASKS.every((t) => models[t.id].provider === models.generate.provider && models[t.id].model === models.generate.model);
+}
+
 type ModelList = { state: "loading" } | { state: "ready"; models: string[] } | { state: "error"; message: string };
 
 /**
@@ -116,9 +125,16 @@ export function SettingsDialog({ config, providers, workspace, themeChoice, onTh
       setBusy(false);
     }
   };
-  const setTask = (task: Task, patch: Partial<{ provider: string; model: string }>) => {
-    setDraft((d) => ({ ...d, [task]: { ...d[task], ...patch } }));
+  const setTask = (task: Task | "all", patch: Partial<{ provider: string; model: string }>) => {
+    setDraft((d) => (task === "all" ? sameForAll({ ...d.generate, ...patch }) : { ...d, [task]: { ...d[task], ...patch } }));
     setSaved(false);
+  };
+  // One model for all tasks, unless the config already uses different ones.
+  const [perTask, setPerTask] = useState(() => !allSame(config.models));
+  const rows: { id: Task | "all"; label: string; hint: string }[] = perTask ? TASKS : [{ id: "all", label: "All tasks", hint: "Generate, edit, extract" }];
+  const togglePerTask = () => {
+    if (perTask) setTask("all", {});
+    setPerTask((p) => !p);
   };
 
   return (
@@ -163,10 +179,10 @@ export function SettingsDialog({ config, providers, workspace, themeChoice, onTh
                   doi never shows a key or an account detail. A key that you add goes to the system keychain, or to a file that only you can read when there is no keychain. An OAuth login goes through the official CLI, which keeps the token.
                 </p>
 
-                <h4>Model per task</h4>
+                <h4>Model</h4>
                 <div className="task-list">
-                  {TASKS.map((t) => {
-                    const d = draft[t.id];
+                  {rows.map((t) => {
+                    const d = t.id === "all" ? draft.generate : draft[t.id];
                     const s = status(d.provider);
                     const options = ready.some((p) => p.id === d.provider) ? ready : [...ready, ...list.filter((p) => p.id === d.provider)];
                     return (
@@ -212,6 +228,9 @@ export function SettingsDialog({ config, providers, workspace, themeChoice, onTh
                     );
                   })}
                 </div>
+                <button className="btn btn-ghost btn-md per-task-toggle" onClick={togglePerTask}>
+                  {perTask ? "Use one model for all tasks" : "Use a different model per task"}
+                </button>
                 {[...new Set(TASKS.map((t) => draft[t.id].provider))].map((id) => {
                   const l = lists[id];
                   return l?.state === "error" ? (
@@ -232,7 +251,10 @@ export function SettingsDialog({ config, providers, workspace, themeChoice, onTh
                 <div className="settings-actions">
                   {saved && !changed && <span className="status">Saved. The next turn uses these models.</span>}
                   <span className="spacer" />
-                  <button className="btn btn-ghost" disabled={!changed || busy} onClick={() => setDraft(config.models)}>
+                  <button className="btn btn-ghost" disabled={!changed || busy} onClick={() => {
+                      setDraft(config.models);
+                      setPerTask(!allSame(config.models));
+                    }}>
                     Reset
                   </button>
                   <button className="btn btn-primary" disabled={!changed || !valid || busy} onClick={() => void save()}>
