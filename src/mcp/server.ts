@@ -173,7 +173,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
           [png] = (await (deps.render ?? renderPngs)(result.html, [chosen], { scale: 1, fullPage: true })) as [Buffer];
         } catch (e) {
           const text = e instanceof Error ? e.message : String(e);
-          throw new ToolError(/Executable doesn't exist|browser/i.test(text) ? "doi has no Chromium. Run `bun run install-browser` in doi." : text);
+          throw new ToolError(/Executable doesn't exist|browser/i.test(text) ? "doi has no Chromium. Run `doi install-browser` (from the source: `bun run install-browser`)." : text);
         }
         return {
           content: [

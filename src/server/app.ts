@@ -1,4 +1,6 @@
 import index from "../web/index.html";
+// Text import: the compiled binary has no source folder to read the bridge from.
+import bridgeSource from "../frame/bridge.js" with { type: "text" };
 import type { Config } from "../config.ts";
 import { join } from "node:path";
 import { getProvider } from "../providers/registry.ts";
@@ -104,7 +106,8 @@ export async function startServer(config: Config, options: { port?: number; deve
   });
 
   const BRIDGE_TAG = `<script src="/__doi/bridge.js"></script>`;
-  const bridge = Bun.file(new URL("../frame/bridge.js", import.meta.url).pathname);
+  // TypeScript types the text import of a .js file as the module; Bun gives its text.
+  const bridge = bridgeSource as unknown as string;
 
   /** Serves a file of a page folder. Injects the bridge script into HTML pages. */
   async function servePage(url: URL, dir: () => string, rest: string[]): Promise<Response> {

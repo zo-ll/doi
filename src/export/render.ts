@@ -44,7 +44,7 @@ async function launch(): Promise<Browser> {
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     if (/Executable doesn't exist/i.test(message)) {
-      throw new ExportError("Chromium for Playwright is not installed. Run: bun run install-browser", 503);
+      throw new ExportError("Chromium for Playwright is not installed. Run: doi install-browser (from the source: bun run install-browser)", 503);
     }
     throw e;
   }
