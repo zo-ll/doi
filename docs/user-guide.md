@@ -78,7 +78,7 @@ doi reads `config.toml` from the folder where you start it. All keys are optiona
 | `[models]` | Claude Code models | The model for each task: `generate`, `edit`, `extract` |
 | `[prices]` | | Prices in USD for each 1M tokens, for the usage report |
 
-Settings (Ctrl/⌘ + ,) in the app writes the `[models]` lines and the `[prices]` table. The other lines and your comments stay as they are.
+Settings (Ctrl/⌘ + ,) in the app writes only the `[models]` lines. The import of a `.doi.zip` file with its settings can also write the `[prices]` table. The other lines and your comments stay as they are. To change the prices, edit `config.toml`.
 
 ## Providers and models
 
@@ -188,7 +188,7 @@ A design system gives the model your tokens, components and rules. Open Design s
 
 - **Import from a repo:** give the path of a local repo. doi reads its theme files, token files, stylesheets and main components, and the `extract` model writes the design system. doi does not read files that look like secrets.
 - **Import from screenshots:** give 1 to 5 screenshots and optional notes. The `extract` model needs vision.
-- **Use for a project:** select "Use for <project>". The pages of the project then link the tokens and component styles of the design system.
+- **Use for a project:** select "Use in <project>". The pages of the project then link the tokens and component styles of the design system.
 
 A design system is a folder in `design-systems/<name>/` with these optional files: `tokens.css`, `components.html`, `components.css`, `rules.md`, `fonts/` and `screenshots/`. You can edit them in your editor.
 
@@ -259,7 +259,7 @@ The agent reads the design from doi while it works. Keep doi running until the a
 
 The prompt tells the agent to read the design through the tools, to use the framework and components of your repo, and to run the checks of your repo.
 
-For an agent that cannot reach doi, for example an agent in the cloud, use the "Handoff bundle (ZIP)" tab. The bundle contains a `HANDOFF.md` file, the design files, screenshots of each page and frame, and the tokens.
+For an agent that cannot reach doi, for example an agent in the cloud, use the "Handoff bundle (ZIP)" tab. The bundle contains a `HANDOFF.md` file, the design files, screenshots of each page and frame, and `tokens.css` when the design or its design system has tokens.
 
 ![Hand off: the MCP URL and the prompt for a coding agent](images/handoff.png)
 
@@ -271,7 +271,7 @@ The workspace is a git repository. doi commits each change with your own git ide
 workspace/
 ├── projects/
 │   └── <project>/
-│       ├── project.json          # name, frames, design system, linked repo
+│       ├── project.json          # name, layouts (the frames), design system, linked repo
 │       ├── chat.jsonl            # one line for each chat message
 │       ├── designs/
 │       │   └── <design>/
@@ -308,7 +308,7 @@ On macOS, use ⌘ in place of Ctrl.
 | Undo the last canvas edit | Ctrl + Z |
 | Select the parent element | Shift-click |
 
-Settings → Shortcuts also shows this list.
+Settings → Shortcuts shows the same list without Ctrl + Z.
 
 ## Troubleshooting
 

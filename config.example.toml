@@ -8,6 +8,8 @@
 
 workspace = "./workspace"
 port = 4317
+# The link that opens a design system file in your editor; {path} is the file path.
+# editor_url = "vscode://file{path}"
 
 [providers.anthropic]
 api_key_env = "ANTHROPIC_API_KEY"
