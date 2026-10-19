@@ -96,6 +96,40 @@ describe("blocks inside code fences", () => {
   });
 });
 
+describe("review fixes", () => {
+  test("a fence with a file name right after a block opens the next block for that file", () => {
+    const events = parseSearchReplace(block("styles.css", "a", "b") + "```index.html\n<<<<<<< SEARCH\nc\n=======\nd\n>>>>>>> REPLACE\n```\n");
+    expect(changes(events).map((e) => e.file)).toEqual(["styles.css", "index.html"]);
+    expect(text(events)).toBe("");
+  });
+
+  test("a code sample right after a block keeps its opening fence", () => {
+    const events = parseSearchReplace(block("styles.css", "a", "b") + "```css\n.card { }\n```\nDone.");
+    expect(text(events)).toBe("```css\n.card { }\n```\nDone.");
+  });
+
+  test("many empty lines and fences between the file name and SEARCH", () => {
+    const reply = block("styles.css", "a", "b") + "Then the page:\nindex.html\n\n\n\n\n```\n\n<<<<<<< SEARCH\nc\n=======\nd\n>>>>>>> REPLACE\n";
+    const events = parseSearchReplace(reply);
+    expect(changes(events).map((e) => e.file)).toEqual(["styles.css", "index.html"]);
+    expect(text(events)).toBe("Then the page:\n");
+  });
+
+  test("a held line goes out as text when the next text line comes", () => {
+    const p = new SearchReplaceParser();
+    expect(text(p.push("First line\n"))).toBe("");
+    expect(text(p.push("\n\n"))).toBe("");
+    expect(text(p.push("Second line\n"))).toBe("First line\n\n\n");
+    expect(text(p.end())).toBe("Second line\n");
+  });
+
+  test("CRLF line ends", () => {
+    const events = parseSearchReplace("Done.\r\nstyles.css\r\n<<<<<<< SEARCH\r\na\r\nb\r\n=======\r\nc\r\n>>>>>>> REPLACE\r\n");
+    expect(changes(events)).toEqual([{ type: "edit", file: "styles.css", oldText: "a\nb", newText: "c" }]);
+    expect(text(events)).toBe("Done.\n");
+  });
+});
+
 describe("broken blocks", () => {
   const broken = (reply: string, message: string) => {
     expect(() => parseSearchReplace(reply)).toThrow(SearchReplaceError);

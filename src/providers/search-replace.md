@@ -17,5 +17,5 @@ Rules:
 - The REPLACE section is the new text. To delete text, leave the REPLACE section empty.
 - To create a new file, or to replace a whole file, leave the SEARCH section empty and put the full content in the REPLACE section.
 - Use one block for each change. A file can have many blocks. Each block needs its file name.
-- Do not put other text inside a block. A code fence around a block is permitted.
+- Do not put other text inside a block. You can put a code fence around a block.
 - After the blocks, reply with one to three sentences that say what you changed.

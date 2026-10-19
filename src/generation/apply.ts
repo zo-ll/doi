@@ -3,6 +3,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { GenerateEvent, GenerateRequest, Message, Provider } from "../providers/types.ts";
 import { designFile, fileIn } from "../workspace/paths.ts";
+import { capabilitiesFor } from "./context.ts";
 
 export type FileChange = Extract<GenerateEvent, { type: "edit" } | { type: "write" }>;
 
@@ -182,7 +183,7 @@ export async function* runTurn(provider: Provider, req: GenerateRequest, ref: De
     return;
   }
 
-  const toolUse = (provider.forModel?.(req.model) ?? provider.capabilities).toolUse;
+  const toolUse = capabilitiesFor(provider, req.model).toolUse;
   let messages = req.messages;
   for (let attempt = 1; ; attempt++) {
     const changes: FileChange[] = [];

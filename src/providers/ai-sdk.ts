@@ -1,7 +1,7 @@
 import { streamText, tool, type LanguageModel, type ModelMessage, type SystemModelMessage } from "ai";
 import { z } from "zod";
 import { SEARCH_REPLACE_PROMPT, SearchReplaceError, SearchReplaceParser, type ParsedEvent } from "./search-replace.ts";
-import type { GenerateEvent, GenerateRequest, Message } from "./types.ts";
+import type { GenerateEvent, GenerateRequest, Message, ProviderCapabilities } from "./types.ts";
 
 /**
  * The model proposes file changes through these tools. They have no `execute`:
@@ -65,17 +65,18 @@ export class ProviderError extends Error {
 }
 
 /**
- * Runs one generation and maps the AI SDK stream to GenerateEvent. With `toolUse: false`, the
- * model gets no tools: a system part after the system prompt asks for SEARCH/REPLACE blocks
- * (#58), and the parser turns them into edit and write events.
+ * Runs one generation and maps the AI SDK stream to GenerateEvent. `capabilities` are the
+ * provider's capabilities for this model, the same that runTurn() reads. With `toolUse: false`,
+ * the model gets no tools: a system part after the system prompt asks for SEARCH/REPLACE
+ * blocks (#58), and the parser turns them into edit and write events.
  */
 export async function* streamDesign(
   model: LanguageModel,
   req: GenerateRequest,
+  capabilities: Pick<ProviderCapabilities, "toolUse">,
   cacheMarker?: CacheMarker,
-  options: { toolUse?: boolean } = {},
 ): AsyncGenerator<GenerateEvent> {
-  const blocks = options.toolUse === false ? new SearchReplaceParser() : null;
+  const blocks = capabilities.toolUse ? null : new SearchReplaceParser();
   const system = blocks ? [...req.system.slice(0, 1), SEARCH_REPLACE_PROMPT.text, ...req.system.slice(1)] : req.system;
   const parsed = (run: () => ParsedEvent[]): ParsedEvent[] => {
     try {
