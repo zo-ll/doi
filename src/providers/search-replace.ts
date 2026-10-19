@@ -18,6 +18,8 @@ const SEARCH = /^\s*<{5,9} ?SEARCH\s*$/;
 const DIVIDER = /^\s*={5,9}\s*$/;
 const REPLACE = /^\s*>{5,9} ?REPLACE\s*$/;
 const FENCE = /^\s*(```|~~~)/;
+/** A fence without info: the line that closes a code fence. */
+const BARE_FENCE = /^\s*(```|~~~)\s*$/;
 /** A design file path: letters, digits, `.`, `_`, `-` and `/`, with an extension. */
 const PATH = /^[\w.-]+(\/[\w.-]+)*\.[A-Za-z0-9]+$/;
 
@@ -41,10 +43,9 @@ interface Held {
   newline: boolean;
 }
 
-/** Lines that can be the header of a block: a fence, a file name, a fence, an empty line. */
-const HEADER_LINES = 4;
-
 const blank = (line: string) => !line.trim();
+/** A line between the file name and the SEARCH line: empty, or a fence without a file name. */
+const between = (line: string) => blank(line) || (FENCE.test(line) && !fileName(line));
 
 /**
  * A streaming parser. `push()` takes text as it arrives and returns the events that are
@@ -68,7 +69,7 @@ export class SearchReplaceParser {
     const out: ParsedEvent[] = [];
     const lines = (this.partial + chunk).split("\n");
     this.partial = lines.pop() ?? "";
-    for (const line of lines) this.line(line, true, out);
+    for (const line of lines) this.line(line.endsWith("\r") ? line.slice(0, -1) : line, true, out);
     return out;
   }
 
@@ -99,10 +100,26 @@ export class SearchReplaceParser {
     if (REPLACE.test(line)) throw new SearchReplaceError("A >>>>>>> REPLACE line has no SEARCH block before it.");
     if (this.afterBlock) {
       this.afterBlock = false;
-      if (FENCE.test(line)) return;
+      // Only a bare fence closes the fence around the block. A fence with a file name opens the
+      // next block, and a fence with a language opens a code sample in the text.
+      if (BARE_FENCE.test(line)) return;
     }
     this.held.push({ line, newline });
-    this.flush(out, this.held.length - HEADER_LINES);
+    this.flush(out, this.header().start);
+  }
+
+  /**
+   * The held lines that can still be the header of a block: the last line that is not empty
+   * and not a bare fence, the lines after it, and a fence before it. `name` is its file name.
+   */
+  private header(): { start: number; name: string | null } {
+    let start = this.held.length;
+    while (start > 0 && between(this.held[start - 1]!.line)) start--;
+    if (start === 0) return { start, name: null };
+    start--;
+    const name = fileName(this.held[start]!.line);
+    if (start > 0 && FENCE.test(this.held[start - 1]!.line)) start--;
+    return { start, name };
   }
 
   /** Sends the first `n` held lines as text. */
@@ -117,13 +134,13 @@ export class SearchReplaceParser {
    * file of the block before.
    */
   private open(out: ParsedEvent[]) {
-    let start = this.held.length;
-    const skip = (line: string) => blank(line) || (FENCE.test(line) && !fileName(line));
-    while (start > 0 && skip(this.held[start - 1]!.line)) start--;
-    const name = start > 0 ? fileName(this.held[start - 1]!.line) : null;
-    if (name) {
-      start--;
-      if (start > 0 && FENCE.test(this.held[start - 1]!.line)) start--;
+    const header = this.header();
+    const name = header.name;
+    // Without a file name, the last held line is text; only the empty lines and fences after it go.
+    let start = header.start;
+    if (!name) {
+      start = this.held.length;
+      while (start > 0 && between(this.held[start - 1]!.line)) start--;
     }
     this.flush(out, start);
     this.held = [];

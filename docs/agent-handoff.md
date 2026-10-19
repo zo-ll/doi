@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-10-19, SEARCH/REPLACE fallback (#58, branch `generation/search-replace`). Tests: 453 pass, 1 skip. M2, M3 and M4 have no open issues; the M1 and M4 gates are still open. `bun check`: no errors.
+Last update: 2026-10-19, SEARCH/REPLACE review fixes (#58, branch `generation/search-replace-fixes`). Tests: 458 pass, 1 skip. M2, M3 and M4 have no open issues; the M1 and M4 gates are still open. `bun check`: no errors.
 
 ## 1. What doi is
 
@@ -87,8 +87,8 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 | `src/web/frame.ts` | `parseFrameMessage()`: checks each bridge message (the page runs its own scripts); `trackMessage()` |
 | `src/web/` | React UI (Bun HTML import, no Vite). All sizes and colors in `tokens.css`; only 1px hairlines are literal |
 | `src/providers/types.ts` | `Provider`, `GenerateRequest`, `GenerateEvent`, capabilities incl. `editsFiles` |
-| `src/providers/ai-sdk.ts` | Shared AI SDK helper: a cache marker on each system part (max 4), `edit`/`write` tools without `execute`, stream mapping. `streamDesign(…, { toolUse: false })` sends no tools, puts `SEARCH_REPLACE_PROMPT` after the system prompt and parses the text (#58) |
-| `src/providers/search-replace.ts`, `search-replace.md` | SEARCH/REPLACE blocks (#58) for models without tool use: `SearchReplaceParser` (streaming, line by line): the file name on the line before `<<<<<<< SEARCH` (also `**x**`, `` `x` ``, `### x`, `File: x`, `x:`, fence info), 5–9 marker signs, an empty SEARCH = `write`, a block without a name = the file before, fences around a block are dropped, text outside blocks passes through in whole lines. A broken block throws (`SearchReplaceError` → `ProviderError`), so no change is dropped silently. `runTurn()` words its retries for blocks when the model has `toolUse: false` |
+| `src/providers/ai-sdk.ts` | Shared AI SDK helper: a cache marker on each system part (max 4), `edit`/`write` tools without `execute`, stream mapping. `streamDesign(model, req, capabilities, cacheMarker?)`: every adapter passes its capabilities for the model, the same that `runTurn()` reads through `capabilitiesFor()`. With `toolUse: false` it sends no tools, puts `SEARCH_REPLACE_PROMPT` after the system prompt and parses the text (#58) |
+| `src/providers/search-replace.ts`, `search-replace.md` | SEARCH/REPLACE blocks (#58) for models without tool use: `SearchReplaceParser` (streaming, line by line): the file name on the line before `<<<<<<< SEARCH` (also `**x**`, `` `x` ``, `### x`, `File: x`, `x:`, fence info), 5–9 marker signs, an empty SEARCH = `write`, a block without a name = the file before, a bare fence right after a block closes its fence (a fence with a file name or a language stays), CRLF line ends become LF, text outside blocks passes through in whole lines (a line waits until the next line that is not empty or a fence). A broken block throws (`SearchReplaceError` → `ProviderError`), so no change is dropped silently. `runTurn()` words its retries for blocks when the model has `toolUse: false` |
 | `src/providers/anthropic.ts` | Anthropic API key adapter |
 | `src/providers/openai.ts` | OpenAI API key adapter (Responses API, automatic cache) |
 | `src/providers/opencode-go.ts`, `opencode-go-formats.ts` | OpenCode Go: three wire formats chosen per model. Base `https://opencode.ai/inference/go/v1`. Each request sends `user-agent: doi/…` and `x-opencode-session` (OpenCode Go refuses to route without it): `GenerateRequest.session`, which `runTurn()` fills with `sessionId()` (a hash of workspace, project and design, so one id per design chat) |
@@ -152,7 +152,7 @@ Still open for a manual run: #72 OpenCode Go, only if the user has an OpenCode G
 
 Next, in this order:
 
-1. M5 (breadth), in this order: #58 SEARCH/REPLACE fallback (PR open on `generation/search-replace`), then the adapters #57 Ollama, #56 OpenRouter, #55 Gemini. v1.2 (#67) and Later (#68, #75) wait.
+1. M5 (breadth), in this order: the adapters #57 Ollama, #56 OpenRouter, #55 Gemini. v1.2 (#67) and Later (#68, #75) wait.
 2. M4 (handoff): #46, #47, #48, #49, #53 and #54 are done. On 2026-10-14 the user removed the harness layer: doi does not start coding agents. #50, #51 and #52 are closed as not planned. The handoff is the prompt plus the MCP server. The top bar "Hand off" button opens the Export dialog at the agent prompt. Open: the M4 gate (one design through a coding agent into a real repo of the user). Every export and the handoff bundle (#49) must copy or inline the `/ds/<name>/` files that pages link: reuse `exportFolder()`/`exportPage()` from `src/export/html.ts`.
 3. Still open for the user: the M1 gate (one real design), and #72 if they have an OpenCode Go key.
 

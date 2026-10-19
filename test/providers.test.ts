@@ -30,6 +30,9 @@ const req: GenerateRequest = {
   messages: [{ role: "user", content: [{ type: "text", text: "Make the button blue" }] }],
 };
 
+const TOOLS = { toolUse: true };
+const NO_TOOLS = { toolUse: false };
+
 async function collect(gen: AsyncIterable<GenerateEvent>): Promise<GenerateEvent[]> {
   const out: GenerateEvent[] = [];
   for await (const e of gen) out.push(e);
@@ -48,7 +51,7 @@ describe("streamDesign without tool use (#58)", () => {
     const { model, calls } = mockModel(
       text(["Bluer button.\nstyles.css\n<<<<<<< SEA", "RCH\n--accent: red\n=======\n--accent: blue\n>>>>>>> REPLACE\n", "Done."]),
     );
-    const events = await collect(streamDesign(model, req, undefined, { toolUse: false }));
+    const events = await collect(streamDesign(model, req, NO_TOOLS));
     expect(events).toEqual([
       { type: "text", delta: "Bluer button.\n" },
       { type: "edit", file: "styles.css", oldText: "--accent: red", newText: "--accent: blue" },
@@ -63,12 +66,12 @@ describe("streamDesign without tool use (#58)", () => {
 
   test("a broken block is a ProviderError", async () => {
     const { model } = mockModel(text(["styles.css\n<<<<<<< SEARCH\n--accent: red\n"]));
-    await expect(collect(streamDesign(model, req, undefined, { toolUse: false }))).rejects.toThrow(ProviderError);
+    await expect(collect(streamDesign(model, req, NO_TOOLS))).rejects.toThrow(ProviderError);
   });
 
   test("with tool use, block text stays text", async () => {
     const { model, calls } = mockModel(text(["styles.css\n<<<<<<< SEARCH\na\n=======\nb\n>>>>>>> REPLACE\n"]));
-    const events = await collect(streamDesign(model, req));
+    const events = await collect(streamDesign(model, req, TOOLS));
     expect(events.filter((e) => e.type === "edit")).toEqual([]);
     expect(calls[0].tools.map((t: any) => t.name)).toEqual(["edit", "write"]);
   });
@@ -96,7 +99,7 @@ describe("streamDesign", () => {
       finish,
     ]);
 
-    expect(await collect(streamDesign(model, req))).toEqual([
+    expect(await collect(streamDesign(model, req, TOOLS))).toEqual([
       { type: "text", delta: "Changing " },
       { type: "text", delta: "the button." },
       { type: "edit", file: "styles.css", oldText: "--accent: red", newText: "--accent: blue" },
@@ -111,19 +114,19 @@ describe("streamDesign", () => {
       { type: "tool-call", toolCallId: "c1", toolName: "edit", input: JSON.stringify({ file: "a.css" }) },
       finish,
     ]);
-    await expect(collect(streamDesign(model, req))).rejects.toBeInstanceOf(ProviderError);
+    await expect(collect(streamDesign(model, req, TOOLS))).rejects.toBeInstanceOf(ProviderError);
   });
 
   test("fails on a stream error", async () => {
     const { model } = mockModel([{ type: "error", error: new Error("overloaded") }]);
-    await expect(collect(streamDesign(model, req))).rejects.toThrow("overloaded");
+    await expect(collect(streamDesign(model, req, TOOLS))).rejects.toThrow("overloaded");
   });
 
   test("an aborted signal stops the run with an AbortError", async () => {
     const controller = new AbortController();
     controller.abort();
     const { model } = mockModel([{ type: "text-start", id: "t1" }, finish]);
-    await expect(collect(streamDesign(model, { ...req, signal: controller.signal }))).rejects.toMatchObject({
+    await expect(collect(streamDesign(model, { ...req, signal: controller.signal }, TOOLS))).rejects.toMatchObject({
       name: "AbortError",
     });
   });
@@ -131,7 +134,7 @@ describe("streamDesign", () => {
   test("sends system parts as separate messages, each with the cache marker", async () => {
     const { model, calls } = mockModel([finish]);
     const marker = { anthropic: { cacheControl: { type: "ephemeral" } } };
-    await collect(streamDesign(model, req, marker));
+    await collect(streamDesign(model, req, TOOLS, marker));
 
     const system = calls[0].prompt.filter((m: any) => m.role === "system");
     expect(system.map((m: any) => m.content)).toEqual(["rules", "design system and current files"]);

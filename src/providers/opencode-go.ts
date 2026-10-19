@@ -64,8 +64,8 @@ export function createOpenCodeGo(config: Config, deps: OpenCodeGoDeps = {}): Pro
         // A request without a conversation (a manual check) gets its own id.
         model(format, req.model, apiKey, baseURL, req.session ?? crypto.randomUUID(), deps),
         req,
+        capabilities(req.model),
         format === "messages" ? ANTHROPIC_CACHE : undefined,
-        { toolUse: capabilities(req.model).toolUse },
       );
     },
   };
