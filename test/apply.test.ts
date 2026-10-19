@@ -88,11 +88,11 @@ describe("applyChanges", () => {
 });
 
 /** A provider that answers each call with the next list of events, and records the requests. */
-function scripted(answers: GenerateEvent[][], editsFiles = false) {
+function scripted(answers: GenerateEvent[][], editsFiles = false, toolUse = true) {
   const requests: GenerateRequest[] = [];
   const provider: Provider = {
     id: "anthropic",
-    capabilities: { vision: true, toolUse: true, promptCache: "explicit", maxContextTokens: 200_000, editsFiles },
+    capabilities: { vision: true, toolUse, promptCache: "explicit", maxContextTokens: 200_000, editsFiles },
     async *generate(req) {
       requests.push(req);
       const answer = answers[requests.length - 1];
@@ -143,6 +143,22 @@ describe("runTurn", () => {
     expect(events.filter((e) => e.type === "retry")).toHaveLength(2);
     expect(requests[2]!.messages.at(-1)).toMatchObject({ content: [{ text: expect.stringContaining('Use write with the full new content for "styles.css"') }] });
     expect(await read("styles.css")).toBe("h1 { color: blue; }\n");
+  });
+
+  test("without tool use, the retries ask in the words of SEARCH/REPLACE blocks", async () => {
+    const missing = { type: "edit", file: "gone.css", oldText: "a", newText: "b" } as const;
+    const { provider, requests } = scripted([[bad, missing], [bad], [good]], false, false);
+    await run(provider);
+    const first = requests[1]!.messages.slice(-2);
+    expect(first[0]).toMatchObject({ content: [{ text: expect.stringContaining("(SEARCH/REPLACE blocks: edit styles.css, edit gone.css)") }] });
+    const ask1 = (first[1]!.content[0] as { text: string }).text;
+    expect(ask1).toContain('- The SEARCH section does not occur in "styles.css"');
+    expect(ask1).toContain("Use a block with an empty SEARCH section to create it.");
+    expect(ask1).toContain("Copy each SEARCH section exactly");
+    expect(ask1).not.toContain("oldText");
+    const ask2 = (requests[2]!.messages.at(-1)!.content[0] as { text: string }).text;
+    expect(ask2).toContain('For "styles.css", use a block with an empty SEARCH section and the full new content');
+    expect(ask2).not.toContain("Use write");
   });
 
   test("a third failure throws and leaves the files unchanged", async () => {

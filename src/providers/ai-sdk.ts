@@ -1,5 +1,6 @@
 import { streamText, tool, type LanguageModel, type ModelMessage, type SystemModelMessage } from "ai";
 import { z } from "zod";
+import { SEARCH_REPLACE_PROMPT, SearchReplaceError, SearchReplaceParser, type ParsedEvent } from "./search-replace.ts";
 import type { GenerateEvent, GenerateRequest, Message } from "./types.ts";
 
 /**
@@ -63,17 +64,31 @@ export class ProviderError extends Error {
   override name = "ProviderError";
 }
 
-/** Runs one generation and maps the AI SDK stream to GenerateEvent. */
+/**
+ * Runs one generation and maps the AI SDK stream to GenerateEvent. With `toolUse: false`, the
+ * model gets no tools: a system part after the system prompt asks for SEARCH/REPLACE blocks
+ * (#58), and the parser turns them into edit and write events.
+ */
 export async function* streamDesign(
   model: LanguageModel,
   req: GenerateRequest,
   cacheMarker?: CacheMarker,
+  options: { toolUse?: boolean } = {},
 ): AsyncGenerator<GenerateEvent> {
+  const blocks = options.toolUse === false ? new SearchReplaceParser() : null;
+  const system = blocks ? [...req.system.slice(0, 1), SEARCH_REPLACE_PROMPT.text, ...req.system.slice(1)] : req.system;
+  const parsed = (run: () => ParsedEvent[]): ParsedEvent[] => {
+    try {
+      return run();
+    } catch (e) {
+      throw e instanceof SearchReplaceError ? new ProviderError(e.message) : e;
+    }
+  };
   const result = streamText({
     model,
-    instructions: toInstructions(req.system, cacheMarker),
+    instructions: toInstructions(system, cacheMarker),
     messages: toModelMessages(req.messages),
-    tools: designTools,
+    ...(blocks ? {} : { tools: designTools }),
     abortSignal: req.signal,
     // Errors arrive as "error" parts below and are thrown to the caller; skip the SDK's console log.
     onError: () => {},
@@ -82,7 +97,9 @@ export async function* streamDesign(
   for await (const part of result.stream) {
     switch (part.type) {
       case "text-delta":
-        if (part.text) yield { type: "text", delta: part.text };
+        if (!part.text) break;
+        if (blocks) yield* parsed(() => blocks.push(part.text));
+        else yield { type: "text", delta: part.text };
         break;
       case "tool-call": {
         if (part.invalid || part.dynamic) {
@@ -102,6 +119,7 @@ export async function* streamDesign(
       case "abort":
         throw new DOMException("The generation was stopped.", "AbortError");
       case "finish":
+        if (blocks) yield* parsed(() => blocks.end());
         yield {
           type: "usage",
           inputTokens: part.totalUsage.inputTokens ?? 0,

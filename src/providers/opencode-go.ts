@@ -65,6 +65,7 @@ export function createOpenCodeGo(config: Config, deps: OpenCodeGoDeps = {}): Pro
         model(format, req.model, apiKey, baseURL, req.session ?? crypto.randomUUID(), deps),
         req,
         format === "messages" ? ANTHROPIC_CACHE : undefined,
+        { toolUse: capabilities(req.model).toolUse },
       );
     },
   };

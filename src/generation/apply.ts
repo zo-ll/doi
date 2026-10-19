@@ -127,9 +127,29 @@ function describeFailures(failures: ChangeFailure[]): string {
 }
 
 /** What the model said and proposed in a failed attempt, as text for the next attempt. */
-function attemptSummary(text: string, changes: FileChange[]): Message {
+function attemptSummary(text: string, changes: FileChange[], toolUse: boolean): Message {
   const calls = changes.map((c) => (c.type === "edit" ? `edit ${c.file}` : `write ${c.file}`)).join(", ");
-  return { role: "assistant", content: [{ type: "text", text: `${text}\n\n(Tool calls: ${calls})`.trim() }] };
+  return { role: "assistant", content: [{ type: "text", text: `${text}\n\n(${toolUse ? "Tool calls" : "SEARCH/REPLACE blocks"}: ${calls})`.trim() }] };
+}
+
+/** A failure message of applyChanges in the words of SEARCH/REPLACE blocks. */
+const inBlockWords = (failures: string) =>
+  failures
+    .replaceAll("has an empty oldText", "has an empty SEARCH section")
+    .replaceAll(/^- oldText /gm, "- The SEARCH section ")
+    .replaceAll("Use write to create it.", "Use a block with an empty SEARCH section to create it.");
+
+/** What runTurn asks after failed changes, in the words of the model's change format. */
+function retryRequest(attempt: number, failures: string, files: string, toolUse: boolean): string {
+  if (!toolUse) failures = inBlockWords(failures);
+  if (attempt === 1) {
+    const copy = toolUse ? "Copy each oldText exactly from the current files." : "Copy each SEARCH section exactly from the current files.";
+    return `None of your changes were applied, because these failed:\n${failures}\n\nThe design files are unchanged. Send all the changes of this turn again. ${copy}`;
+  }
+  const whole = toolUse
+    ? `Use write with the full new content for ${files}, not edit.`
+    : `For ${files}, use a block with an empty SEARCH section and the full new content in the REPLACE section.`;
+  return `None of your changes were applied again:\n${failures}\n\n${whole} Send all the other changes of this turn again too.`;
 }
 
 /**
@@ -162,6 +182,7 @@ export async function* runTurn(provider: Provider, req: GenerateRequest, ref: De
     return;
   }
 
+  const toolUse = (provider.forModel?.(req.model) ?? provider.capabilities).toolUse;
   let messages = req.messages;
   for (let attempt = 1; ; attempt++) {
     const changes: FileChange[] = [];
@@ -183,12 +204,7 @@ export async function* runTurn(provider: Provider, req: GenerateRequest, ref: De
 
     yield { type: "retry", attempt, failures: result.failures };
     const files = [...new Set(result.failures.map((f) => f.file))].map((f) => `"${f}"`).join(", ");
-    const ask =
-      attempt === 1
-        ? `None of your changes were applied, because these failed:\n${describeFailures(result.failures)}\n\n` +
-          "The design files are unchanged. Send all the changes of this turn again. Copy each oldText exactly from the current files."
-        : `None of your changes were applied again:\n${describeFailures(result.failures)}\n\n` +
-          `Use write with the full new content for ${files}, not edit. Send all the other changes of this turn again too.`;
-    messages = [...messages, attemptSummary(text, changes), { role: "user", content: [{ type: "text", text: ask }] }];
+    const ask = retryRequest(attempt, describeFailures(result.failures), files, toolUse);
+    messages = [...messages, attemptSummary(text, changes, toolUse), { role: "user", content: [{ type: "text", text: ask }] }];
   }
 }
