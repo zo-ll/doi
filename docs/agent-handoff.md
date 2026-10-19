@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-10-19, direct canvas editing (#66) is merged (PR #120). Tests: 422 pass, 1 skip. M2, M3 and M4 have no open issues; the M1 and M4 gates are still open. `bun check`: no errors.
+Last update: 2026-10-19, README and user guide (#64, branch `docs/readme-guide`). Tests: 422 pass, 1 skip. M2, M3 and M4 have no open issues; the M1 and M4 gates are still open. `bun check`: no errors.
 
 ## 1. What doi is
 
@@ -149,7 +149,7 @@ Still open for a manual run: #72 OpenCode Go, only if the user has an OpenCode G
 
 Next, in this order:
 
-1. M5 (breadth), in this order: #64 README and user guide, #63 single binary, #58 SEARCH/REPLACE fallback, then the adapters #57 Ollama, #56 OpenRouter, #55 Gemini. v1.2 (#67) and Later (#68, #75) wait.
+1. M5 (breadth), in this order: #64 README and user guide (PR open on `docs/readme-guide`; keep `docs/user-guide.md` current when a feature changes), #63 single binary, #58 SEARCH/REPLACE fallback, then the adapters #57 Ollama, #56 OpenRouter, #55 Gemini. v1.2 (#67) and Later (#68, #75) wait.
 2. M4 (handoff): #46, #47, #48, #49, #53 and #54 are done. On 2026-10-14 the user removed the harness layer: doi does not start coding agents. #50, #51 and #52 are closed as not planned. The handoff is the prompt plus the MCP server. The top bar "Hand off" button opens the Export dialog at the agent prompt. Open: the M4 gate (one design through a coding agent into a real repo of the user). Every export and the handoff bundle (#49) must copy or inline the `/ds/<name>/` files that pages link: reuse `exportFolder()`/`exportPage()` from `src/export/html.ts`.
 3. Still open for the user: the M1 gate (one real design), and #72 if they have an OpenCode Go key.
 
