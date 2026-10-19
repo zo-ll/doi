@@ -4,6 +4,7 @@ import { MockLanguageModelV4 } from "ai/test";
 import { parseConfig } from "../src/config.ts";
 import { createAnthropic } from "../src/providers/anthropic.ts";
 import { ProviderError, streamDesign, toInstructions, toModelMessages } from "../src/providers/ai-sdk.ts";
+import { SEARCH_REPLACE_PROMPT } from "../src/providers/search-replace.ts";
 import type { GenerateEvent, GenerateRequest } from "../src/providers/types.ts";
 
 const usage = {
@@ -34,6 +35,44 @@ async function collect(gen: AsyncIterable<GenerateEvent>): Promise<GenerateEvent
   for await (const e of gen) out.push(e);
   return out;
 }
+
+describe("streamDesign without tool use (#58)", () => {
+  const text = (deltas: string[]) => [
+    { type: "text-start", id: "t1" },
+    ...deltas.map((delta) => ({ type: "text-delta", id: "t1", delta })),
+    { type: "text-end", id: "t1" },
+    finish,
+  ];
+
+  test("sends no tools, asks for blocks after the system prompt, and parses them", async () => {
+    const { model, calls } = mockModel(
+      text(["Bluer button.\nstyles.css\n<<<<<<< SEA", "RCH\n--accent: red\n=======\n--accent: blue\n>>>>>>> REPLACE\n", "Done."]),
+    );
+    const events = await collect(streamDesign(model, req, undefined, { toolUse: false }));
+    expect(events).toEqual([
+      { type: "text", delta: "Bluer button.\n" },
+      { type: "edit", file: "styles.css", oldText: "--accent: red", newText: "--accent: blue" },
+      { type: "text", delta: "Done." },
+      { type: "usage", inputTokens: 120, outputTokens: 30, cachedTokens: 100 },
+      { type: "done" },
+    ]);
+    expect(calls[0].tools ?? []).toEqual([]);
+    const system = calls[0].prompt.filter((m: any) => m.role === "system").map((m: any) => m.content);
+    expect(system).toEqual(["rules", SEARCH_REPLACE_PROMPT.text, "design system and current files"]);
+  });
+
+  test("a broken block is a ProviderError", async () => {
+    const { model } = mockModel(text(["styles.css\n<<<<<<< SEARCH\n--accent: red\n"]));
+    await expect(collect(streamDesign(model, req, undefined, { toolUse: false }))).rejects.toThrow(ProviderError);
+  });
+
+  test("with tool use, block text stays text", async () => {
+    const { model, calls } = mockModel(text(["styles.css\n<<<<<<< SEARCH\na\n=======\nb\n>>>>>>> REPLACE\n"]));
+    const events = await collect(streamDesign(model, req));
+    expect(events.filter((e) => e.type === "edit")).toEqual([]);
+    expect(calls[0].tools.map((t: any) => t.name)).toEqual(["edit", "write"]);
+  });
+});
 
 describe("streamDesign", () => {
   test("maps text, edit and write calls, usage and done", async () => {
