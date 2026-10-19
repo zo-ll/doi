@@ -26,9 +26,11 @@ describe("frame messages", () => {
       margins: { top: 4, right: 0, bottom: 4, left: 0 },
       extra: { x: 24, y: 16 },
       siblings: [{ oid: "b", rect: r }, { oid: "bad id", rect: r }, { oid: "c", rect: { x: 1 } }],
+      index: 2,
     };
     expect(parseFrameMessage({ type: "doi:rects", selected: r, layout, hover: null })).toMatchObject({
-      layout: { ...layout, siblings: [{ oid: "b", rect: r }] },
+      // The index stays within the siblings that are left.
+      layout: { ...layout, siblings: [{ oid: "b", rect: r }], index: 1 },
     });
     expect(parseFrameMessage({ type: "doi:rects", selected: r, layout: { ...layout, kind: "table" }, hover: null })).toMatchObject({ layout: null });
     // No layout without a selection.

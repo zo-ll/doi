@@ -78,20 +78,10 @@ export function dropTarget(layout: Layout, p: { x: number; y: number }): Drop | 
   return { target: best.oid, position, line };
 }
 
-/** True when the drop changes nothing: the element is already there. */
-export function sameSpot(layout: Layout, self: Rect, drop: Drop): boolean {
-  const all = [...layout.siblings, { oid: "", rect: self }];
-  const horizontal = layout.direction === "row" || layout.direction === "grid";
-  const key = (r: Rect) => (horizontal ? [r.y, r.x] : [r.y]);
-  // Siblings in their visual order: by row, then by x for row and grid layouts.
-  all.sort((a, b) => {
-    const ka = key(a.rect);
-    const kb = key(b.rect);
-    return ka[0]! - kb[0]! || (ka[1] ?? 0) - (kb[1] ?? 0);
-  });
-  const i = all.findIndex((s) => s.oid === "");
-  const t = all.findIndex((s) => s.oid === drop.target);
-  return drop.position === "before" ? t === i + 1 : t === i - 1;
+/** True when the drop changes nothing: in DOM order, the element is already there. */
+export function sameSpot(layout: Layout, drop: Drop): boolean {
+  const t = layout.siblings.findIndex((s) => s.oid === drop.target);
+  return drop.position === "before" ? t === layout.index : t === layout.index - 1;
 }
 
 /**

@@ -50,6 +50,9 @@ export function checkStyle(raw: unknown): ElementStyle {
   return out;
 }
 
+/** Stands in for the characters of a comment in a rule body. */
+const MASK = "\u0001";
+
 const ruleSelector = (oid: string) => `[data-oid="${oid}"]`;
 
 /**
@@ -69,8 +72,19 @@ export function withElementStyle(css: string, oid: string, style: ElementStyle):
       if (depth === 0) {
         const start = Math.max(plain.lastIndexOf("}", i), plain.lastIndexOf(";", i)) + 1;
         if (plain.slice(start, i).trim() === selector) {
-          const close = plain.indexOf("}", i);
+          // The matching brace: a nested rule (`& .child { … }`) is not the end of this one.
+          let close = -1;
+          for (let k = i + 1, d = 1; k < plain.length; k++) {
+            if (plain[k] === "{") d++;
+            else if (plain[k] === "}" && --d === 0) {
+              close = k;
+              break;
+            }
+          }
           if (close < 0) throw new EditError("styles.css has an open rule.", 409);
+          if (plain.slice(i + 1, close).includes("{")) {
+            throw new EditError(`The rule of ${oid} in styles.css has nested rules. Change it in the file.`, 409);
+          }
           found = { start, open: i, close };
         }
       }
@@ -83,16 +97,31 @@ export function withElementStyle(css: string, oid: string, style: ElementStyle):
     const body = set.map(([p, v]) => `  ${p}: ${v};`).join("\n");
     return `${css}${css.endsWith("\n") || !css ? "" : "\n"}\n${selector} {\n${body}\n}\n`;
   }
+  // The body as written, and the same body with its comments blanked: the search runs on the
+  // blanked one, the change goes into both at the same place.
+  // Comments are masked with a character that is not whitespace, so a trim keeps them.
   let body = css.slice(found.open + 1, found.close);
+  let bare = body.replace(/\/\*[\s\S]*?\*\//g, (c) => MASK.repeat(c.length));
+  /** Replaces `length` characters at `at`: the first `keep` of them stay (each copy its own), then `text`. */
+  const splice = (at: number, length: number, keep: number, text: string) => {
+    body = body.slice(0, at + keep) + text + body.slice(at + length);
+    bare = bare.slice(0, at + keep) + text + bare.slice(at + length);
+  };
   for (const [prop, value] of Object.entries(style) as [StyleProp, string | null][]) {
     // After the start of the body or a ";", so "max-width" is not "width".
-    const decl = new RegExp(`(^|;)(\\s*)${prop}\\s*:[^;]*(;?)`);
-    if (decl.test(body)) {
-      body = body.replace(decl, (_all, lead: string, space: string, end: string) => (value === null ? lead : `${lead}${space}${prop}: ${value}${end || ";"}`));
+    // Comments between the ";" and the property stay where they are.
+    const m = new RegExp(`(^|;)([\\s${MASK}]*)${prop}\\s*:[^;]*(;?)`).exec(bare);
+    if (m) {
+      const [all, lead, space, end] = m as unknown as [string, string, string, string];
+      if (value === null) splice(m.index, all.length, lead.length + space.replace(/\s*$/, "").length, "");
+      else splice(m.index, all.length, lead.length + space.length, `${prop}: ${value}${end || ";"}`);
     } else if (value !== null) {
-      const indent = /\n([ \t]+)\S/.exec(body)?.[1] ?? "  ";
-      const trimmed = body.replace(/\s*$/, "");
-      body = `${trimmed}${trimmed.trim() && !trimmed.endsWith(";") ? ";" : ""}\n${indent}${prop}: ${value};\n`;
+      const indent = /\n([ \t]+)\S/.exec(bare)?.[1] ?? "  ";
+      const keep = bare.replace(/\s*$/, "").length;
+      // A ";" only when the last declaration has none (a comment after it does not count).
+      const last = bare.slice(0, keep).replace(new RegExp(`[\\s${MASK}]*$`), "");
+      const semi = last.trim() && !last.endsWith(";") ? ";" : "";
+      splice(keep, bare.length - keep, 0, `${semi}\n${indent}${prop}: ${value};\n`);
     }
   }
   // Blank lines that a removed declaration left.
@@ -105,13 +134,14 @@ export function withElementStyle(css: string, oid: string, style: ElementStyle):
 }
 
 interface Found {
-  /** Position in the open-element stack's parent, as a unique node. */
+  /** The open parent element, as a unique node (null at the top of the page). */
   parent: object | null;
-  /** False when the end tag was left out (`<li>` without `</li>`): such an element cannot be cut out. */
-  closed: boolean;
+  tag: string;
+  /** A void element (`<img>`) has no content and no end tag. */
+  void: boolean;
 }
 
-/** The parent and the end tag of each element with one of the ids. */
+/** The parent and the tag of each element with one of the ids. */
 async function locate(html: string, oids: string[]): Promise<Map<string, Found[]>> {
   const found = new Map<string, Found[]>();
   const open: { tag: string; node: object }[] = [];
@@ -121,17 +151,13 @@ async function locate(html: string, oids: string[]): Promise<Map<string, Found[]
         const tag = el.tagName.toLowerCase();
         if (el.namespaceURI === HTML_NS) closeImplied(open, tag);
         const oid = el.getAttribute("data-oid");
-        let entry: Found | null = null;
         if (oid && oids.includes(oid)) {
-          entry = { parent: open.at(-1)?.node ?? null, closed: !el.canHaveContent };
-          found.set(oid, [...(found.get(oid) ?? []), entry]);
+          found.set(oid, [...(found.get(oid) ?? []), { parent: open.at(-1)?.node ?? null, tag, void: !el.canHaveContent }]);
         }
         if (!el.canHaveContent) return;
         const item = { tag, node: {} };
         open.push(item);
-        // One end tag handler per element: a second call replaces the first.
         el.onEndTag(() => {
-          if (entry) entry.closed = true;
           const at = open.lastIndexOf(item);
           if (at >= 0) open.splice(at);
         });
@@ -142,7 +168,44 @@ async function locate(html: string, oids: string[]): Promise<Map<string, Found[]
   return found;
 }
 
+/**
+ * True when `piece` is exactly one element `tag` with its own end tag (or one void element).
+ * HTMLRewriter places a marker after an implied end (`<p>` without `</p>`) at the parent's end
+ * tag or after a sibling, so a cut between markers must be checked before it is used.
+ */
+async function wholeElement(piece: string, tag: string, isVoid: boolean): Promise<boolean> {
+  const open: { tag: string }[] = [];
+  let top = 0;
+  let text = false;
+  await new HTMLRewriter()
+    .on("*", {
+      element(el) {
+        const name = el.tagName.toLowerCase();
+        if (el.namespaceURI === HTML_NS) closeImplied(open, name);
+        if (!open.length) top++;
+        if (!el.canHaveContent) return;
+        const item = { tag: name };
+        open.push(item);
+        el.onEndTag(() => {
+          const at = open.lastIndexOf(item);
+          if (at >= 0) open.splice(at);
+        });
+      },
+    })
+    .onDocument({
+      text(chunk) {
+        if (!open.length && chunk.text.trim()) text = true;
+      },
+    })
+    .transform(new Response(piece))
+    .text();
+  if (top !== 1 || text) return false;
+  return isVoid || new RegExp(`</${tag}\\s*>$`, "i").test(piece);
+}
+
 export type Position = "before" | "after";
+
+const NO_END_TAG = "This element has no end tag in the HTML, so it cannot move. Add the end tag, then try again.";
 
 /** Moves the element `oid` before or after its sibling `target`. Both must have an end tag in the source. */
 export async function moveElement(html: string, oid: string, target: string, position: Position): Promise<string> {
@@ -158,10 +221,7 @@ export async function moveElement(html: string, oid: string, target: string, pos
   const from = one(oid);
   const to = one(target);
   if (from.parent !== to.parent) throw new EditError(`${oid} and ${target} are not in the same parent.`, 409);
-  if (!from.closed || (position === "after" && !to.closed)) {
-    throw new EditError("This element has no end tag in the HTML, so it cannot move.", 409);
-  }
-  // Markers around the element and at the target; then cut and paste between them.
+  // Markers around the element and at the target (around it for "after"); then cut and paste between them.
   const nonce = crypto.randomUUID();
   const mark = (name: string) => `<!--doi-move-${nonce}-${name}-->`;
   const marked = await new HTMLRewriter()
@@ -173,19 +233,33 @@ export async function moveElement(html: string, oid: string, target: string, pos
           el.after(mark("b"), { html: true });
         } else if (id === target) {
           if (position === "before") el.before(mark("t"), { html: true });
-          else el.after(mark("t"), { html: true });
+          else {
+            el.before(mark("s"), { html: true });
+            el.after(mark("t"), { html: true });
+          }
         }
       },
     })
     .transform(new Response(html))
     .text();
+  const between = (from: string, to: string) => {
+    const x = marked.indexOf(mark(from));
+    const y = marked.indexOf(mark(to));
+    return x >= 0 && y > x ? marked.slice(x + mark(from).length, y) : null;
+  };
+  const piece = between("a", "b");
+  if (piece === null || !(await wholeElement(piece, from.tag, from.void))) throw new EditError(NO_END_TAG, 409);
+  if (position === "after") {
+    const targetPiece = between("s", "t");
+    if (targetPiece === null || !(await wholeElement(targetPiece.replace(mark("a"), "").replace(mark("b"), ""), to.tag, to.void))) {
+      throw new EditError("The target has no end tag in the HTML. Drop the element before it, or add the end tag.", 409);
+    }
+  }
   const a = marked.indexOf(mark("a"));
   const b = marked.indexOf(mark("b"));
-  if (a < 0 || b < a) throw new EditError("The element could not be cut out.", 409);
   // The whitespace before the element (its indent) moves with it.
   const space = /\s*$/.exec(marked.slice(0, a))![0];
-  const piece = marked.slice(a + mark("a").length, b);
-  const rest = marked.slice(0, a - space.length) + marked.slice(b + mark("b").length);
+  const rest = (marked.slice(0, a - space.length) + marked.slice(b + mark("b").length)).replace(mark("s"), "");
   const t = rest.indexOf(mark("t"));
   if (t < 0) throw new EditError("The target could not be found.", 409);
   const moved = position === "before" ? piece + space : space + piece;

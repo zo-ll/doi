@@ -1,8 +1,9 @@
 import { join } from "node:path";
 import { checkStyle, EditError, moveElement, OID, spacingScale, withElementStyle, type ElementStyle, type Position } from "../workspace/element-edit.ts";
 import { activeDesignSystem } from "../workspace/design-systems.ts";
-import { designLog, isSha } from "../workspace/git.ts";
-import { restoreDesign } from "../workspace/history.ts";
+import { rm } from "node:fs/promises";
+import { CHANGED_AFTER } from "../workspace/edit-messages.ts";
+import { changedFiles, designFileAt, designLog, isSha } from "../workspace/git.ts";
 import { designDir, designFile } from "../workspace/paths.ts";
 import { designKey, type DesignLocks } from "./locks.ts";
 
@@ -17,6 +18,8 @@ export interface EditDeps {
 
 type Params = { project: string; design: string };
 const fail = (message: string, status = 400) => Response.json({ error: message }, { status });
+
+const BUSY = "Another change runs on this design (a turn, a rename or an edit). Try again when it ends.";
 
 /** Commit messages of direct edits start with this; only such a commit can be undone. */
 export const EDIT_PREFIX = "Edit ";
@@ -80,7 +83,7 @@ export async function postEdit(deps: EditDeps, req: Request, params: Params): Pr
   }
   if (await deps.variantsOpen(params)) return fail("This design has open variants. Pick one or discard them first.", 409);
   const key = designKey(params.project, params.design);
-  if (!deps.locks.tryLock(key)) return fail("A turn or a rename runs on this design. Try again when it ends.", 409);
+  if (!deps.locks.tryLock(key)) return fail(BUSY, 409);
   try {
     let path: string;
     let message: string;
@@ -100,8 +103,9 @@ export async function postEdit(deps: EditDeps, req: Request, params: Params): Pr
       await Bun.write(path, await moveElement(await Bun.file(path).text(), body.oid, body.move.target, body.move.position));
       message = `${EDIT_PREFIX}${body.oid}: move ${body.move.position} ${body.move.target}`;
     }
+    // Only the changed file: other changes in the design folder stay out of this version, and an undo leaves them.
     try {
-      return Response.json({ commit: await deps.commit([dir], message) });
+      return Response.json({ commit: await deps.commit([path], message) });
     } catch (e) {
       return Response.json({ commit: null, commitError: e instanceof Error ? e.message : String(e) });
     }
@@ -114,8 +118,8 @@ export async function postEdit(deps: EditDeps, req: Request, params: Params): Pr
 }
 
 /**
- * POST …/designs/:design/edit/undo { commit }: puts the design back as it was before the
- * direct edit `commit`, as a new version. Only the newest version of the design can be undone.
+ * POST …/designs/:design/edit/undo { commit }: puts the files of the direct edit `commit` back
+ * as they were before it, as a new version. Only the newest version of the design can be undone.
  */
 export async function undoEdit(deps: EditDeps, req: Request, params: Params): Promise<Response> {
   const dir = await dirOf(deps.workspace, params);
@@ -124,17 +128,26 @@ export async function undoEdit(deps: EditDeps, req: Request, params: Params): Pr
   if (typeof sha !== "string" || !isSha(sha)) return fail("commit must be a commit id.");
   if (await deps.variantsOpen(params)) return fail("This design has open variants. Pick one or discard them first.", 409);
   const key = designKey(params.project, params.design);
-  if (!deps.locks.tryLock(key)) return fail("A turn or a rename runs on this design. Try again when it ends.", 409);
+  if (!deps.locks.tryLock(key)) return fail(BUSY, 409);
   try {
     const [last, before] = await designLog(deps.workspace, params.project, params.design, 2);
     if (!last || !last.sha.startsWith(sha) || !last.message.startsWith(EDIT_PREFIX)) {
-      return fail("The design changed after this edit. Use History to restore an older version.", 409);
+      return fail(`${CHANGED_AFTER} Use History to restore an older version.`, 409);
     }
-    if (!before || !(await restoreDesign(deps.workspace, params.project, params.design, before.sha))) {
-      return fail("There is no version before this edit.", 409);
+    if (!before) return fail("There is no version before this edit.", 409);
+    const files = await changedFiles(deps.workspace, last.sha, dir);
+    const paths: string[] = [];
+    for (const f of files) {
+      const path = designFile(deps.workspace, params.project, params.design, f);
+      if (!path) continue;
+      const data = await designFileAt(deps.workspace, params.project, params.design, before.sha, f);
+      if (data) await Bun.write(path, data);
+      else await rm(path, { force: true });
+      paths.push(path);
     }
+    if (!paths.length) return fail("This edit changed no files of the design.", 409);
     try {
-      return Response.json({ commit: await deps.commit([dir], `Undo ${last.message}`) });
+      return Response.json({ commit: await deps.commit(paths, `Undo ${last.message}`) });
     } catch (e) {
       return Response.json({ commit: null, commitError: e instanceof Error ? e.message : String(e) });
     }

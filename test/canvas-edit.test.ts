@@ -4,7 +4,7 @@ import type { Layout } from "../src/web/frame.ts";
 
 const scale = { unit: 4, steps: [{ px: 0, var: null }, { px: 4, var: "--space-1" }, { px: 8, var: "--space-2" }, { px: 16, var: "--space-4" }] };
 const box = (x: number, y: number, width = 100, height = 40) => ({ x, y, width, height });
-const base: Layout = { kind: "flow", direction: "column", margins: { top: 0, right: 0, bottom: 0, left: 0 }, extra: { x: 0, y: 0 }, siblings: [] };
+const base: Layout = { kind: "flow", direction: "column", margins: { top: 0, right: 0, bottom: 0, left: 0 }, extra: { x: 0, y: 0 }, siblings: [], index: 0 };
 
 describe("snapping", () => {
   test("sizes snap to the unit; margins to the nearest step, with its variable", () => {
@@ -34,7 +34,7 @@ describe("snapping", () => {
 });
 
 describe("drop target", () => {
-  const row: Layout = { ...base, kind: "flex", direction: "row", siblings: [{ oid: "a", rect: box(0, 0) }, { oid: "c", rect: box(220, 0) }] };
+  const row: Layout = { ...base, kind: "flex", direction: "row", siblings: [{ oid: "a", rect: box(0, 0) }, { oid: "c", rect: box(220, 0) }], index: 1 };
 
   test("nearest sibling, before or after along the axis", () => {
     expect(dropTarget(row, { x: 240, y: 20 })).toEqual({ target: "c", position: "before", line: { x: 219, y: 0, width: 2, height: 40 } });
@@ -44,12 +44,16 @@ describe("drop target", () => {
     expect(dropTarget(base, { x: 0, y: 0 })).toBeNull();
   });
 
-  test("a drop next to the element's own spot changes nothing", () => {
-    const self = box(110, 0);
-    expect(sameSpot(row, self, { target: "a", position: "after", line: self })).toBe(true);
-    expect(sameSpot(row, self, { target: "c", position: "before", line: self })).toBe(true);
-    expect(sameSpot(row, self, { target: "a", position: "before", line: self })).toBe(false);
-    expect(sameSpot(row, self, { target: "c", position: "after", line: self })).toBe(false);
+  test("a drop next to the element's own spot in DOM order changes nothing", () => {
+    const line = box(0, 0);
+    expect(sameSpot(row, { target: "a", position: "after", line })).toBe(true);
+    expect(sameSpot(row, { target: "c", position: "before", line })).toBe(true);
+    expect(sameSpot(row, { target: "a", position: "before", line })).toBe(false);
+    expect(sameSpot(row, { target: "c", position: "after", line })).toBe(false);
+    // Inline siblings on one line in flow: the DOM order counts, not the rows.
+    const inline: Layout = { ...base, siblings: [{ oid: "a", rect: box(0, 0) }, { oid: "c", rect: box(220, 0) }], index: 0 };
+    expect(sameSpot(inline, { target: "a", position: "before", line })).toBe(true);
+    expect(sameSpot(inline, { target: "c", position: "before", line })).toBe(false);
   });
 });
 

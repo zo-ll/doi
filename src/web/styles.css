@@ -807,6 +807,8 @@ a:hover { color: var(--text); }
   background: var(--raised);
   overflow: hidden;
 }
+.selection-box.bar-inside .edit-bar { top: auto; bottom: 0; margin: 0; }
+.selection-box.bar-end .edit-bar { left: auto; right: 0; }
 .edit-btn {
   width: calc(var(--edit-btn) / var(--zoom, 1));
   height: calc(var(--edit-btn) / var(--zoom, 1));

@@ -17,8 +17,10 @@ export interface Layout {
   margins: { top: number; right: number; bottom: number; left: number };
   /** Padding and border that a CSS width or height does not count (content-box), in px. */
   extra: { x: number; y: number };
-  /** The other children of the parent that have a data-oid. */
+  /** The other children of the parent that have a data-oid, in DOM order. */
   siblings: { oid: string; rect: Rect }[];
+  /** How many of the siblings come before the element. */
+  index: number;
 }
 
 export type FrameMessage =
@@ -86,6 +88,7 @@ function layout(v: unknown): Layout | null {
     margins: { top: num(m.top), right: num(m.right), bottom: num(m.bottom), left: num(m.left) },
     extra: { x: Math.max(0, num(e.x)), y: Math.max(0, num(e.y)) },
     siblings,
+    index: Number.isInteger(l.index) ? Math.min(Math.max(0, l.index as number), siblings.length) : siblings.length,
   };
 }
 

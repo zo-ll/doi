@@ -39,7 +39,9 @@
     const cs = getComputedStyle(el);
     const content = cs.boxSizing !== "border-box";
     const siblings = [];
+    let index = 0; // the siblings before the element, in DOM order
     for (const child of parent?.children ?? []) {
+      if (child === el) index = siblings.length;
       if (child === el || !child.hasAttribute("data-oid") || siblings.length >= MAX_SIBLINGS) continue;
       const rect = rectOf(child);
       if (rect) siblings.push({ oid: child.getAttribute("data-oid"), rect });
@@ -53,6 +55,7 @@
         ? { x: px(cs.paddingLeft) + px(cs.paddingRight) + px(cs.borderLeftWidth) + px(cs.borderRightWidth), y: px(cs.paddingTop) + px(cs.paddingBottom) + px(cs.borderTopWidth) + px(cs.borderBottomWidth) }
         : { x: 0, y: 0 },
       siblings,
+      index,
     };
   };
 

@@ -36,6 +36,16 @@ describe("element style", () => {
     expect(out.slice(css.length)).toBe('\n[data-oid="a"] {\n  width: 4px;\n}\n');
   });
 
+  test("a nested rule stops the edit; a comment in the rule is not a declaration", () => {
+    const nested = '[data-oid="a"] { color: red; & .child { width: 5px; } }';
+    expect(() => withElementStyle(nested, "a", { width: "300px" })).toThrow(/nested rules/);
+    const commented = '[data-oid="a"] { color: red; /* note; width: 999px; */ }';
+    expect(withElementStyle(commented, "a", { width: "20px" })).toBe('[data-oid="a"] { color: red; /* note; width: 999px; */\n  width: 20px;\n}');
+    const after = '[data-oid="a"] {\n  /* old: width: 1px; */\n  width: 10px;\n}\n';
+    expect(withElementStyle(after, "a", { width: "12px" })).toBe('[data-oid="a"] {\n  /* old: width: 1px; */\n  width: 12px;\n}\n');
+    expect(withElementStyle(after, "a", { width: null })).toBe('[data-oid="a"] {\n  /* old: width: 1px; */\n}\n');
+  });
+
   test("checkStyle accepts lengths, auto, var() for margins and align keywords only", () => {
     expect(checkStyle({ width: "12.5px", "margin-left": "-8px", "margin-top": "var(--space-3)", "align-self": "center", height: null })).toEqual({
       width: "12.5px",
@@ -81,6 +91,24 @@ describe("move element", () => {
     await fail(moveElement(html, "a", "a", "before"), 400);
     await fail(moveElement("<ul><li data-oid='x'>1<li data-oid='y'>2</ul>", "x", "y", "after"), 409);
     await fail(moveElement('<p data-oid="d">1</p><p data-oid="d">2</p><p data-oid="e"></p>', "d", "e", "after"), 409);
+  });
+
+  test("an element or a target without its own end tag cannot move; nothing leaves its parent", async () => {
+    const cases: [string, string, string, "before" | "after"][] = [
+      ["<div><span data-oid='t'>T</span><p data-oid='x'>a</div>", "x", "t", "before"],
+      ["<ul><li data-oid='t'>T</li><li data-oid='x'>X</ul>", "x", "t", "before"],
+      ["<main><p data-oid='x'>a<p data-oid='t'>b</p></main>", "x", "t", "after"],
+      ["<main><b data-oid='x'>x</b><p data-oid='t'>a</main>", "x", "t", "after"],
+    ];
+    for (const [page, oid, target, position] of cases) {
+      const e = await moveElement(page, oid, target, position).catch((x) => x);
+      expect(e).toBeInstanceOf(EditError);
+      expect(e.status).toBe(409);
+    }
+    // With the end tags in place, the same move works.
+    expect(await moveElement("<main><p data-oid='t'>a<b data-oid='x'>x</b></main>".replace("<b", "</p><b"), "x", "t", "before")).toBe(
+      "<main><b data-oid='x'>x</b><p data-oid='t'>a</p></main>",
+    );
   });
 
   test("implied end tags do not make the next element a child", async () => {
@@ -155,6 +183,16 @@ describe("edit routes", () => {
     expect((await designLog(ws, "p", "d")).map((v) => v.message)).toEqual(["Undo Edit t: width 320px", "Edit t: width 320px", "Start"]);
     // The edit is no longer the newest version.
     expect((await undoEdit(deps, post({ commit }), params)).status).toBe(409);
+  });
+
+  test("an edit commits only its file; undo leaves other changes in the folder alone", async () => {
+    const { ws, dir, deps } = await setup();
+    await Bun.write(join(dir, "draft.html"), "<p>by hand</p>");
+    const { commit } = (await (await postEdit(deps, post({ oid: "t", style: { height: "40px" } }), params)).json()) as { commit: string };
+    expect((await Bun.$`git -C ${ws} show --name-only --format= ${commit}`.text()).trim()).toBe("projects/p/designs/d/styles.css");
+    expect((await undoEdit(deps, post({ commit }), params)).status).toBe(200);
+    expect(await Bun.file(join(dir, "draft.html")).text()).toBe("<p>by hand</p>");
+    expect(await Bun.file(join(dir, "styles.css")).text()).toBe(":root { --space-1: 4px; --space-2: 8px; }\n");
   });
 
   test("a move changes the page and commits", async () => {

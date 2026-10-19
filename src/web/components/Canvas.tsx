@@ -6,6 +6,7 @@ import { parseFrameMessage, trackMessage, type FrameMessage, type Layout, type R
 import { alignStyle, DEFAULT_SCALE, dropTarget, nudgeStyle, resizeStyle, sameSpot, type Axis, type Drop, type ElementStyle, type Handle, type Place, type SpacingScale } from "../edit.ts";
 import { arrangeRow, fitView, newFrameId, nextPosition, stepZoom, wheelFactor, zoomAt, ZOOM_MAX, ZOOM_MIN, type Point, type View } from "../viewport.ts";
 import { FRAME_LIMITS, PRESETS, type Frame as FrameSpec } from "../../workspace/frames.ts";
+import { CHANGED_AFTER } from "../../workspace/edit-messages.ts";
 import type { Selection } from "./ChatPanel.tsx";
 
 type FrameState = "loading" | "ready" | "error";
@@ -16,6 +17,9 @@ export type Tool = "select" | "comment" | "hand";
 
 /** Screen pixels above a box for its tag. With less room, the tag goes inside the box. */
 const TAG_ROOM = 24;
+/** Screen pixels of the align bar under a box (--edit-btn and its gap), and its width (six buttons). */
+const BAR_ROOM = 32;
+const BAR_WIDTH = 124;
 /** Screen pixels that one arrow key pans; with Shift, four times as many. */
 const ARROW_STEP = 64;
 const boxStyle = (r: Rect) => ({ left: r.x, top: r.y, width: r.width, height: r.height });
@@ -269,7 +273,16 @@ const Frame = memo(function Frame({
               })}
               {rects.hover && <div className="hover-box" style={boxStyle(rects.hover.rect)} />}
               {oid && rects.selected && (
-                <div className={`selection-box${rects.selected.y < TAG_ROOM / zoom ? " tag-inside" : ""}`} style={boxStyle(rects.selected)}>
+                <div
+                  className={[
+                    "selection-box",
+                    rects.selected.y < TAG_ROOM / zoom ? "tag-inside" : "",
+                    // No room under the box or on its right in the frame: the bar goes inside, or to the right edge.
+                    rects.selected.y + rects.selected.height + BAR_ROOM / zoom > height ? "bar-inside" : "",
+                    rects.selected.x + BAR_WIDTH / zoom > width ? "bar-end" : "",
+                  ].filter(Boolean).join(" ")}
+                  style={boxStyle(rects.selected)}
+                >
                   <span
                     className={`selection-tag${canEdit ? " is-grip" : ""}`}
                     onPointerDown={canEdit ? (e) => startEdit(e, "reorder") : undefined}
@@ -584,6 +597,11 @@ export function Canvas({
   const [editReload, setEditReload] = useState(0);
   /** The commits of this session's canvas edits on the open design, newest last, for ⌘Z. */
   const undoStack = useRef<string[]>([]);
+  /** Edits and undos go to the server one after the other, so they do not lock each other out. */
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const enqueue = useCallback((run: () => Promise<unknown>) => {
+    queue.current = queue.current.then(run, run);
+  }, []);
 
   useEffect(() => {
     undoStack.current = [];
@@ -608,34 +626,42 @@ export function Canvas({
       const a = state.current.active;
       if (!a) return;
       onEditSaving?.();
-      sendJSON<{ commit: string | null; commitError?: string }>("POST", `/api/projects/${a.project}/designs/${a.design}/edit`, body)
-        .then((r) => {
-          if (r.commit) undoStack.current.push(r.commit);
-          setEditError(r.commitError ? `The edit is saved, but not in the history: ${r.commitError}` : null);
-        })
-        .catch((e) => {
-          setEditError(`The edit was not saved: ${(e as Error).message}`);
-          setEditReload((n) => n + 1);
-        });
+      enqueue(() =>
+        sendJSON<{ commit: string | null; commitError?: string }>("POST", `/api/projects/${a.project}/designs/${a.design}/edit`, body)
+          .then((r) => {
+            if (r.commit) undoStack.current.push(r.commit);
+            setEditError(r.commitError ? `The edit is saved, but not in the history: ${r.commitError}` : null);
+          })
+          .catch((e) => {
+            setEditError(`The edit was not saved: ${(e as Error).message}`);
+            setEditReload((n) => n + 1);
+          }),
+      );
     },
-    [onEditSaving],
+    [onEditSaving, enqueue],
   );
 
   /** ⌘Z: the newest canvas edit of this session goes back, as a new version. */
   const undoEdit = useCallback(() => {
     const a = state.current.active;
-    const commit = undoStack.current.pop();
-    if (!a || !commit) return false;
+    if (!a || !undoStack.current.length) return false;
     onEditSaving?.();
-    sendJSON<{ commit: string | null; commitError?: string }>("POST", `/api/projects/${a.project}/designs/${a.design}/edit/undo`, { commit })
-      .then((r) => setEditError(r.commitError ? `The undo is saved, but not in the history: ${r.commitError}` : null))
-      .catch((e) => {
-        // A later change (a turn, a tweak) makes the older edits stay.
-        undoStack.current = [];
-        setEditError(`The edit was not undone: ${(e as Error).message}`);
-      });
+    // The edit to undo is taken when the request starts, so an edit still in the queue comes first.
+    enqueue(async () => {
+      const commit = undoStack.current.pop();
+      if (!commit) return;
+      await sendJSON<{ commit: string | null; commitError?: string }>("POST", `/api/projects/${a.project}/designs/${a.design}/edit/undo`, { commit })
+        .then((r) => setEditError(r.commitError ? `The undo is saved, but not in the history: ${r.commitError}` : null))
+        .catch((e) => {
+          const message = (e as Error).message;
+          // A later change (a turn, a tweak) makes the older edits stay; else the edit can be undone again.
+          if (message.startsWith(CHANGED_AFTER)) undoStack.current = [];
+          else undoStack.current.push(commit);
+          setEditError(`The edit was not undone: ${message}`);
+        });
+    });
     return true;
-  }, [onEditSaving]);
+  }, [onEditSaving, enqueue]);
 
   const onEditStart = useCallback((e: React.PointerEvent, edit: EditStart) => {
     if (state.current.tool !== "select") return;
@@ -859,7 +885,7 @@ export function Canvas({
       const fy = dy / view.zoom;
       if (edit.mode === "reorder") {
         let drop = dropTarget(edit.layout, { x: edit.at.x + fx, y: edit.at.y + fy });
-        if (drop && sameSpot(edit.layout, edit.rect, drop)) drop = null;
+        if (drop && sameSpot(edit.layout, drop)) drop = null;
         setDrag({ ...drag, drop });
         return;
       }
