@@ -55,14 +55,26 @@ const MASK = "\u0001";
 
 const ruleSelector = (oid: string) => `[data-oid="${oid}"]`;
 
+/** A comment, or a string in double or single quotes (with escapes). One scan, so a quote in a comment does not count. */
+const COMMENT_OR_STRING = /\/\*[\s\S]*?\*\/|"(?:[^"\\\n]|\\[\s\S])*"|'(?:[^'\\\n]|\\[\s\S])*'/g;
+
+/**
+ * The CSS with the same length, where comments are `comment` characters and the text in
+ * strings is MASK (the quotes stay). Braces and ";" in either then do not count.
+ */
+const maskCss = (css: string, comment: string) =>
+  css.replace(COMMENT_OR_STRING, (m) => (m.startsWith("/*") ? comment.repeat(m.length) : m[0] + MASK.repeat(m.length - 2) + m.at(-1)));
+
 /**
  * Sets the declarations in the element's top-level rule. A missing rule goes at the end of
  * the file, so it comes after the rules it must override. A rule without declarations goes away.
  */
 export function withElementStyle(css: string, oid: string, style: ElementStyle): string {
   if (!OID.test(oid)) throw new EditError("Invalid element id.");
-  // Comments can hold braces and selectors; blank them for the search (same length).
-  const plain = css.replace(/\/\*[\s\S]*?\*\//g, (c) => " ".repeat(c.length));
+  // Comments and strings can hold braces and selectors; mask them for the search (same length).
+  // The selector itself has a string (`"card-1"`), so it is compared without the string mask.
+  const plain = maskCss(css, " ");
+  const noComments = css.replace(COMMENT_OR_STRING, (m) => (m.startsWith("/*") ? " ".repeat(m.length) : m));
   const selector = ruleSelector(oid);
   let depth = 0;
   let found: { start: number; open: number; close: number } | null = null;
@@ -71,7 +83,7 @@ export function withElementStyle(css: string, oid: string, style: ElementStyle):
     if (ch === "{") {
       if (depth === 0) {
         const start = Math.max(plain.lastIndexOf("}", i), plain.lastIndexOf(";", i)) + 1;
-        if (plain.slice(start, i).trim() === selector) {
+        if (noComments.slice(start, i).trim() === selector) {
           // The matching brace: a nested rule (`& .child { … }`) is not the end of this one.
           let close = -1;
           for (let k = i + 1, d = 1; k < plain.length; k++) {
@@ -97,11 +109,11 @@ export function withElementStyle(css: string, oid: string, style: ElementStyle):
     const body = set.map(([p, v]) => `  ${p}: ${v};`).join("\n");
     return `${css}${css.endsWith("\n") || !css ? "" : "\n"}\n${selector} {\n${body}\n}\n`;
   }
-  // The body as written, and the same body with its comments blanked: the search runs on the
-  // blanked one, the change goes into both at the same place.
-  // Comments are masked with a character that is not whitespace, so a trim keeps them.
+  // The body as written, and the same body with its comments and strings masked: the search
+  // runs on the masked one, the change goes into both at the same place. The mask is not
+  // whitespace, so a trim keeps comments.
   let body = css.slice(found.open + 1, found.close);
-  let bare = body.replace(/\/\*[\s\S]*?\*\//g, (c) => MASK.repeat(c.length));
+  let bare = maskCss(body, MASK);
   /** Replaces `length` characters at `at`: the first `keep` of them stay (each copy its own), then `text`. */
   const splice = (at: number, length: number, keep: number, text: string) => {
     body = body.slice(0, at + keep) + text + body.slice(at + length);

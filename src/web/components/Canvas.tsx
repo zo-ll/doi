@@ -17,7 +17,10 @@ export type Tool = "select" | "comment" | "hand";
 
 /** Screen pixels above a box for its tag. With less room, the tag goes inside the box. */
 const TAG_ROOM = 24;
-/** Screen pixels of the align bar under a box (--edit-btn and its gap), and its width (six buttons). */
+/**
+ * Screen pixels of the align bar under a box, and its width. They follow tokens.css: --edit-btn
+ * (20) plus the --space-2 gap and the border, and six buttons of --edit-btn. Change them together.
+ */
 const BAR_ROOM = 32;
 const BAR_WIDTH = 124;
 /** Screen pixels that one arrow key pans; with Shift, four times as many. */

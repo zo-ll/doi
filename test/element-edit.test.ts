@@ -46,6 +46,13 @@ describe("element style", () => {
     expect(withElementStyle(after, "a", { width: null })).toBe('[data-oid="a"] {\n  /* old: width: 1px; */\n}\n');
   });
 
+  test("braces and semicolons in strings do not count, in the rule and before it", () => {
+    expect(withElementStyle('[data-oid="a"] { content: "{"; width: 1px; }', "a", { width: "9px" })).toBe('[data-oid="a"] { content: "{"; width: 9px; }');
+    const css = '.q::after { content: "}"; }\n[data-oid="a"] { content: "};"; width: 1px; }\n[data-oid="b"] { width: 2px; }\n';
+    expect(withElementStyle(css, "a", { width: "9px" })).toBe('.q::after { content: "}"; }\n[data-oid="a"] { content: "};"; width: 9px; }\n[data-oid="b"] { width: 2px; }\n');
+    expect(withElementStyle("[data-oid='a'] { width: 1px; }", "a", { width: "2px" })).toContain('\n[data-oid="a"] {\n  width: 2px;\n}\n');
+  });
+
   test("checkStyle accepts lengths, auto, var() for margins and align keywords only", () => {
     expect(checkStyle({ width: "12.5px", "margin-left": "-8px", "margin-top": "var(--space-3)", "align-self": "center", height: null })).toEqual({
       width: "12.5px",
@@ -193,6 +200,18 @@ describe("edit routes", () => {
     expect((await undoEdit(deps, post({ commit }), params)).status).toBe(200);
     expect(await Bun.file(join(dir, "draft.html")).text()).toBe("<p>by hand</p>");
     expect(await Bun.file(join(dir, "styles.css")).text()).toBe(":root { --space-1: 4px; --space-2: 8px; }\n");
+  });
+
+  test("undo restores a file with a non-ASCII name", async () => {
+    const { ws, dir, deps } = await setup();
+    await Bun.write(join(dir, "über.html"), '<main data-oid="m">\n  <h1 data-oid="u1">1</h1>\n  <p data-oid="u2">2</p>\n</main>\n');
+    await commitPaths(ws, [dir], "Add über");
+    const before = await Bun.file(join(dir, "über.html")).text();
+    const res = await postEdit(deps, post({ oid: "u2", move: { target: "u1", position: "before", page: "über.html" } }), params);
+    const { commit } = (await res.json()) as { commit: string };
+    expect(await Bun.file(join(dir, "über.html")).text()).not.toBe(before);
+    expect((await (await undoEdit(deps, post({ commit }), params)).json()) as object).toMatchObject({ commit: expect.any(String) });
+    expect(await Bun.file(join(dir, "über.html")).text()).toBe(before);
   });
 
   test("a move changes the page and commits", async () => {

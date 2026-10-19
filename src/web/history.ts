@@ -79,10 +79,6 @@ export function useHistory(active: Active | null, revision: number) {
 export type VersionKind = "turn" | "pick" | "restore" | "rename" | "create" | "tweak" | "edit";
 
 /**
- * What made a version, from its commit message. Only the exact forms that doi writes count,
- * so a prompt that starts with "Restore " is still a turn.
- */
-/**
  * The commit message of a canvas edit (#66) or its undo, as the edit route writes it:
  * "Edit card-b: move after card-c" or "Edit card-b: width 320px, no height". A long message
  * ends with "…" (commitMessage() cuts it); its first change must still be whole.
@@ -93,6 +89,11 @@ const VALUE = "(-?\\d+(\\.\\d+)?px|auto|var\\(--[A-Za-z0-9_-]+\\)|start|center|e
 const CHANGE = `(no ${PROP}|${PROP} ${VALUE})`;
 const EDIT_MESSAGE = new RegExp(`^(Undo )?Edit ${OID}: (move (before|after) ${OID}|${CHANGE}(, ${CHANGE})*(, .*…|…)?)$`);
 
+/**
+ * What made a version, from its commit message. Only the exact forms that doi writes count,
+ * so a prompt that starts with "Restore " is still a turn. A prompt with exactly the text of an
+ * edit message shows as an edit: git keeps nothing else to tell them apart.
+ */
 export function versionKind(message: string): VersionKind {
   if (/^Restore [0-9a-f]{7}: /.test(message)) return "restore";
   if (/^Pick variant \d+: /.test(message)) return "pick";

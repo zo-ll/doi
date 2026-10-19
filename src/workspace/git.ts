@@ -185,8 +185,9 @@ export function changedFiles(workspace: string, sha: string, dir: string): Promi
   if (!isSha(sha)) throw new Error("Invalid commit id.");
   const rel = relPath(workspace, dir);
   return serial(async () => {
-    const out = await git(workspace, ["diff-tree", "-r", "--no-commit-id", "--name-only", sha, "--", `${rel}/`]);
-    return out.split("\n").filter(Boolean).map((p) => p.slice(rel.length + 1));
+    // -z: paths as written, not quoted (git quotes non-ASCII names in its normal output).
+    const out = await git(workspace, ["diff-tree", "-r", "-z", "--no-commit-id", "--name-only", sha, "--", `${rel}/`]);
+    return out.split("\0").filter(Boolean).map((p) => p.slice(rel.length + 1));
   });
 }
 
