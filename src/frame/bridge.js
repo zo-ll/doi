@@ -5,8 +5,11 @@
 // doi:wheel { deltaY, x, y } (a pinch or Ctrl/⌘ + wheel), doi:key { key, down, shift, mod }.
 // App → frame: doi:track { oid, pins } names the selected element (or null) and the elements
 // with open comments; doi:vars { vars } sets CSS variables on the page for a live tweak
-// (a null value removes one).
-// Rects are in the coordinates of this frame's viewport.
+// (a null value removes one); doi:style { oid, style } shows a canvas edit on the element
+// before it is saved (style null takes the preview away); doi:move { oid, target, position }
+// moves the element next to a sibling, until the page loads again.
+// Rects are in the coordinates of this frame's viewport. doi:rects has the `layout` of the
+// selected element: its parent's layout, its margins and box extras, and its siblings.
 (() => {
   let selectedOid = null;
   let pinOids = [];
@@ -24,15 +27,47 @@
     return { x: r.x, y: r.y, width: r.width, height: r.height };
   };
 
+  const MAX_SIBLINGS = 200;
+  const px = (v) => Number.parseFloat(v) || 0;
+  /** What a canvas edit of the element needs: how its parent lays it out, and where the siblings are. */
+  const layoutOf = (el) => {
+    const parent = el.parentElement;
+    const ps = parent ? getComputedStyle(parent) : null;
+    const display = ps?.display ?? "block";
+    const kind = display.endsWith("flex") ? "flex" : display.endsWith("grid") ? "grid" : "flow";
+    const direction = kind === "flex" && ps.flexDirection.startsWith("column") ? "column" : kind === "flex" ? "row" : kind === "grid" ? "grid" : "column";
+    const cs = getComputedStyle(el);
+    const content = cs.boxSizing !== "border-box";
+    const siblings = [];
+    for (const child of parent?.children ?? []) {
+      if (child === el || !child.hasAttribute("data-oid") || siblings.length >= MAX_SIBLINGS) continue;
+      const rect = rectOf(child);
+      if (rect) siblings.push({ oid: child.getAttribute("data-oid"), rect });
+    }
+    return {
+      kind,
+      direction,
+      margins: { top: px(cs.marginTop), right: px(cs.marginRight), bottom: px(cs.marginBottom), left: px(cs.marginLeft) },
+      // Padding and border that a CSS width or height does not count (content-box).
+      extra: content
+        ? { x: px(cs.paddingLeft) + px(cs.paddingRight) + px(cs.borderLeftWidth) + px(cs.borderRightWidth), y: px(cs.paddingTop) + px(cs.paddingBottom) + px(cs.borderTopWidth) + px(cs.borderBottomWidth) }
+        : { x: 0, y: 0 },
+      siblings,
+    };
+  };
+
   // Sends the rects when they changed. Runs on each animation frame while something is shown,
   // so the overlay follows scrolling, resizing, layout changes and animations.
   let scheduled = false;
   const report = () => {
     scheduled = false;
     const hoverOid = hovered?.getAttribute("data-oid") ?? null;
+    const selected = find(selectedOid);
+    const selectedRect = rectOf(selected);
     const message = {
       type: "doi:rects",
-      selected: rectOf(find(selectedOid)),
+      selected: selectedRect,
+      layout: selectedRect ? layoutOf(selected) : null,
       hover: hovered && hoverOid !== selectedOid ? { oid: hoverOid, rect: rectOf(hovered) } : null,
       // No prototype: an element may have the id "__proto__".
       pins: Object.create(null),
@@ -89,7 +124,7 @@
   // Canvas keys (zoom, pan, tools) and the app's own shortcuts go to the app too, except
   // while the user types in a field of the page.
   const CANVAS_KEYS = new Set([" ", "=", "+", "-", "0", "!", "1", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "v", "c", "h", "f", "n", "t"]);
-  const APP_KEYS = new Set(["p", "[", "]", "d", "e", ","]);
+  const APP_KEYS = new Set(["p", "[", "]", "d", "e", ",", "z"]);
   const typing = (t) => t instanceof Element && (t.closest("input, textarea, select, [contenteditable]") !== null);
   const onKey = (event, down) => {
     if (down && event.key === "Escape") send({ type: "doi:clear" });
@@ -114,6 +149,31 @@
     { passive: false },
   );
 
+  // A canvas edit before it is saved: inline styles on the element, with the old ones kept.
+  const STYLE_PROPS = new Set(["width", "height", "margin-top", "margin-right", "margin-bottom", "margin-left", "align-self", "justify-self"]);
+  let previewed = null; // { el, old: { prop: [value, priority] } }
+  const preview = (oid, style) => {
+    if (previewed) {
+      for (const [prop, [value, priority]] of Object.entries(previewed.old)) {
+        if (value) previewed.el.style.setProperty(prop, value, priority);
+        else previewed.el.style.removeProperty(prop);
+      }
+      previewed = null;
+    }
+    const el = find(oid);
+    if (style && el) {
+      previewed = { el, old: {} };
+      for (const [prop, value] of Object.entries(style)) {
+        if (!STYLE_PROPS.has(prop) || (value !== null && (typeof value !== "string" || value.length > 100))) continue;
+        previewed.old[prop] = [el.style.getPropertyValue(prop), el.style.getPropertyPriority(prop)];
+        // Important, so the preview shows over the page's own rules, as the saved rule should.
+        if (value === null) el.style.removeProperty(prop);
+        else el.style.setProperty(prop, value, "important");
+      }
+    }
+    schedule();
+  };
+
   const VAR = /^--[A-Za-z0-9_-]{1,60}$/;
   window.addEventListener("message", (event) => {
     if (event.source !== parent) return;
@@ -125,6 +185,19 @@
         else if (typeof value === "string" && value.length <= 200) document.documentElement.style.setProperty(name, value);
       }
       schedule(); // the boxes move when sizes change
+      return;
+    }
+    if (d?.type === "doi:style" && typeof d.oid === "string") {
+      preview(d.oid, d.style && typeof d.style === "object" ? d.style : null);
+      return;
+    }
+    if (d?.type === "doi:move" && typeof d.oid === "string" && typeof d.target === "string") {
+      const el = find(d.oid);
+      const target = find(d.target);
+      if (el && target && el !== target && el.parentElement === target.parentElement) {
+        target.insertAdjacentElement(d.position === "after" ? "afterend" : "beforebegin", el);
+        schedule();
+      }
       return;
     }
     if (d?.type !== "doi:track" || (d.oid !== null && typeof d.oid !== "string")) return;

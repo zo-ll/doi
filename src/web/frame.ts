@@ -8,6 +8,19 @@ export interface Rect {
   height: number;
 }
 
+/** How the parent of the selected element lays it out, for a canvas edit (#66). */
+export interface Layout {
+  /** flex, grid, or normal flow. */
+  kind: "flex" | "grid" | "flow";
+  /** The axis the siblings follow: a flex direction, both for a grid, the block axis for flow. */
+  direction: "row" | "column" | "grid";
+  margins: { top: number; right: number; bottom: number; left: number };
+  /** Padding and border that a CSS width or height does not count (content-box), in px. */
+  extra: { x: number; y: number };
+  /** The other children of the parent that have a data-oid. */
+  siblings: { oid: string; rect: Rect }[];
+}
+
 export type FrameMessage =
   | { type: "doi:ready" }
   | { type: "doi:select"; oid: string }
@@ -19,6 +32,8 @@ export type FrameMessage =
   | {
       type: "doi:rects";
       selected: Rect | null;
+      /** Null when nothing is selected, or from an old bridge. */
+      layout: Layout | null;
       hover: { oid: string; rect: Rect } | null;
       /** Boxes of the elements with open comments that this frame shows. */
       pins: Record<string, Rect>;
@@ -31,7 +46,7 @@ const MAX_PINS = 500;
 /** Keys the canvas uses; a page cannot send other keys to the app. */
 /** Keys a page may forward: canvas keys, tool keys, and the app's shortcuts (with ⌘/Ctrl). */
 const CANVAS_KEYS = new Set([" ", "=", "+", "-", "0", "!", "1", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
-const LETTER_KEYS = new Set(["v", "c", "h", "f", "n", "t", "p", "d", "e", "[", "]", ","]);
+const LETTER_KEYS = new Set(["v", "c", "h", "f", "n", "t", "p", "d", "e", "z", "[", "]", ","]);
 const forwardable = (key: string) => CANVAS_KEYS.has(key) || LETTER_KEYS.has(key.toLowerCase());
 
 const isOid = (v: unknown): v is string => typeof v === "string" && OID.test(v);
@@ -44,6 +59,34 @@ function rect(v: unknown): Rect | null | undefined {
   if (!nums.every((n) => typeof n === "number" && Number.isFinite(n))) return undefined;
   if ((width as number) < 0 || (height as number) < 0) return undefined;
   return { x: x as number, y: y as number, width: width as number, height: height as number };
+}
+
+const MAX_SIBLINGS = 200;
+const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+
+/** A checked layout, or null when it is not one. Bad siblings are left out one by one. */
+function layout(v: unknown): Layout | null {
+  if (typeof v !== "object" || v === null) return null;
+  const l = v as Record<string, unknown>;
+  const kind = l.kind;
+  const direction = l.direction;
+  if (kind !== "flex" && kind !== "grid" && kind !== "flow") return null;
+  if (direction !== "row" && direction !== "column" && direction !== "grid") return null;
+  const m = (typeof l.margins === "object" && l.margins !== null ? l.margins : {}) as Record<string, unknown>;
+  const e = (typeof l.extra === "object" && l.extra !== null ? l.extra : {}) as Record<string, unknown>;
+  const siblings: Layout["siblings"] = [];
+  for (const s of Array.isArray(l.siblings) ? l.siblings.slice(0, MAX_SIBLINGS) : []) {
+    const sr = typeof s === "object" && s !== null ? rect((s as Record<string, unknown>).rect) : null;
+    const oid = typeof s === "object" && s !== null ? (s as Record<string, unknown>).oid : null;
+    if (sr && isOid(oid)) siblings.push({ oid, rect: sr });
+  }
+  return {
+    kind,
+    direction,
+    margins: { top: num(m.top), right: num(m.right), bottom: num(m.bottom), left: num(m.left) },
+    extra: { x: Math.max(0, num(e.x)), y: Math.max(0, num(e.y)) },
+    siblings,
+  };
 }
 
 /** The message, or null when it is not a valid bridge message. */
@@ -80,7 +123,7 @@ export function parseFrameMessage(data: unknown): FrameMessage | null {
           if (isOid(oid) && pr) pins[oid] = pr;
         }
       }
-      return { type: "doi:rects", selected, hover, pins };
+      return { type: "doi:rects", selected, layout: selected ? layout(d.layout) : null, hover, pins };
     }
     default:
       return null;
