@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-10-19, SEARCH/REPLACE review fixes (#58, branch `generation/search-replace-fixes`). Tests: 458 pass, 1 skip. M2, M3 and M4 have no open issues; the M1 and M4 gates are still open. `bun check`: no errors.
+Last update: 2026-10-19, SEARCH/REPLACE fixes N1–N3 (#58, branch `generation/search-replace-n1-n3`). Tests: 460 pass, 1 skip. M2, M3 and M4 have no open issues; the M1 and M4 gates are still open. `bun check`: no errors.
 
 ## 1. What doi is
 
@@ -88,7 +88,7 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 | `src/web/` | React UI (Bun HTML import, no Vite). All sizes and colors in `tokens.css`; only 1px hairlines are literal |
 | `src/providers/types.ts` | `Provider`, `GenerateRequest`, `GenerateEvent`, capabilities incl. `editsFiles` |
 | `src/providers/ai-sdk.ts` | Shared AI SDK helper: a cache marker on each system part (max 4), `edit`/`write` tools without `execute`, stream mapping. `streamDesign(model, req, capabilities, cacheMarker?)`: every adapter passes its capabilities for the model, the same that `runTurn()` reads through `capabilitiesFor()`. With `toolUse: false` it sends no tools, puts `SEARCH_REPLACE_PROMPT` after the system prompt and parses the text (#58) |
-| `src/providers/search-replace.ts`, `search-replace.md` | SEARCH/REPLACE blocks (#58) for models without tool use: `SearchReplaceParser` (streaming, line by line): the file name on the line before `<<<<<<< SEARCH` (also `**x**`, `` `x` ``, `### x`, `File: x`, `x:`, fence info), 5–9 marker signs, an empty SEARCH = `write`, a block without a name = the file before, a bare fence right after a block closes its fence (a fence with a file name or a language stays), CRLF line ends become LF, text outside blocks passes through in whole lines (a line waits until the next line that is not empty or a fence). A broken block throws (`SearchReplaceError` → `ProviderError`), so no change is dropped silently. `runTurn()` words its retries for blocks when the model has `toolUse: false` |
+| `src/providers/search-replace.ts`, `search-replace.md` | SEARCH/REPLACE blocks (#58) for models without tool use: `SearchReplaceParser` (streaming, line by line): the file name on the line before `<<<<<<< SEARCH` (also `**x**`, `` `x` ``, `### x`, `File: x`, `x:`, fence info), 5–9 marker signs, an empty SEARCH = `write`, a block without a name = the file before, a bare fence right after a block closes its fence (a fence with a file name or a language stays), CRLF line ends become LF, text outside blocks passes through in whole lines (a line waits until the next line that is not empty and not a fence). A broken block throws (`SearchReplaceError` → `ProviderError`), so no change is dropped silently. `runTurn()` words its retries for blocks when the model has `toolUse: false` |
 | `src/providers/anthropic.ts` | Anthropic API key adapter |
 | `src/providers/openai.ts` | OpenAI API key adapter (Responses API, automatic cache) |
 | `src/providers/opencode-go.ts`, `opencode-go-formats.ts` | OpenCode Go: three wire formats chosen per model. Base `https://opencode.ai/inference/go/v1`. Each request sends `user-agent: doi/…` and `x-opencode-session` (OpenCode Go refuses to route without it): `GenerateRequest.session`, which `runTurn()` fills with `sessionId()` (a hash of workspace, project and design, so one id per design chat) |
