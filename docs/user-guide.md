@@ -27,13 +27,42 @@ doi runs on your computer only. The server listens on `127.0.0.1`. Your designs,
 
 | Tool | Necessary | Used for |
 | --- | --- | --- |
-| [Bun](https://bun.sh) 1.4.3 or later | Yes | The server, the UI bundle and the tests |
+| [Bun](https://bun.sh) 1.4.3 or later | Only to run from the source or to build the binary | The server, the UI bundle and the tests |
 | `git` | Yes | The version history of the workspace |
 | `claude` (Claude Code CLI) or `codex` (Codex CLI) | One of them, or an API key | The model. See [Providers and models](#providers-and-models) |
 | Chromium for Playwright | No | PNG and PDF export, and the screenshots in a handoff bundle |
 | `gh` (GitHub CLI) | No | A link from a project to the GitHub repo of your app |
 
-### Steps
+You can run doi as one binary, or from the source.
+
+### The binary
+
+The binary contains the server, the UI and the Bun runtime. It runs without Bun on Linux (x64, arm64) and macOS (arm64, x64).
+
+1. Build the binaries on a computer with Bun. The binaries go to `dist/`, for example `dist/doi-0.1.0-linux-x64`:
+
+   ```bash
+   bun install
+   bun run build                    # all four targets
+   bun run build bun-darwin-arm64   # one target
+   ```
+
+2. Copy the binary for your system to a folder on your `PATH`, with the name `doi`.
+3. Optional: install Chromium for PNG and PDF export:
+
+   ```bash
+   doi install-browser
+   ```
+
+4. Start doi:
+
+   ```bash
+   doi --open
+   ```
+
+The binary has no developer signature. If you download a macOS binary and Gatekeeper stops it, run `xattr -d com.apple.quarantine ./doi` one time.
+
+### From the source
 
 1. Get the code and install the packages:
 
@@ -65,9 +94,23 @@ doi runs on your computer only. The server listens on `127.0.0.1`. Your designs,
 
 On the first start, doi makes the folder `./workspace` with a git repository and a sample design.
 
+### Start options
+
+The binary and `bun run start` take the same options, for example `bun run start --port 5000`.
+
+| Option | Description |
+| --- | --- |
+| `--config <file>` | The config file. The default is `config.toml` in the current folder |
+| `--workspace <dir>` | The workspace folder. It replaces `workspace` from the config |
+| `--port <n>` | The port on `127.0.0.1`. It replaces `port` from the config |
+| `--open` | Open doi in the default browser after the start |
+| `-v`, `--version` | Show the version |
+| `-h`, `--help` | Show the help |
+| `install-browser` | Install Chromium for PNG and PDF export, then stop |
+
 ## Configure
 
-doi reads `config.toml` from the folder where you start it. All keys are optional. `config.example.toml` lists them with comments.
+doi reads `config.toml` from the folder where you start it, or the file from `--config`. All keys are optional. A relative `workspace` path is relative to the folder of the config file. `config.example.toml` lists them with comments.
 
 | Key | Default | Description |
 | --- | --- | --- |
@@ -209,7 +252,7 @@ Open Export (Ctrl/⌘ + E).
 
 "Remove element ids" strips the `data-oid` attributes from the HTML. Keep them for a handoff, because comments name the elements by their ids.
 
-PNG and PDF need Chromium. Run `bun run install-browser` once.
+PNG and PDF need Chromium. Run `doi install-browser` (from the source: `bun run install-browser`) one time.
 
 ![The Export dialog](images/export.png)
 
@@ -315,6 +358,6 @@ Settings → Shortcuts shows the same list without Ctrl + Z.
 - **The model status is not green.** Open Settings → Models and providers. Log in to the CLI, or add an API key. "Check again" reads the status again.
 - **"Another change runs on this design".** A turn, a rename or an edit is in progress on the design. Wait until it stops, and then try again.
 - **"This design has open variants".** Pick a variant or discard the set first.
-- **PNG or PDF export gives an error (503).** Chromium is not installed. Run `bun run install-browser`.
+- **PNG or PDF export gives an error (503).** Chromium is not installed. Run `doi install-browser`, or `bun run install-browser` from the source.
 - **The agent does not have the doi tools.** Add the MCP server (see [Hand off](#hand-off-to-a-coding-agent-mcp)), make sure that doi runs, and start the agent again.
 - **The port is in use.** Set a different `port` in `config.toml`.

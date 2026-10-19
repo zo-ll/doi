@@ -19,3 +19,6 @@ jobs:
       - run: bun run install-browser --with-deps
       - run: bun test
       - run: bun check
+      # The single binary (#63): it builds and runs without Bun on PATH.
+      - run: bun run build bun-linux-x64
+      - run: scripts/smoke-binary.sh dist/doi-*-linux-x64

@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 
 /** API providers, and CLI backends that use a subscription through the official CLI. */
 export type ProviderId = "anthropic" | "openai" | "opencode-go" | "google" | "openrouter" | "ollama" | "claude-code" | "codex";
@@ -183,9 +183,12 @@ export function withPrices(text: string, prices: Record<string, Price>): string 
   return `${body}${body ? "\n\n" : ""}[prices]\n${entries.map(row).join("\n")}\n`;
 }
 
-/** Loads config.toml from the current directory. A missing file gives the defaults. */
+/**
+ * Loads config.toml (default: from the current directory). A missing file gives the defaults.
+ * A relative workspace path is relative to the folder of the file.
+ */
 export async function loadConfig(path = "config.toml"): Promise<Config> {
   const file = Bun.file(path);
   const raw = (await file.exists()) ? Bun.TOML.parse(await file.text()) : {};
-  return { ...parseConfig(raw as Record<string, any>), configPath: resolve(path) };
+  return { ...parseConfig(raw as Record<string, any>, dirname(resolve(path))), configPath: resolve(path) };
 }
