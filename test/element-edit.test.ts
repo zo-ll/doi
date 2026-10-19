@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -114,6 +114,20 @@ describe("spacing scale", () => {
 });
 
 describe("edit routes", () => {
+  // A test identity in a private global config, as in git.test.ts: CI has none.
+  const saved = { global: process.env.GIT_CONFIG_GLOBAL, nosystem: process.env.GIT_CONFIG_NOSYSTEM };
+  beforeAll(async () => {
+    const home = await mkdtemp(join(tmpdir(), "doi-gitcfg-"));
+    await Bun.write(join(home, "gitconfig"), "[user]\n\tname = Test Person\n\temail = test@example.com\n[init]\n\tdefaultBranch = main\n");
+    process.env.GIT_CONFIG_GLOBAL = join(home, "gitconfig");
+    process.env.GIT_CONFIG_NOSYSTEM = "1";
+  });
+  afterAll(() => {
+    for (const [k, v] of [["GIT_CONFIG_GLOBAL", saved.global], ["GIT_CONFIG_NOSYSTEM", saved.nosystem]] as const) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
   const params = { project: "p", design: "d" };
   const post = (body: unknown) => new Request("http://x/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const setup = async () => {
