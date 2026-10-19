@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-10-14, after export and import (#114). Tests: 361 pass, 1 skip. M1, M2 and M3 are done. `bun check`: no errors.
+Last update: 2026-10-19, after project delete (#118). Tests: 395 pass, 1 skip. M2, M3 and M4 have no open issues; the M1 and M4 gates are still open. `bun check`: no errors.
 
 ## 1. What doi is
 
@@ -123,6 +123,13 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 
 ## 6. State and next steps
 
+**After #114 (2026-10-14 to 2026-10-19).** All merged to `main`, no open PRs:
+
+- #115: review fixes for export and import (a renamed design system's links change in every page, stylesheet, script and SVG; manifest designs are checked).
+- #116: Settings: select a provider, then OAuth (official CLI login) or an API key; the model list of each provider; one model for all tasks by default. OpenCode Go sends `x-opencode-session` and a doi user agent.
+- #117: History: "Reopen variants" on a pick version brings the set back.
+- #118: Projects: Delete project in the drawer.
+
 **The app's code (#112).** A real check: `zo-ll/doi` linked through gh; a Haiku turn "Recreate the app's top bar" read TopBar.tsx and tokens.css from the clone and rebuilt it with the real labels (141k in, 96k cached, 10k out). Such turns read much code: watch the tokens.
 
 **UI rebuild done (#110, branch `ui/rebuild`).** One rewrite from the Claude Design project "doi" (read it with the `claude_design` MCP, project 92cf7e7c-022b-4930-9742-07aa3fea1ab1): shell, projects drawer, canvas tools, chat, comments, history, design systems, export, hand off, settings (#61), usage (#62), tweaks (#65). Each screen was checked in Chromium with screenshots. A real turn with `claude-code:claude-haiku-5-5` through the new chat streamed, showed the line counts and the tokens, and reloaded the frames (17k in, 1.3k out).
@@ -141,8 +148,9 @@ Still open for a manual run: #72 OpenCode Go, only if the user has an OpenCode G
 
 Next, in this order:
 
-1. M4 (handoff): #46, #47, #48, #49, #53 and #54 are done. On 2026-10-14 the user removed the harness layer: doi does not start coding agents. #50, #51 and #52 are closed as not planned. The handoff is the prompt plus the MCP server. The top bar "Hand off" button opens the Export dialog at the agent prompt. Open: the M4 gate (one design through a coding agent into a real repo of the user). Every export and the handoff bundle (#49) must copy or inline the `/ds/<name>/` files that pages link: reuse `exportFolder()`/`exportPage()` from `src/export/html.ts`.
-2. Still open for the user: the M1 gate (one real design), and #72 if they have an OpenCode Go key.
+1. M5 (breadth), in this order: #64 README and user guide, #63 single binary, #58 SEARCH/REPLACE fallback, then the adapters #57 Ollama, #56 OpenRouter, #55 Gemini. v1.2 (#66, #67) and Later (#68, #75) wait.
+2. M4 (handoff): #46, #47, #48, #49, #53 and #54 are done. On 2026-10-14 the user removed the harness layer: doi does not start coding agents. #50, #51 and #52 are closed as not planned. The handoff is the prompt plus the MCP server. The top bar "Hand off" button opens the Export dialog at the agent prompt. Open: the M4 gate (one design through a coding agent into a real repo of the user). Every export and the handoff bundle (#49) must copy or inline the `/ds/<name>/` files that pages link: reuse `exportFolder()`/`exportPage()` from `src/export/html.ts`.
+3. Still open for the user: the M1 gate (one real design), and #72 if they have an OpenCode Go key.
 
 After M1: M2 (precision), M3 (design systems), M4 (handoff), M5 (breadth). #75 (Sign in with ChatGPT) waits for a client ID from OpenAI.
 
