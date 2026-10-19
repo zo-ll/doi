@@ -180,6 +180,17 @@ export function deletedFolders(workspace: string, sha: string, dir: string): Pro
   });
 }
 
+/** The files under `dir` that commit `sha` changed, as paths in `dir`. */
+export function changedFiles(workspace: string, sha: string, dir: string): Promise<string[]> {
+  if (!isSha(sha)) throw new Error("Invalid commit id.");
+  const rel = relPath(workspace, dir);
+  return serial(async () => {
+    // -z: paths as written, not quoted (git quotes non-ASCII names in its normal output).
+    const out = await git(workspace, ["diff-tree", "-r", "-z", "--no-commit-id", "--name-only", sha, "--", `${rel}/`]);
+    return out.split("\0").filter(Boolean).map((p) => p.slice(rel.length + 1));
+  });
+}
+
 /** Puts a folder back as it was in the parent of commit `sha`. The caller commits it. */
 export function checkoutBefore(workspace: string, sha: string, dir: string): Promise<void> {
   if (!isSha(sha)) throw new Error("Invalid commit id.");

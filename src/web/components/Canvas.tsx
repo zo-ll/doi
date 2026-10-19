@@ -2,9 +2,11 @@ import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 
 import { designUrl, getJSON, sendJSON, variantPageUrl, versionPageUrl, type Active, type VariantSetView, type VersionView } from "../api.ts";
 import { formatTokens } from "../chat.ts";
 import type { Pin } from "../comments.ts";
-import { parseFrameMessage, trackMessage, type FrameMessage, type Rect } from "../frame.ts";
+import { parseFrameMessage, trackMessage, type FrameMessage, type Layout, type Rect } from "../frame.ts";
+import { alignStyle, DEFAULT_SCALE, dropTarget, nudgeStyle, resizeStyle, sameSpot, type Axis, type Drop, type ElementStyle, type Handle, type Place, type SpacingScale } from "../edit.ts";
 import { arrangeRow, fitView, newFrameId, nextPosition, stepZoom, wheelFactor, zoomAt, ZOOM_MAX, ZOOM_MIN, type Point, type View } from "../viewport.ts";
 import { FRAME_LIMITS, PRESETS, type Frame as FrameSpec } from "../../workspace/frames.ts";
+import { CHANGED_AFTER } from "../../workspace/edit-messages.ts";
 import type { Selection } from "./ChatPanel.tsx";
 
 type FrameState = "loading" | "ready" | "error";
@@ -15,6 +17,12 @@ export type Tool = "select" | "comment" | "hand";
 
 /** Screen pixels above a box for its tag. With less room, the tag goes inside the box. */
 const TAG_ROOM = 24;
+/**
+ * Screen pixels of the align bar under a box, and its width. They follow tokens.css: --edit-btn
+ * (20) plus the --space-2 gap and the border, and six buttons of --edit-btn. Change them together.
+ */
+const BAR_ROOM = 32;
+const BAR_WIDTH = 124;
 /** Screen pixels that one arrow key pans; with Shift, four times as many. */
 const ARROW_STEP = 64;
 const boxStyle = (r: Rect) => ({ left: r.x, top: r.y, width: r.width, height: r.height });
@@ -26,6 +34,33 @@ const TOOLS: { id: Tool; label: string; key: string }[] = [
 ];
 
 const NO_VARS: Record<string, string> = {};
+
+/** A resize handle, a drag among the siblings, or a nudge of the margins (Alt + drag). */
+type EditMode = Handle | "reorder" | "nudge";
+/** What a frame knows when a canvas edit starts (#66). */
+export interface EditStart {
+  frameId: string;
+  oid: string;
+  mode: EditMode;
+  /** The element's box and layout when the drag started, in the frame's viewport. */
+  rect: Rect;
+  layout: Layout;
+  /** The pointer in the frame's viewport. */
+  at: Point;
+  /** Sends a message to this frame's page. */
+  post: (message: object) => void;
+}
+type EditBody = { oid: string; style: ElementStyle } | { oid: string; move: { target: string; position: Drop["position"]; page: string } };
+/** Screen pixels a drag must move before it counts. */
+const DRAG_SLOP = 3;
+const ALIGN: { axis: Axis; place: Place; label: string; icon: string }[] = [
+  { axis: "x", place: "start", label: "Align left", icon: "⇤" },
+  { axis: "x", place: "center", label: "Align center", icon: "↔" },
+  { axis: "x", place: "end", label: "Align right", icon: "⇥" },
+  { axis: "y", place: "start", label: "Align top", icon: "⤒" },
+  { axis: "y", place: "center", label: "Align middle", icon: "↕" },
+  { axis: "y", place: "end", label: "Align bottom", icon: "⤓" },
+];
 
 /** True while the user types in a field of the app: canvas keys do nothing then. */
 const typing = (t: EventTarget | null) => t instanceof Element && t.closest("input, textarea, select, [contenteditable]") !== null;
@@ -48,6 +83,10 @@ const Frame = memo(function Frame({
   onKey,
   onOpenHistory,
   liveVars,
+  editable,
+  dropLine,
+  onEditStart,
+  onAlign,
 }: {
   frame: FrameSpec;
   src: string;
@@ -68,6 +107,12 @@ const Frame = memo(function Frame({
   onOpenHistory?: () => void;
   /** CSS variables set on the page for a live tweak. */
   liveVars: Record<string, string>;
+  /** The selected element shows handles: resize, drag among the siblings, align. */
+  editable: boolean;
+  /** The insert line of a drag among the siblings, in this frame. */
+  dropLine: Rect | null;
+  onEditStart: (e: React.PointerEvent, edit: EditStart) => void;
+  onAlign: (oid: string, style: ElementStyle, post: (message: object) => void) => void;
 }) {
   const { width, height, label } = frame;
   const ref = useRef<HTMLIFrameElement>(null);
@@ -75,9 +120,10 @@ const Frame = memo(function Frame({
   const [reload, setReload] = useState(0);
   const [rects, setRects] = useState<{
     selected: Rect | null;
+    layout: Layout | null;
     hover: { oid: string; rect: Rect } | null;
     pins: Record<string, Rect>;
-  }>({ selected: null, hover: null, pins: {} });
+  }>({ selected: null, layout: null, hover: null, pins: {} });
   const oid = readOnly ? null : (selection?.oid ?? null);
   const shownPins = readOnly ? [] : pins;
   // One string, so the effect below runs only when the set of pinned elements changes.
@@ -108,7 +154,7 @@ const Frame = memo(function Frame({
       const h = latest.current;
       if (m?.type === "doi:select") !h.readOnly && h.onSelect({ oid: m.oid });
       else if (m?.type === "doi:clear") !h.readOnly && h.onClear();
-      else if (m?.type === "doi:rects") setRects({ selected: m.selected, hover: h.readOnly ? null : m.hover, pins: m.pins });
+      else if (m?.type === "doi:rects") setRects({ selected: m.selected, layout: m.layout, hover: h.readOnly ? null : m.hover, pins: m.pins });
       else if (m?.type === "doi:wheel") h.onWheel(h.frame, m);
       else if (m?.type === "doi:key") h.onKey(m);
       // A page that loaded again asks which element is selected, which have pins, and the live tweaks.
@@ -123,7 +169,7 @@ const Frame = memo(function Frame({
 
   // Every frame of the design shows the selection and the pins, in its own layout.
   useEffect(() => {
-    if (!oid) setRects((r) => ({ ...r, selected: null }));
+    if (!oid) setRects((r) => ({ ...r, selected: null, layout: null }));
     ref.current?.contentWindow?.postMessage(track.current, "*");
   }, [oid, pinKey]);
 
@@ -138,7 +184,18 @@ const Frame = memo(function Frame({
   }, [liveVars]);
 
   // A new page has no rects until its bridge reports them.
-  useEffect(() => setRects({ selected: null, hover: null, pins: {} }), [url]);
+  useEffect(() => setRects({ selected: null, layout: null, hover: null, pins: {} }), [url]);
+
+  const post = useCallback((message: object) => ref.current?.contentWindow?.postMessage(message, "*"), []);
+  const canEdit = editable && !readOnly && oid !== null && rects.selected !== null && rects.layout !== null;
+  const startEdit = (e: React.PointerEvent, mode: EditMode) => {
+    const box = ref.current?.getBoundingClientRect();
+    if (e.button !== 0 || !box || !oid || !rects.selected || !rects.layout) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const at = { x: (e.clientX - box.left) / zoom, y: (e.clientY - box.top) / zoom };
+    onEditStart(e, { frameId: frame.id, oid, mode: mode === "reorder" && e.altKey ? "nudge" : mode, rect: rects.selected, layout: rects.layout, at, post });
+  };
 
   return (
     <figure className="frame" style={{ left: frame.x, top: frame.y, width, height }}>
@@ -219,10 +276,43 @@ const Frame = memo(function Frame({
               })}
               {rects.hover && <div className="hover-box" style={boxStyle(rects.hover.rect)} />}
               {oid && rects.selected && (
-                <div className={`selection-box${rects.selected.y < TAG_ROOM / zoom ? " tag-inside" : ""}`} style={boxStyle(rects.selected)}>
-                  <span className="selection-tag">{oid}</span>
+                <div
+                  className={[
+                    "selection-box",
+                    rects.selected.y < TAG_ROOM / zoom ? "tag-inside" : "",
+                    // No room under the box or on its right in the frame: the bar goes inside, or to the right edge.
+                    rects.selected.y + rects.selected.height + BAR_ROOM / zoom > height ? "bar-inside" : "",
+                    rects.selected.x + BAR_WIDTH / zoom > width ? "bar-end" : "",
+                  ].filter(Boolean).join(" ")}
+                  style={boxStyle(rects.selected)}
+                >
+                  <span
+                    className={`selection-tag${canEdit ? " is-grip" : ""}`}
+                    onPointerDown={canEdit ? (e) => startEdit(e, "reorder") : undefined}
+                    title={canEdit ? "Drag to move it among its siblings. Alt + drag changes its margins." : undefined}
+                  >
+                    {oid}
+                  </span>
+                  {canEdit && (
+                    <>
+                      {(["e", "s", "se"] as const).map((h) => (
+                        <span key={h} className={`resize-handle resize-${h}`} onPointerDown={(e) => startEdit(e, h)} title={h === "e" ? "Width" : h === "s" ? "Height" : "Width and height"} />
+                      ))}
+                      <span className="edit-bar" role="toolbar" aria-label={`Align ${oid}`}>
+                        {ALIGN.map((a) => {
+                          const style = alignStyle(rects.layout!, a.axis, a.place);
+                          return (
+                            <button key={a.label} className="edit-btn" disabled={!style} aria-label={a.label} title={a.label} onClick={() => style && onAlign(oid, style, post)}>
+                              {a.icon}
+                            </button>
+                          );
+                        })}
+                      </span>
+                    </>
+                  )}
                 </div>
               )}
+              {dropLine && <div className="drop-line" style={boxStyle(dropLine)} />}
             </div>
           </>
         )}
@@ -429,7 +519,10 @@ function AddFrameMenu({ onAdd, onClose }: { onAdd: (label: string, width: number
   );
 }
 
-type Drag = { kind: "pan"; start: Point; view: View } | { kind: "move"; id: string; start: Point; frame: FrameSpec; moved: boolean };
+type Drag =
+  | { kind: "pan"; start: Point; view: View }
+  | { kind: "move"; id: string; start: Point; frame: FrameSpec; moved: boolean }
+  | { kind: "edit"; edit: EditStart; start: Point; style: ElementStyle | null; drop: Drop | null };
 
 export function Canvas({
   active,
@@ -454,6 +547,7 @@ export function Canvas({
   onClosePreview,
   overlay,
   liveVars = NO_VARS,
+  onEditSaving,
 }: {
   active: Active | null;
   /** The page of the design that the frames show. */
@@ -486,6 +580,8 @@ export function Canvas({
   overlay?: React.ReactNode;
   /** CSS variables of a live tweak, set on every page. */
   liveVars?: Record<string, string>;
+  /** A canvas edit goes to the server: the next design change keeps the selection. */
+  onEditSaving?: () => void;
 }) {
   const ref = useRef<HTMLElement>(null);
   const [frames, setFrames] = useState<FrameSpec[] | null>(null);
@@ -496,8 +592,94 @@ export function Canvas({
   const [menuOpen, setMenuOpen] = useState(false);
   const [tool, setTool] = useState<Tool>("select");
   const needsFit = useRef(true);
-  const state = useRef({ view, frames, active, tool });
-  state.current = { view, frames, active, tool };
+  const state = useRef({ view, frames, active, tool, page });
+  state.current = { view, frames, active, tool, page };
+  const [scale, setScale] = useState<SpacingScale>(DEFAULT_SCALE);
+  const [editError, setEditError] = useState<string | null>(null);
+  /** Changes when a failed edit must take its preview off the pages. */
+  const [editReload, setEditReload] = useState(0);
+  /** The commits of this session's canvas edits on the open design, newest last, for ⌘Z. */
+  const undoStack = useRef<string[]>([]);
+  /** Edits and undos go to the server one after the other, so they do not lock each other out. */
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const enqueue = useCallback((run: () => Promise<unknown>) => {
+    queue.current = queue.current.then(run, run);
+  }, []);
+
+  useEffect(() => {
+    undoStack.current = [];
+    setEditError(null);
+  }, [active?.project, active?.design]);
+
+  // The spacing scale that resizes and nudges snap to; styles.css can change it.
+  useEffect(() => {
+    if (!active) return;
+    let live = true;
+    getJSON<SpacingScale>(`/api/projects/${active.project}/designs/${active.design}/spacing`)
+      .then((s) => live && setScale(s))
+      .catch(() => live && setScale(DEFAULT_SCALE));
+    return () => {
+      live = false;
+    };
+  }, [active?.project, active?.design, revision]);
+
+  /** Saves one canvas edit as a version. A failure takes the preview away and says why. */
+  const saveEdit = useCallback(
+    (body: EditBody) => {
+      const a = state.current.active;
+      if (!a) return;
+      onEditSaving?.();
+      enqueue(() =>
+        sendJSON<{ commit: string | null; commitError?: string }>("POST", `/api/projects/${a.project}/designs/${a.design}/edit`, body)
+          .then((r) => {
+            if (r.commit) undoStack.current.push(r.commit);
+            setEditError(r.commitError ? `The edit is saved, but not in the history: ${r.commitError}` : null);
+          })
+          .catch((e) => {
+            setEditError(`The edit was not saved: ${(e as Error).message}`);
+            setEditReload((n) => n + 1);
+          }),
+      );
+    },
+    [onEditSaving, enqueue],
+  );
+
+  /** ⌘Z: the newest canvas edit of this session goes back, as a new version. */
+  const undoEdit = useCallback(() => {
+    const a = state.current.active;
+    if (!a || !undoStack.current.length) return false;
+    onEditSaving?.();
+    // The edit to undo is taken when the request starts, so an edit still in the queue comes first.
+    enqueue(async () => {
+      const commit = undoStack.current.pop();
+      if (!commit) return;
+      await sendJSON<{ commit: string | null; commitError?: string }>("POST", `/api/projects/${a.project}/designs/${a.design}/edit/undo`, { commit })
+        .then((r) => setEditError(r.commitError ? `The undo is saved, but not in the history: ${r.commitError}` : null))
+        .catch((e) => {
+          const message = (e as Error).message;
+          // A later change (a turn, a tweak) makes the older edits stay; else the edit can be undone again.
+          if (message.startsWith(CHANGED_AFTER)) undoStack.current = [];
+          else undoStack.current.push(commit);
+          setEditError(`The edit was not undone: ${message}`);
+        });
+    });
+    return true;
+  }, [onEditSaving, enqueue]);
+
+  const onEditStart = useCallback((e: React.PointerEvent, edit: EditStart) => {
+    if (state.current.tool !== "select") return;
+    ref.current?.setPointerCapture(e.pointerId);
+    setMenuOpen(false);
+    setDrag({ kind: "edit", edit, start: { x: e.clientX, y: e.clientY }, style: null, drop: null });
+  }, []);
+
+  const onAlign = useCallback(
+    (oid: string, style: ElementStyle, post: (message: object) => void) => {
+      post({ type: "doi:style", oid, style });
+      saveEdit({ oid, style });
+    },
+    [saveEdit],
+  );
 
   // Load the frames of the design; a new design fits to the screen once they are there.
   useEffect(() => {
@@ -584,6 +766,7 @@ export function Canvas({
         return true;
       }
       if (!down) return false;
+      if (mod && !shift && key.toLowerCase() === "z") return undoEdit();
       const step = shift ? ARROW_STEP * 4 : ARROW_STEP;
       const pan = (dx: number, dy: number) => setView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
       if (!mod && !shift) {
@@ -631,7 +814,7 @@ export function Canvas({
       }
       return false;
     },
-    [fit],
+    [fit, undoEdit],
   );
   // A key the canvas does not use goes to the app's shortcuts, as if the app had the focus.
   const onFrameKey = useCallback(
@@ -698,7 +881,21 @@ export function Canvas({
     const dx = e.clientX - drag.start.x;
     const dy = e.clientY - drag.start.y;
     if (drag.kind === "pan") setView({ ...drag.view, x: drag.view.x + dx, y: drag.view.y + dy });
-    else {
+    else if (drag.kind === "edit") {
+      if (Math.hypot(dx, dy) < DRAG_SLOP && !drag.style && !drag.drop) return;
+      const { edit } = drag;
+      const fx = dx / view.zoom;
+      const fy = dy / view.zoom;
+      if (edit.mode === "reorder") {
+        let drop = dropTarget(edit.layout, { x: edit.at.x + fx, y: edit.at.y + fy });
+        if (drop && sameSpot(edit.layout, drop)) drop = null;
+        setDrag({ ...drag, drop });
+        return;
+      }
+      const style = edit.mode === "nudge" ? nudgeStyle(edit.layout.margins, fx, fy, scale) : resizeStyle(edit.mode, edit.rect, edit.layout.extra, fx, fy, scale.unit);
+      edit.post({ type: "doi:style", oid: edit.oid, style });
+      setDrag({ ...drag, style });
+    } else {
       const x = Math.round(drag.frame.x + dx / view.zoom);
       const y = Math.round(drag.frame.y + dy / view.zoom);
       setFrames((list) => list?.map((f) => (f.id === drag.id ? { ...f, x, y } : f)) ?? list);
@@ -707,6 +904,13 @@ export function Canvas({
   };
   const onPointerUp = () => {
     if (drag?.kind === "move" && drag.moved && frames) changeFrames(frames);
+    if (drag?.kind === "edit") {
+      const { edit, drop, style } = drag;
+      if (drop) {
+        edit.post({ type: "doi:move", oid: edit.oid, target: drop.target, position: drop.position });
+        saveEdit({ oid: edit.oid, move: { target: drop.target, position: drop.position, page: state.current.page } });
+      } else if (style && Object.keys(style).length) saveEdit({ oid: edit.oid, style });
+    }
     setDrag(null);
   };
 
@@ -738,7 +942,7 @@ export function Canvas({
   const pagePath = page === "index.html" ? "" : page;
   const src = preview
     ? `${versionPageUrl(active.project, active.design, preview.sha)}${pagePath}`
-    : `${designUrl(active.project, active.design)}${pagePath}?v=${revision}`;
+    : `${designUrl(active.project, active.design)}${pagePath}?v=${revision}${editReload ? `.${editReload}` : ""}`;
   const panning = drag?.kind === "pan" || spaceDown;
   const showVariants = variants !== null && !!frames?.length;
   return (
@@ -786,6 +990,10 @@ export function Canvas({
               onKey={onFrameKey}
               onOpenHistory={onOpenHistory}
               liveVars={preview ? NO_VARS : liveVars}
+              editable={tool === "select" && preview === null}
+              dropLine={drag?.kind === "edit" && drag.edit.frameId === f.id ? (drag.drop?.line ?? null) : null}
+              onEditStart={onEditStart}
+              onAlign={onAlign}
             />
           ))}
         </div>
@@ -813,10 +1021,15 @@ export function Canvas({
         </>
       )}
 
-      {layoutError && (
+      {(layoutError || editError) && (
         <div className="banner banner-err canvas-error" role="alert">
           <span className="dot dot-err" />
-          {layoutError}
+          {layoutError ?? editError}
+          {!layoutError && (
+            <button className="btn btn-ghost btn-sm" onClick={() => setEditError(null)} aria-label="Dismiss">
+              ×
+            </button>
+          )}
         </div>
       )}
 

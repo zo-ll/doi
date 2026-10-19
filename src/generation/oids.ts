@@ -19,7 +19,7 @@ const MEANINGFUL = new Set([
 /** Attributes that tell two elements without text apart, such as two images. */
 const KEY_ATTRIBUTES = ["src", "alt", "href", "type", "name", "placeholder"];
 const VALID = /^[A-Za-z0-9_-]{1,100}$/;
-const HTML_NS = "http://www.w3.org/1999/xhtml";
+export const HTML_NS = "http://www.w3.org/1999/xhtml";
 const MAX_TEXT = 200;
 
 /**
@@ -42,7 +42,7 @@ const IMPLIED_END: { opens: string[]; closes: string[]; scope: string[] }[] = [
   },
 ];
 
-function closeImplied(open: { tag: string }[], tag: string): void {
+export function closeImplied(open: { tag: string }[], tag: string): void {
   for (const rule of IMPLIED_END) {
     if (!rule.opens.includes(tag)) continue;
     for (let i = open.length - 1; i >= 0; i--) {

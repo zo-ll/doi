@@ -20,6 +20,13 @@ test("the kind of a version comes from its commit message", () => {
   expect(versionKind("Rename design home to landing")).toBe("rename");
   expect(versionKind("Create design pricing")).toBe("create");
   expect(versionKind("Tweaks: --accent, --radius")).toBe("tweak");
+  expect(versionKind("Edit card-b: width 188px")).toBe("edit");
+  expect(versionKind("Undo Edit card-b: move after card-c")).toBe("edit");
+  expect(versionKind("Edit card-b: margin-left var(--space-6), no height, align-self flex-end")).toBe("edit");
+  expect(versionKind("Undo Edit a-very-long-element-id: margin-left var(--space-6), margin-top var(--spa…")).toBe("edit");
+  // A turn prompt in the same shape is a turn.
+  expect(versionKind("Edit hero: make the title bigger")).toBe("turn");
+  expect(versionKind("Edit hero: width should be 300px")).toBe("turn");
   // A prompt that only starts like one of them is a turn.
   for (const prompt of ["Restore the old hero", "Pick variant colors that fit", "Rename design labels to plain words", "Create design tokens for spacing"]) {
     expect(versionKind(prompt)).toBe("turn");

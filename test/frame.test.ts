@@ -11,11 +11,30 @@ describe("frame messages", () => {
     expect(parseFrameMessage({ type: "doi:rects", selected: r, hover: { oid: "a", rect: r } })).toEqual({
       type: "doi:rects",
       selected: r,
+      layout: null,
       hover: { oid: "a", rect: r },
       pins: {},
     });
-    expect(parseFrameMessage({ type: "doi:rects", selected: null, hover: null })).toEqual({ type: "doi:rects", selected: null, hover: null, pins: {} });
+    expect(parseFrameMessage({ type: "doi:rects", selected: null, hover: null })).toEqual({ type: "doi:rects", selected: null, layout: null, hover: null, pins: {} });
     expect(parseFrameMessage({ type: "doi:rects", selected: null, hover: null, pins: { a: r, b: r } })).toMatchObject({ pins: { a: r, b: r } });
+  });
+
+  test("the layout of the selected element; bad siblings are left out, a bad layout is null", () => {
+    const layout = {
+      kind: "flex",
+      direction: "row",
+      margins: { top: 4, right: 0, bottom: 4, left: 0 },
+      extra: { x: 24, y: 16 },
+      siblings: [{ oid: "b", rect: r }, { oid: "bad id", rect: r }, { oid: "c", rect: { x: 1 } }],
+      index: 2,
+    };
+    expect(parseFrameMessage({ type: "doi:rects", selected: r, layout, hover: null })).toMatchObject({
+      // The index stays within the siblings that are left.
+      layout: { ...layout, siblings: [{ oid: "b", rect: r }], index: 1 },
+    });
+    expect(parseFrameMessage({ type: "doi:rects", selected: r, layout: { ...layout, kind: "table" }, hover: null })).toMatchObject({ layout: null });
+    // No layout without a selection.
+    expect(parseFrameMessage({ type: "doi:rects", selected: null, layout, hover: null })).toMatchObject({ layout: null });
   });
 
   test("a select with an id the server would refuse is dropped", () => {
@@ -31,6 +50,7 @@ describe("frame messages", () => {
     expect(parseFrameMessage({ type: "doi:rects", selected: r, hover: { oid: "bad id", rect: r } })).toEqual({
       type: "doi:rects",
       selected: r,
+      layout: null,
       hover: null,
       pins: {},
     });
