@@ -123,6 +123,24 @@ describe("review fixes", () => {
     expect(text(p.end())).toBe("Second line\n");
   });
 
+  test("a reply that ends with a CR has no CR in the text", () => {
+    const p = new SearchReplaceParser();
+    const events = [...p.push("Done.\r"), ...p.end()];
+    expect(text(events)).toBe("Done.");
+  });
+
+  test("a long run of empty lines stays fast and gives the same text", () => {
+    const reply = `Intro\n${"\n".repeat(100_000)}${block("styles.css", "a", "b")}`;
+    const p = new SearchReplaceParser();
+    const started = performance.now();
+    const events: ParsedEvent[] = [];
+    for (const line of reply.split(/(?<=\n)/)) events.push(...p.push(line));
+    events.push(...p.end());
+    expect(performance.now() - started).toBeLessThan(2000);
+    expect(changes(events)).toEqual([{ type: "edit", file: "styles.css", oldText: "a", newText: "b" }]);
+    expect(text(events)).toBe("Intro\n" + "\n".repeat(100_000));
+  });
+
   test("CRLF line ends", () => {
     const events = parseSearchReplace("Done.\r\nstyles.css\r\n<<<<<<< SEARCH\r\na\r\nb\r\n=======\r\nc\r\n>>>>>>> REPLACE\r\n");
     expect(changes(events)).toEqual([{ type: "edit", file: "styles.css", oldText: "a\nb", newText: "c" }]);
