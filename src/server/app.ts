@@ -15,6 +15,7 @@ import { getExport } from "./export.ts";
 import { getHandoff, getPrompt, postBundle } from "./handoff.ts";
 import { configView, deleteProviderKey, getProviderModels, getUsage, postProviderLogin, putModels, putProviderKey } from "./settings.ts";
 import { getTweaks, putTweaks } from "./tweaks.ts";
+import { getSpacing, postEdit, undoEdit } from "./element-edit.ts";
 import { MAX_IMPORT_BYTES, postExport, postImport, postImportInspect } from "./archive.ts";
 import { deleteProjectRepo, getGithubRepos, getGithubStatus, putProjectRepo, syncProjectRepo } from "./github.ts";
 import { excludeClones } from "../github/gh.ts";
@@ -90,6 +91,7 @@ export async function startServer(config: Config, options: { port?: number; deve
   };
   const githubDeps = { workspace: config.workspace, locks, commit: (paths: string[], message: string) => commitPaths(config.workspace, paths, message) };
   const tweakDeps = { workspace: config.workspace, locks, commit: (paths: string[], message: string) => commitPaths(config.workspace, paths, message) };
+  const editDeps = { ...tweakDeps, variantsOpen: variants.isOpen };
   const chatStats = (project: string, design: string, shas: string[]) => commitStats(config.workspace, project, design, shas);
   const runTurnRequest = createTurnHandler({
     config,
@@ -257,6 +259,9 @@ export async function startServer(config: Config, options: { port?: number; deve
         GET: (req) => getTweaks(config.workspace, req.params),
         PUT: (req) => putTweaks(tweakDeps, req, req.params),
       },
+      "/api/projects/:project/designs/:design/spacing": (req) => getSpacing(config.workspace, req.params),
+      "/api/projects/:project/designs/:design/edit": { POST: (req) => postEdit(editDeps, req, req.params) },
+      "/api/projects/:project/designs/:design/edit/undo": { POST: (req) => undoEdit(editDeps, req, req.params) },
       "/api/projects/:project/designs/:design/pages": async (req) => {
         try {
           const { project, design } = req.params;
