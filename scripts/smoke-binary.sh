@@ -7,7 +7,8 @@ bin=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
 dir=$(mktemp -d)
 port=${PORT:-4499}
 url=http://127.0.0.1:$port
-trap 'kill "$pid" 2>/dev/null || true; rm -rf "$dir"' EXIT
+pid=""
+trap 'kill "${pid:-}" 2>/dev/null || true; rm -rf "$dir"' EXIT
 
 cd "$dir"
 env -i HOME="$dir" PATH=/usr/bin:/bin "$bin" --version
