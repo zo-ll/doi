@@ -777,6 +777,50 @@ a:hover { color: var(--text); }
 }
 /* No room above the box (the top of the page): the tag goes inside it. */
 .selection-box.tag-inside .selection-tag { bottom: auto; top: 0; margin: 0; }
+/* Canvas edits (#66): the tag is a grip, the handles resize, the bar aligns. The overlay takes
+   no pointer; these parts do. Screen sizes stay the same at every zoom. */
+.selection-tag.is-grip, .resize-handle, .edit-bar { pointer-events: auto; }
+.selection-tag.is-grip { cursor: grab; touch-action: none; }
+.canvas.is-dragging .selection-tag.is-grip { cursor: grabbing; }
+.resize-handle {
+  --handle: calc(var(--handle-size) / var(--zoom, 1));
+  position: absolute;
+  width: var(--handle);
+  height: var(--handle);
+  border: calc(1px / var(--zoom, 1)) solid var(--accent);
+  border-radius: calc(var(--radius-xs) / var(--zoom, 1));
+  background: var(--raised);
+  touch-action: none;
+}
+.resize-e { top: 50%; right: 0; transform: translate(50%, -50%); cursor: ew-resize; }
+.resize-s { bottom: 0; left: 50%; transform: translate(-50%, 50%); cursor: ns-resize; }
+.resize-se { right: 0; bottom: 0; transform: translate(50%, 50%); cursor: nwse-resize; }
+/* Under the box, so it never covers the tag (a small box is narrower than the bar). */
+.edit-bar {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  display: flex;
+  margin-top: calc(var(--space-2) / var(--zoom, 1));
+  border: calc(1px / var(--zoom, 1)) solid var(--line-2);
+  border-radius: calc(var(--radius-xs) / var(--zoom, 1));
+  background: var(--raised);
+  overflow: hidden;
+}
+.edit-btn {
+  width: calc(var(--edit-btn) / var(--zoom, 1));
+  height: calc(var(--edit-btn) / var(--zoom, 1));
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font-size: calc(var(--text-sm) / var(--zoom, 1));
+  line-height: 1;
+  cursor: pointer;
+}
+.edit-btn:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+.edit-btn:disabled { opacity: 0.35; cursor: default; }
+.drop-line { position: absolute; background: var(--accent); pointer-events: none; }
 .pin {
   position: absolute;
   min-width: var(--pin-size);

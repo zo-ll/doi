@@ -70,6 +70,8 @@
   --zoom-label-w: 52px;
   --canvas-grid: 16px;
   --outline-w: 2px;
+  --handle-size: 8px;
+  --edit-btn: 20px;
   --menu-w: 280px;
   --menu-w-wide: 480px;
   --dialog-w: 1080px;

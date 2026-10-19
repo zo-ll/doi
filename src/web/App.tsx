@@ -86,7 +86,10 @@ export function App() {
   const [workspace, retryWorkspace] = useLoad<WorkspaceState>("/api/workspace");
   const [active, setActive] = useState<Active | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
+  /** Until this time, a design change keeps the selection: a canvas edit (#66) changed it. */
+  const keepSelectionUntil = useRef(0);
   const clearSelection = useCallback(() => setSelection(null), []);
+  const keepSelection = useCallback(() => void (keepSelectionUntil.current = Date.now() + 3000), []);
   const [navOpen, setNavOpen] = useState(false);
   const [panels, setPanels] = useState<Panels>(() => read(PANELS, isPanels) ?? { chat: true, side: true });
   const [sideTab, setSideTab] = useState<"comments" | "history">("comments");
@@ -134,7 +137,8 @@ export function App() {
       const a = activeRef.current;
       if (a?.project !== change.project || a.design !== change.design) return;
       setRevision((n) => n + 1);
-      setSelection(null); // the old rect may not match the new layout
+      // The old rect may not match the new layout. A canvas edit keeps its element selected.
+      if (Date.now() > keepSelectionUntil.current) setSelection(null);
     });
     return () => events.close();
   }, []);
@@ -504,6 +508,7 @@ export function App() {
           }}
           onOpenHistory={() => showSide("history")}
           liveVars={liveVars}
+          onEditSaving={keepSelection}
           overlay={
             <>
               {tweaksOpen && active && !variants.set && (

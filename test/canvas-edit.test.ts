@@ -15,6 +15,10 @@ describe("snapping", () => {
     expect(snapMargin(1, scale)).toBe("0px");
     expect(snapMargin(-9, scale)).toBe("-8px");
     expect(snapMargin(30, DEFAULT_SCALE)).toBe("32px");
+    // Past the largest step (16), multiples of the unit.
+    expect(snapMargin(19, scale)).toBe("var(--space-4)");
+    expect(snapMargin(41, scale)).toBe("40px");
+    expect(snapMargin(-41, scale)).toBe("-40px");
   });
 
   test("resize: each handle sets its sizes, without the padding of a content-box element", () => {

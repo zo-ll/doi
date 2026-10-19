@@ -20,6 +20,8 @@ test("the kind of a version comes from its commit message", () => {
   expect(versionKind("Rename design home to landing")).toBe("rename");
   expect(versionKind("Create design pricing")).toBe("create");
   expect(versionKind("Tweaks: --accent, --radius")).toBe("tweak");
+  expect(versionKind("Edit card-b: width 188px")).toBe("edit");
+  expect(versionKind("Undo Edit card-b: move after card-c")).toBe("edit");
   // A prompt that only starts like one of them is a turn.
   for (const prompt of ["Restore the old hero", "Pick variant colors that fit", "Rename design labels to plain words", "Create design tokens for spacing"]) {
     expect(versionKind(prompt)).toBe("turn");

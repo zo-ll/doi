@@ -13,9 +13,14 @@ export const DEFAULT_SCALE: SpacingScale = { unit: 4, steps: [0, 4, 8, 12, 16, 2
 /** A size snapped to a multiple of the scale's unit, at least one unit. */
 export const snapSize = (px: number, unit: number) => Math.max(unit, Math.round(px / unit) * unit);
 
-/** A margin snapped to the nearest step of the scale (the sign stays), as CSS: the step's variable when it has one. */
+/**
+ * A margin snapped to the nearest step of the scale (the sign stays), as CSS: the step's variable
+ * when it has one. Past the largest step, it snaps to multiples of the unit.
+ */
 export function snapMargin(px: number, scale: SpacingScale): string {
   const abs = Math.abs(px);
+  const largest = scale.steps.at(-1)?.px ?? 0;
+  if (abs > largest + scale.unit) return `${px < 0 ? "-" : ""}${snapSize(abs, scale.unit)}px`;
   let best = scale.steps[0] ?? { px: 0, var: null };
   for (const s of scale.steps) if (Math.abs(s.px - abs) < Math.abs(best.px - abs)) best = s;
   if (best.px === 0) return "0px";

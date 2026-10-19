@@ -76,7 +76,7 @@ export function useHistory(active: Active | null, revision: number) {
   };
 }
 
-export type VersionKind = "turn" | "pick" | "restore" | "rename" | "create" | "tweak";
+export type VersionKind = "turn" | "pick" | "restore" | "rename" | "create" | "tweak" | "edit";
 
 /**
  * What made a version, from its commit message. Only the exact forms that doi writes count,
@@ -88,5 +88,7 @@ export function versionKind(message: string): VersionKind {
   if (/^Rename design [a-z0-9][a-z0-9-]* to [a-z0-9][a-z0-9-]*$/.test(message)) return "rename";
   if (/^Create design [a-z0-9][a-z0-9-]*$/.test(message)) return "create";
   if (/^Tweaks: --[A-Za-z0-9_-]+(, --[A-Za-z0-9_-]+)*$/.test(message)) return "tweak";
+  // A canvas edit (#66), or the undo of one.
+  if (/^(Undo )?Edit [A-Za-z0-9_-]{1,100}: /.test(message)) return "edit";
   return "turn";
 }
