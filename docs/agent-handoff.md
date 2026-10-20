@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-10-19, #64, #63 and #58 are merged (PRs #122 to #127). Tests: 460 pass, 1 skip. M2, M3 and M4 have no open issues; the M1 and M4 gates are still open. `bun check`: no errors.
+Last update: 2026-10-20, the user tested OpenCode Go (#72) with a real key: it works, #72 is closed. The user needs no other providers for now. Tests: 460 pass, 1 skip. M1, M2, M3 and M4 have no open issues; the M1 and M4 gates are still open. `bun check`: no errors.
 
 ## 1. What doi is
 
@@ -148,13 +148,13 @@ M3 is complete: #42 design system format and loader, #43 import from a repo, #44
 
 **Subscriptions only.** The user has no Anthropic or OpenAI API keys and will not get them. doi runs on the CLI backends: `claude-code:<model>` (Claude subscription through `claude -p`) and `codex:<model>` (ChatGPT plan through `codex exec`). Do not ask for API keys. #2 (Anthropic adapter) and #3 (OpenAI adapter) were closed on 2026-10-13 as built and unit-tested, but not tested live. Test real runs with `claude-code:claude-haiku-5-5`. Since 2026-10-13 the default models in `src/config.ts` and `config.example.toml` are CLI backends (`claude-code:claude-opus-5-5`, `claude-code:claude-sonnet-5-5`, `claude-code:claude-haiku-5-5`), so doi works without a `config.toml`. The extract model needs vision for the screenshot import.
 
-Still open for a manual run: #72 OpenCode Go, only if the user has an OpenCode Go key. Run one model of each format, for example `glm-5.3`, `claude-haiku-5-5`, `gpt-6-luna`. This also confirms the image-support assumption in `supportsVision()`.
+#72 OpenCode Go: on 2026-10-20 the user ran it with a real key, and it works. #72 is closed.
 
 Next, in this order:
 
-1. M5 (breadth), in this order: the adapters #57 Ollama, #56 OpenRouter, #55 Gemini. v1.2 (#67) and Later (#68, #75) wait.
+1. M5 (breadth): on 2026-10-20 the user said that no other providers are necessary for now. The adapters #57 Ollama, #56 OpenRouter and #55 Gemini wait. Do not start them unless the user asks. v1.2 (#67) and Later (#68, #75) wait.
 2. M4 (handoff): #46, #47, #48, #49, #53 and #54 are done. On 2026-10-14 the user removed the harness layer: doi does not start coding agents. #50, #51 and #52 are closed as not planned. The handoff is the prompt plus the MCP server. The top bar "Hand off" button opens the Export dialog at the agent prompt. Open: the M4 gate (one design through a coding agent into a real repo of the user). Every export and the handoff bundle (#49) must copy or inline the `/ds/<name>/` files that pages link: reuse `exportFolder()`/`exportPage()` from `src/export/html.ts`.
-3. Still open for the user: the M1 gate (one real design), and #72 if they have an OpenCode Go key.
+3. Still open for the user: the M1 gate (one real design).
 
 After M1: M2 (precision), M3 (design systems), M4 (handoff), M5 (breadth). #75 (Sign in with ChatGPT) waits for a client ID from OpenAI.
 
