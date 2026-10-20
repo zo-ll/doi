@@ -277,7 +277,8 @@ a:hover { color: var(--text); }
 }
 
 .toast {
-  position: absolute;
+  /* Fixed: in a window shorter than the app minimum, the toast stays in view. */
+  position: fixed;
   left: var(--space-4);
   bottom: var(--space-4);
   z-index: 20;
@@ -349,7 +350,7 @@ a:hover { color: var(--text); }
 .brand { display: flex; align-items: baseline; gap: var(--space-0-5); font: var(--weight-semibold) var(--text-lg) / 1 var(--font-mono); letter-spacing: -0.04em; }
 .brand-mark { display: inline-block; width: 5px; height: 5px; background: var(--accent); }
 .caret { font-size: 10px; color: var(--text-3); }
-.crumbs { display: flex; align-items: center; gap: var(--space-0-5); min-width: 0; font-size: var(--text-md); }
+.crumbs { display: flex; align-items: center; gap: var(--space-0-5); min-width: 0; overflow: hidden; font-size: var(--text-md); }
 .crumb { height: var(--control-h); padding: 0 var(--space-2); border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-2); cursor: pointer; white-space: nowrap; }
 .crumb:hover { background: var(--hover); color: var(--text); }
 .crumb-current { color: var(--text); font-weight: var(--weight-medium); }
@@ -357,6 +358,10 @@ a:hover { color: var(--text); }
 .crumb-sep { color: var(--text-3); }
 .version-label { margin-left: var(--space-1-5); font: var(--text-xs) var(--font-mono); color: var(--text-3); white-space: nowrap; }
 .ds-chip {
+  /* The chips shrink before the breadcrumb does. */
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 240px;
   height: var(--control-h);
   display: inline-flex;
   align-items: center;
@@ -370,7 +375,6 @@ a:hover { color: var(--text); }
 }
 .ds-chip:hover { border-color: var(--line-2); background: var(--hover); }
 .ds-chip.is-empty { color: var(--text-2); }
-.ds-chip { max-width: 240px; flex: none; }
 .ds-swatches { display: flex; }
 .ds-swatches span { width: 8px; height: 12px; }
 .model-dots { display: flex; gap: 3px; }
@@ -379,6 +383,7 @@ a:hover { color: var(--text); }
 .popover-layer { position: fixed; inset: 0; z-index: 40; }
 .popover { position: fixed; z-index: 41; animation: doi-in 0.12s ease-out; }
 .provider-pop { top: calc(var(--topbar-h) + var(--space-1)); right: 150px; width: 340px; }
+.pages-pop { top: calc(var(--topbar-h) + var(--space-1)); left: 300px; min-width: 220px; }
 .provider-row { display: flex; flex-direction: column; gap: 3px; padding: var(--space-2) var(--space-2-5); }
 .provider-row-head { display: flex; align-items: center; gap: var(--space-2); }
 .provider-task { width: 56px; flex: none; font-size: var(--text-sm); color: var(--text-2); }
@@ -1402,13 +1407,11 @@ a:hover { color: var(--text); }
 
 /* Below 1280px the panes get narrower and the top bar drops the parts that are not controls. */
 @media (max-width: 1279px) {
-  :root { --chat-w: 300px; --side-w: 264px; }
   .topbar .version-label { display: none; }
   .topbar .ds-chip { max-width: 168px; }
   .canvas-toolbar .kbd { display: none; }
 }
 @media (max-width: 1119px) {
-  :root { --chat-w: 272px; --side-w: 240px; }
   .topbar { gap: var(--space-1); }
   .topbar .ds-chip { max-width: 112px; }
   .topbar .btn:not(.btn-icon) { padding: 0 var(--space-2); }
@@ -1419,4 +1422,8 @@ a:hover { color: var(--text); }
   .canvas-toolbar .tool-btn { padding: 0 var(--space-1); }
   .canvas-toolbar .tool-icon { padding: 0; }
   .canvas-toolbar .zoom-value { min-width: 40px; }
+}
+/* In a very narrow window the top bar menus keep inside the window. */
+@media (max-width: 559px) {
+  .provider-pop, .pages-pop { left: var(--space-2); right: var(--space-2); width: auto; min-width: 0; }
 }

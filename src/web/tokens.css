@@ -123,6 +123,14 @@
   color-scheme: light;
 }
 
+/* Narrow windows: the panes get narrower (the rules for the top bar and the canvas tools are in styles.css). */
+@media (max-width: 1279px) {
+  :root { --chat-w: 300px; --side-w: 264px; }
+}
+@media (max-width: 1119px) {
+  :root { --chat-w: 272px; --side-w: 240px; }
+}
+
 /* Dark: the system asks for it and the user did not choose light, or the user chose dark. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {

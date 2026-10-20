@@ -150,7 +150,7 @@ export function TopBar(props: {
 
       {menu && <div className="popover-layer" onMouseDown={close} />}
       {menu === "pages" && (
-        <div className="popover menu" role="menu" aria-label="Pages" style={{ top: "calc(var(--topbar-h) + var(--space-1))", left: 300, minWidth: 220 }}>
+        <div className="popover menu pages-pop" role="menu" aria-label="Pages">
           <div className="menu-label">Pages in this design</div>
           {props.pages.map((p) => (
             <button
