@@ -134,13 +134,23 @@ export function SettingsDialog({ config, providers, workspace, themeChoice, onTh
   };
   // Rows where the user types a model id instead of a pick from the list.
   const [typed, setTyped] = useState<Set<string>>(() => new Set());
-  const typeId = (row: string, on: boolean) =>
+  // The row whose new control takes the focus when it mounts, after a switch between list and text.
+  const focusRow = useRef<string | null>(null);
+  const focusOnMount = (row: string) => (el: HTMLElement | null) => {
+    if (el && focusRow.current === row) {
+      focusRow.current = null;
+      el.focus();
+    }
+  };
+  const typeId = (row: string, on: boolean, focus = true) => {
+    if (focus) focusRow.current = row;
     setTyped((s) => {
       const next = new Set(s);
       if (on) next.add(row);
       else next.delete(row);
       return next;
     });
+  };
   // One model for all tasks, unless the config already uses different ones.
   const [perTask, setPerTask] = useState(() => !allSame(config.models));
   const rows: { id: Task | "all"; label: string; hint: string }[] = perTask ? TASKS : [{ id: "all", label: "All tasks", hint: "Generate, edit, extract" }];
@@ -211,7 +221,10 @@ export function SettingsDialog({ config, providers, workspace, themeChoice, onTh
                           value={d.provider}
                           aria-label={`${t.label} provider`}
                           // A model id of one provider means nothing to another: the field starts empty and lists the models.
-                          onChange={(e) => setTask(t.id, { provider: e.target.value, model: "" })}
+                          onChange={(e) => {
+                            setTask(t.id, { provider: e.target.value, model: "" });
+                            typeId(t.id, false, false);
+                          }}
                         >
                           {options.map((p) => (
                             <option key={p.id} value={p.id}>
@@ -221,6 +234,7 @@ export function SettingsDialog({ config, providers, workspace, themeChoice, onTh
                         </select>
                         {pick ? (
                           <select
+                            ref={focusOnMount(t.id)}
                             className="select mono task-model"
                             value={models.includes(d.model) ? d.model : ""}
                             aria-label={`${t.label} model`}
@@ -242,6 +256,7 @@ export function SettingsDialog({ config, providers, workspace, themeChoice, onTh
                         ) : (
                           <span className="task-model-typed">
                             <input
+                              ref={focusOnMount(t.id)}
                               className="input mono task-model"
                               placeholder={lists[d.provider]?.state === "loading" ? "Loading the models…" : "Type a model id"}
                               title={lists[d.provider]?.state === "error" ? `The models cannot load: ${(lists[d.provider] as { message: string }).message}` : undefined}

@@ -6,8 +6,8 @@ import { DOI_USER_AGENT, OPENCODE_GO_BASE_URL } from "./opencode-go.ts";
 /**
  * The models a provider offers, for the model field in Settings. API providers answer from their
  * models endpoint with the key (on the server only; the UI gets ids). Codex lists its catalog with
- * `codex debug models`; Claude Code has no such command, so it gets a fixed list. The field stays
- * free text.
+ * `codex debug models`; Claude Code has no such command, so it gets a fixed list. Settings shows the
+ * list and also takes a typed id.
  */
 export type ModelList = { ok: true; models: string[]; fixed: boolean } | { ok: false; error: string };
 

@@ -1274,7 +1274,7 @@ a:hover { color: var(--text); }
 .task-row + .task-row, .provider-item + .provider-item { border-top: 1px solid var(--line); }
 .task-name { display: flex; flex-direction: column; font-size: var(--text-md); }
 .task-name .muted { font-size: var(--text-meta); }
-.task-model-typed { display: flex; gap: var(--space-1); min-width: 0; }
+.task-model-typed { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
 .task-model-typed .input { flex: 1; min-width: 0; }
 .task-provider, .task-model { height: var(--control-h-lg); font-size: var(--text-sm); }
 .task-status { font-size: var(--text-meta); }
