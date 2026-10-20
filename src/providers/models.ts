@@ -1,11 +1,13 @@
 import { MODEL_NAME, type Config, type ProviderId } from "../config.ts";
 import { keyStore, resolveKey, type KeyStore } from "./keys.ts";
+import { DEFAULT_MODEL as DEFAULT_CODEX_MODEL } from "./codex.ts";
 import { DOI_USER_AGENT, OPENCODE_GO_BASE_URL } from "./opencode-go.ts";
 
 /**
  * The models a provider offers, for the model field in Settings. API providers answer from their
- * models endpoint with the key (on the server only; the UI gets ids). The CLI backends have no
- * command that lists models, so they get a fixed list; the field stays free text.
+ * models endpoint with the key (on the server only; the UI gets ids). Codex lists its catalog with
+ * `codex debug models`; Claude Code has no such command, so it gets a fixed list. Settings shows the
+ * list and also takes a typed id.
  */
 export type ModelList = { ok: true; models: string[]; fixed: boolean } | { ok: false; error: string };
 
@@ -13,6 +15,8 @@ export interface ModelListDeps {
   fetch: (url: string, init: RequestInit) => Promise<Response>;
   env: Record<string, string | undefined>;
   keys: KeyStore;
+  /** Runs a CLI and gives its stdout, or null when it fails. */
+  run: (cmd: string[]) => Promise<string | null>;
 }
 
 export const defaultModelListDeps: ModelListDeps = {
@@ -21,12 +25,32 @@ export const defaultModelListDeps: ModelListDeps = {
   get keys() {
     return keyStore();
   },
+  async run(cmd) {
+    if (!Bun.which(cmd[0]!)) return null;
+    const proc = Bun.spawn(cmd, { stdin: "ignore", stdout: "pipe", stderr: "ignore", timeout: TIMEOUT_MS });
+    const [out, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+    return code === 0 ? out : null;
+  },
 };
 
-/** Claude Code takes these ids with --model; "default" uses the model from the Codex config. */
+/**
+ * The Codex catalog: the ids it lists to users, after "default". Only the ids leave this
+ * function. Without the catalog the list is "default" only.
+ */
+async function codexModels(deps: ModelListDeps): Promise<string[]> {
+  const out = await deps.run(["codex", "debug", "models"]).catch(() => null);
+  try {
+    const models: unknown[] = out ? JSON.parse(out)?.models ?? [] : [];
+    const listed = models.filter((m: any) => m?.visibility === "list").map((m: any) => m?.slug);
+    return [DEFAULT_CODEX_MODEL, ...clean(listed).filter((m) => m !== DEFAULT_CODEX_MODEL)];
+  } catch {
+    return [DEFAULT_CODEX_MODEL];
+  }
+}
+
+/** Claude Code takes these ids with --model. */
 const FIXED: Partial<Record<ProviderId, string[]>> = {
   "claude-code": ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-1"],
-  codex: ["default"],
 };
 
 /** OpenAI lists every model; these are not chat models. */
@@ -52,6 +76,7 @@ async function getJSON(deps: ModelListDeps, url: string, headers: Record<string,
 export async function listModels(id: ProviderId, config: Config, deps: ModelListDeps = defaultModelListDeps): Promise<ModelList> {
   const fixed = FIXED[id];
   if (fixed) return { ok: true, models: fixed, fixed: true };
+  if (id === "codex") return { ok: true, models: await codexModels(deps), fixed: true };
   const base = config.providers[id]?.base_url;
   try {
     if (id === "ollama") {

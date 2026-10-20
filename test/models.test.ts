@@ -7,11 +7,16 @@ import { getProviderModels } from "../src/server/settings.ts";
 const config = parseConfig({}, "/tmp/doi");
 
 /** A fetch that records each request and answers from `routes` (URL → JSON or status). */
-function deps(routes: Record<string, unknown>, keys: Record<string, string> = {}, env: Record<string, string> = {}) {
+function deps(routes: Record<string, unknown>, keys: Record<string, string> = {}, env: Record<string, string> = {}, cli: string | null = null) {
   const calls: { url: string; headers: Headers }[] = [];
+  const runs: string[][] = [];
   const d: ModelListDeps = {
     env,
     keys: memoryKeyStore(keys),
+    run: async (cmd) => {
+      runs.push(cmd);
+      return cli;
+    },
     fetch: async (url, init) => {
       calls.push({ url, headers: new Headers(init.headers) });
       const r = routes[url];
@@ -19,7 +24,7 @@ function deps(routes: Record<string, unknown>, keys: Record<string, string> = {}
       return typeof r === "number" ? new Response("x", { status: r }) : Response.json(r);
     },
   };
-  return { d, calls };
+  return { d, calls, runs };
 }
 
 describe("listModels", () => {
@@ -28,6 +33,23 @@ describe("listModels", () => {
     expect(await listModels("claude-code", config, d)).toMatchObject({ ok: true, fixed: true, models: expect.arrayContaining(["claude-opus-5-5"]) });
     expect(await listModels("codex", config, d)).toEqual({ ok: true, fixed: true, models: ["default"] });
     expect(calls).toHaveLength(0);
+  });
+
+  test("Codex: the listed ids of `codex debug models`, after default", async () => {
+    const catalog = {
+      models: [
+        { slug: "gpt-6.1-sol", visibility: "list", description: "x" },
+        { slug: "gpt-reserve", visibility: "hide" },
+        { slug: "gpt-6-luna", visibility: "list" },
+        { slug: "--flag", visibility: "list" },
+        { visibility: "list" },
+      ],
+    };
+    const { d, runs } = deps({}, {}, {}, JSON.stringify(catalog));
+    expect(await listModels("codex", config, d)).toEqual({ ok: true, fixed: true, models: ["default", "gpt-6-luna", "gpt-6.1-sol"] });
+    expect(runs).toEqual([["codex", "debug", "models"]]);
+    // Output that is not the catalog gives "default" only.
+    expect(await listModels("codex", config, deps({}, {}, {}, "not json").d)).toEqual({ ok: true, fixed: true, models: ["default"] });
   });
 
   test("OpenCode Go: the models endpoint with the stored key", async () => {
