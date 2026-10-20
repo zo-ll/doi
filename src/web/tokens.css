@@ -50,7 +50,8 @@
   --side-w: 308px;
   --nav-w: 296px;
   --sidebar-w: var(--nav-w);
-  --app-min-w: 1280px;
+  --app-min-w: 960px; /* below this width the page scrolls */
+  --app-min-h: 560px;
   --panel-header-h: 40px;
   --dialog-header-h: 48px;
   --dialog-footer-h: 56px;

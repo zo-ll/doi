@@ -102,13 +102,13 @@ export function TopBar(props: {
               ))}
             </span>
           )}
-          {props.designSystem?.name ?? "No design system"}
+          <span className="truncate">{props.designSystem?.name ?? "No design system"}</span>
         </button>
       )}
       {props.repo !== undefined && (
         <button className={`ds-chip ${props.repo ? "" : "is-empty"}`} onClick={props.onRepo} title="The app's code: a GitHub repo the model reads">
           <span className="repo-mark" aria-hidden="true" />
-          {props.repo ?? "Link the app's repo"}
+          <span className="truncate">{props.repo ?? "Link the app's repo"}</span>
         </button>
       )}
       {props.onTweaks && (
@@ -136,7 +136,7 @@ export function TopBar(props: {
             <span key={t.task} className={`dot ${TONE_DOT[t.tone]}`} />
           ))}
         </span>
-        Models
+        <span className="topbar-label">Models</span>
       </button>
       <button className="btn btn-ghost" onClick={props.onUsage} title="Usage">
         Usage

@@ -313,9 +313,11 @@ a:hover { color: var(--text); }
 /* ---------- Shell ---------- */
 
 .app {
-  position: fixed;
+  /* Absolute, not fixed: in a window smaller than the minimum size, the page scrolls. */
+  position: absolute;
   inset: 0;
   min-width: var(--app-min-w);
+  min-height: var(--app-min-h);
   display: flex;
   flex-direction: column;
   background: var(--bg);
@@ -368,6 +370,7 @@ a:hover { color: var(--text); }
 }
 .ds-chip:hover { border-color: var(--line-2); background: var(--hover); }
 .ds-chip.is-empty { color: var(--text-2); }
+.ds-chip { max-width: 240px; flex: none; }
 .ds-swatches { display: flex; }
 .ds-swatches span { width: 8px; height: 12px; }
 .model-dots { display: flex; gap: 3px; }
@@ -604,7 +607,7 @@ a:hover { color: var(--text); }
   resize: none;
 }
 .composer textarea:focus-visible { outline: none; }
-.composer-actions { display: flex; align-items: center; gap: var(--space-1); padding: var(--space-1-5); }
+.composer-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); padding: var(--space-1-5); }
 .composer-actions > .btn, .composer-actions > .seg, .composer-actions > label { flex: none; }
 .composer-actions > .spacer { flex: 1 1 0; min-width: 0; }
 .composer-actions .seg-item { min-width: 20px; padding: 0 var(--space-1-5); }
@@ -633,7 +636,7 @@ a:hover { color: var(--text); }
 .model-chip .truncate { min-width: 24px; }
 .model-menu { position: absolute; left: 0; right: 0; bottom: calc(100% + var(--space-1-5)); z-index: 41; }
 .model-menu .menu-item:disabled { color: var(--text-3); cursor: not-allowed; }
-.composer-hints { display: flex; gap: var(--space-2-5); padding: 0 var(--space-0-5); font: var(--text-2xs) var(--font-mono); color: var(--text-3); }
+.composer-hints { display: flex; flex-wrap: wrap; gap: 0 var(--space-2-5); white-space: nowrap; padding: 0 var(--space-0-5); font: var(--text-2xs) var(--font-mono); color: var(--text-3); }
 
 /* ---------- Canvas ---------- */
 
@@ -840,10 +843,13 @@ a:hover { color: var(--text); }
 }
 
 .canvas-toolbar {
+  /* Centered with auto margins, not left: 50%, so that the toolbar can use the full canvas width. */
   position: absolute;
-  left: 50%;
+  left: 0;
+  right: 0;
   bottom: var(--space-3-5);
-  transform: translateX(-50%);
+  width: fit-content;
+  margin: 0 auto;
   z-index: 6;
   display: flex;
   align-items: center;
@@ -853,6 +859,10 @@ a:hover { color: var(--text); }
   background: var(--panel);
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
+  /* A narrow canvas wraps the tools onto a second row. */
+  max-width: calc(100% - 2 * var(--space-3));
+  flex-wrap: wrap;
+  justify-content: center;
 }
 .tool-btn {
   height: var(--control-h);
@@ -1385,3 +1395,26 @@ a:hover { color: var(--text); }
 .key-form { display: flex; gap: var(--space-2); }
 .key-form > .input { flex: 1; min-width: 0; }
 .per-task-toggle { align-self: flex-start; margin-top: var(--space-1); }
+
+/* ---------- Narrow windows ---------- */
+
+/* Below 1280px the panes get narrower and the top bar drops the parts that are not controls. */
+@media (max-width: 1279px) {
+  :root { --chat-w: 300px; --side-w: 264px; }
+  .topbar .version-label { display: none; }
+  .topbar .ds-chip { max-width: 168px; }
+  .canvas-toolbar .kbd { display: none; }
+}
+@media (max-width: 1119px) {
+  :root { --chat-w: 272px; --side-w: 240px; }
+  .topbar { gap: var(--space-1); }
+  .topbar .ds-chip { max-width: 112px; }
+  .topbar .btn:not(.btn-icon) { padding: 0 var(--space-2); }
+  /* The dots stay; the button keeps its aria-label. */
+  .topbar-label { display: none; }
+  .crumb { padding: 0 var(--space-1); }
+  .canvas-toolbar .sep { display: none; }
+  .canvas-toolbar .tool-btn { padding: 0 var(--space-1); }
+  .canvas-toolbar .tool-icon { padding: 0; }
+  .canvas-toolbar .zoom-value { min-width: 40px; }
+}
