@@ -71,6 +71,7 @@
   --zoom-label-w: 52px;
   --canvas-grid: 16px;
   --outline-w: 2px;
+  --focus-reach: 3px; /* --outline-w + the 1px outline offset; overflow-clip-margin takes no calc() */
   --handle-size: 8px;
   --edit-btn: 20px;
   --menu-w: 280px;
