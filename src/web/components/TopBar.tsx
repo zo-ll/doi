@@ -102,13 +102,13 @@ export function TopBar(props: {
               ))}
             </span>
           )}
-          {props.designSystem?.name ?? "No design system"}
+          <span className="truncate">{props.designSystem?.name ?? "No design system"}</span>
         </button>
       )}
       {props.repo !== undefined && (
         <button className={`ds-chip ${props.repo ? "" : "is-empty"}`} onClick={props.onRepo} title="The app's code: a GitHub repo the model reads">
           <span className="repo-mark" aria-hidden="true" />
-          {props.repo ?? "Link the app's repo"}
+          <span className="truncate">{props.repo ?? "Link the app's repo"}</span>
         </button>
       )}
       {props.onTweaks && (
@@ -136,7 +136,7 @@ export function TopBar(props: {
             <span key={t.task} className={`dot ${TONE_DOT[t.tone]}`} />
           ))}
         </span>
-        Models
+        <span className="topbar-label">Models</span>
       </button>
       <button className="btn btn-ghost" onClick={props.onUsage} title="Usage">
         Usage
@@ -150,7 +150,7 @@ export function TopBar(props: {
 
       {menu && <div className="popover-layer" onMouseDown={close} />}
       {menu === "pages" && (
-        <div className="popover menu" role="menu" aria-label="Pages" style={{ top: "calc(var(--topbar-h) + var(--space-1))", left: 300, minWidth: 220 }}>
+        <div className="popover menu pages-pop" role="menu" aria-label="Pages">
           <div className="menu-label">Pages in this design</div>
           {props.pages.map((p) => (
             <button
