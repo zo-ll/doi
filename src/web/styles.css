@@ -350,7 +350,8 @@ a:hover { color: var(--text); }
 .brand { display: flex; align-items: baseline; gap: var(--space-0-5); font: var(--weight-semibold) var(--text-lg) / 1 var(--font-mono); letter-spacing: -0.04em; }
 .brand-mark { display: inline-block; width: 5px; height: 5px; background: var(--accent); }
 .caret { font-size: 10px; color: var(--text-3); }
-.crumbs { display: flex; align-items: center; gap: var(--space-0-5); min-width: 0; overflow: hidden; font-size: var(--text-md); }
+/* Clip, not hidden: the clip margin keeps the focus ring of a crumb (outline 2px + offset 1px). */
+.crumbs { display: flex; align-items: center; gap: var(--space-0-5); min-width: 0; overflow: clip; overflow-clip-margin: 3px; font-size: var(--text-md); }
 .crumb { height: var(--control-h); padding: 0 var(--space-2); border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-2); cursor: pointer; white-space: nowrap; }
 .crumb:hover { background: var(--hover); color: var(--text); }
 .crumb-current { color: var(--text); font-weight: var(--weight-medium); }
