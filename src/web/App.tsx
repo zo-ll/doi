@@ -26,6 +26,7 @@ import { ProjectsNav, type WorkspaceState } from "./components/ProjectsNav.tsx";
 import { MOD, TopBar, type DesignSystemChip } from "./components/TopBar.tsx";
 import { useHistory } from "./history.ts";
 import { pinsOf, useComments } from "./comments.ts";
+import { MAX_SCREENS } from "../workspace/frames.ts";
 import { nodeQuery, nodeUrl, parseNodeQuery } from "./node-url.ts";
 import { taskStatuses } from "./providers.ts";
 import { useTheme } from "./theme.ts";
@@ -209,6 +210,9 @@ export function App() {
   const comments = useComments(active, revision);
   const variants = useVariants(active);
   const history = useHistory(active, revision);
+  // A history preview of a mobile app shows the pages of that version.
+  const previewSha = history.preview?.sha ?? null;
+  const [previewPages] = useLoad<string[]>(active && previewSha ? `/api/projects/${active.project}/designs/${active.design}/pages?sha=${previewSha}` : null);
   // Bumped after a pick: the chat loads again and shows the picked answer.
   const [chatEpoch, setChatEpoch] = useState(0);
   const commentList = comments.comments.state === "ready" ? comments.comments.data : [];
@@ -269,6 +273,10 @@ export function App() {
     const a = activeRef.current;
     if (!a) return;
     const have = new Set(pages.state === "ready" ? pages.data : []);
+    if (have.size >= MAX_SCREENS) {
+      setToast(`An app shows at most ${MAX_SCREENS} screens.`);
+      return;
+    }
     let n = 2;
     while (have.has(`screen-${n}.html`)) n++;
     sendJSON<{ page: string }>("POST", `/api/projects/${a.project}/designs/${a.design}/screens`, { name: `screen-${n}` }).then(
@@ -591,7 +599,7 @@ export function App() {
           selection={selection}
           pins={pins}
           onSelect={setSelection}
-          screens={isApp ? (pages.state === "ready" ? pages.data : []) : null}
+          screens={isApp ? (history.preview ? (previewPages.state === "ready" ? previewPages.data : []) : pages.state === "ready" ? pages.data : []) : null}
           onPage={setPage}
           onAddScreen={addScreen}
           onClear={clearSelection}

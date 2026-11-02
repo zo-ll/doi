@@ -5,11 +5,11 @@ import type { Config } from "../config.ts";
 import { join } from "node:path";
 import { getProvider } from "../providers/registry.ts";
 import { providerStatus } from "../providers/status.ts";
-import { designDir, designPages, ensureWorkspace, fileIn, listProjects } from "../workspace/paths.ts";
+import { designDir, designPages, ensureWorkspace, fileIn, listProjects, sortPages } from "../workspace/paths.ts";
 import { variantDir } from "../workspace/variants.ts";
 import { designSystemDir, listDesignSystems, loadDesignSystem, previewPage } from "../workspace/design-systems.ts";
 import { designEvents, watchDesigns } from "../workspace/watch.ts";
-import { commitPaths, commitStats, commitTurn, designFileAt, designVersion, ensureRepo, isSha, workspaceChanges } from "../workspace/git.ts";
+import { commitPaths, commitStats, commitTurn, designFileAt, designFilesAt, designVersion, ensureRepo, isSha, workspaceChanges } from "../workspace/git.ts";
 import { uploadFile } from "../workspace/uploads.ts";
 import { deleteCommentRoute, getComments, patchComment, postComment } from "./comments.ts";
 import { getDesignSystem, importFromRepo, importFromScreenshots, putProjectDesignSystem } from "./design-systems.ts";
@@ -272,6 +272,13 @@ export async function startServer(config: Config, options: { port?: number; deve
           const { project, design } = req.params;
           if (!(await Bun.file(join(designDir(config.workspace, project, design), "index.html")).exists())) {
             return Response.json({ error: "Design not found." }, { status: 404 });
+          }
+          // ?sha=<commit>: the pages as they were in that version (the history preview of a mobile app).
+          const sha = new URL(req.url).searchParams.get("sha");
+          if (sha !== null) {
+            if (!isSha(sha)) return Response.json({ error: "Invalid commit id." }, { status: 400 });
+            const files = await designFilesAt(config.workspace, project, design, sha);
+            return Response.json(sortPages(files.filter((f) => /\.html?$/i.test(f))));
           }
           return Response.json(await designPages(config.workspace, project, design));
         } catch (e) {

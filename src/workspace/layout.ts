@@ -1,7 +1,7 @@
 import { rename, writeFile } from "node:fs/promises";
 import { withFileLock } from "./file-lock.ts";
 import { assertName } from "./paths.ts";
-import { defaultLayout, parseLayout, type Frame } from "./frames.ts";
+import { defaultLayout, parseLayout, PRESETS, type Frame } from "./frames.ts";
 import { projectFile } from "./project-file.ts";
 
 export * from "./frames.ts";
@@ -99,4 +99,13 @@ export function writeAppKind(workspace: string, project: string, design: string,
     else delete kinds[design];
     return { ...meta, kinds: { ...kinds } };
   });
+}
+
+/**
+ * The frames that an agent sees (MCP): a mobile app has one phone frame for every page; other
+ * designs have their layout.
+ */
+export async function designFrames(workspace: string, project: string, design: string): Promise<Frame[]> {
+  if (await isApp(workspace, project, design)) return [{ id: "phone", ...PRESETS[1], label: "Phone", x: 0, y: 0 }];
+  return readLayout(workspace, project, design);
 }

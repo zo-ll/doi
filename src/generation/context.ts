@@ -83,12 +83,6 @@ export function turnMessage(turn: Turn): Message {
   return { role: "user", content };
 }
 
-/**
- * Builds the request in the order of the design doc, so the prompt cache can reuse the start:
- * system prompt, design system, current files, then the trimmed history and the new message.
- * The oldest history goes first when the request is too large. A request that is too large
- * without any history is an error.
- */
 /** The system part for a mobile app design: the canvas shows each page as one phone screen. */
 export const APP_PROMPT = `# This design is a mobile app
 
@@ -100,6 +94,12 @@ The canvas shows each page of this design as one phone screen, 390 by 844 px, si
 - Where the app goes from one screen to another, use a plain link, for example <a href="files.html">.
 - Design for a phone only: 390 px wide, touch targets of at least 44 px, no desktop layout.`;
 
+/**
+ * Builds the request in the order of the design doc, so the prompt cache can reuse the start:
+ * system prompt, design system, current files, then the trimmed history and the new message.
+ * The oldest history goes first when the request is too large. A request that is too large
+ * without any history is an error.
+ */
 export function assembleContext(input: ContextInput): AssembledContext {
   const { capabilities, turn } = input;
   if (turn.images?.length && !capabilities.vision) {

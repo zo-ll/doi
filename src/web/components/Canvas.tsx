@@ -704,6 +704,7 @@ export function Canvas({
     setLayoutError(null);
     needsFit.current = true;
     if (screensKey !== null) {
+      setMenuOpen(false); // the "+ Frame" menu has no place in an app
       setFrames(screenFrames(screensKey ? screensKey.split("\n") : []));
       return;
     }
@@ -936,7 +937,7 @@ export function Canvas({
   };
 
   const addFrame = (label: string, width: number, height: number) => {
-    if (!frames || frames.length >= FRAME_LIMITS.count) return;
+    if (!frames || frames.length >= FRAME_LIMITS.count || screens) return; // an app has phone screens only
     const at = nextPosition(frames);
     changeFrames([...frames, { id: newFrameId(frames, label), label, width, height, ...at }]);
     setMenuOpen(false);

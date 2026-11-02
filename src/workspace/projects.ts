@@ -113,7 +113,9 @@ export async function setAppKind(workspace: string, project: unknown, design: un
   const p = checkName("project", project);
   const d = checkName("design", design);
   if (typeof app !== "boolean") throw new WorkspaceError(400, "app must be true or false.");
-  if (!existsSync(join(designDir(workspace, p, d), "index.html"))) throw new WorkspaceError(404, `No design "${d}" in "${p}".`);
+  const index = Bun.file(join(designDir(workspace, p, d), "index.html"));
+  if (!(await index.exists())) throw new WorkspaceError(404, `No design "${d}" in "${p}".`);
+  if (app && /\bdata-slide(?![\w-])/.test(await index.text())) throw new WorkspaceError(400, "A slide deck cannot be a mobile app.");
   await writeAppKind(workspace, p, d, app);
   return { paths: [projectFile(workspace, p)] };
 }

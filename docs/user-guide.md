@@ -188,9 +188,7 @@ The canvas has three tools:
 
 A mobile app shows each page of the design as one phone screen (390 × 844), side by side, as in Figma. Make one with "+ Mobile app" in the projects drawer, or click "Mobile app" next to the design name in the top bar to show an existing design that way (click it again to go back). Ask the chat for more screens, for example "add a screen with the file list": the model writes each screen as a new page. "+ Screen" (F) adds an empty screen that you can then describe in the chat. A click in a screen selects in that screen's page.
 
-When an element is selected, a message changes only that element. To add screens, clear the selection first (Esc, or × on the chip).
-
-When an element is selected, your next message changes only that element. doi uses the `edit` model for it. The chip above the message box shows the selected element. Click × on the chip to clear the selection.
+When an element is selected, your next message changes only that element. doi uses the `edit` model for it. The chip above the message box shows the selected element. Click × on the chip (or press Esc) to clear the selection, for example before you ask for new screens or pages.
 
 Every meaningful element in a design has a `data-oid` attribute. Selection, comments and edits use it. doi adds missing ids after each turn.
 
