@@ -13,6 +13,8 @@ export interface TaskStatus {
   label: string;
   /** How the provider connects, or what to do to make it ready. */
   via: string;
+  /** The model can read images; null when doi cannot tell. */
+  vision: boolean | null;
 }
 
 /** The names the UI shows for provider ids. */
@@ -57,11 +59,11 @@ export function statusOf(p: ProviderStatus | undefined): { tone: Tone; label: st
 }
 
 /** The model and status of each task, in task order. */
-export function taskStatuses(models: AppConfig["models"], providers: ProviderStatus[] | null): TaskStatus[] {
+export function taskStatuses(models: AppConfig["models"], providers: ProviderStatus[] | null, vision: AppConfig["vision"] = {}): TaskStatus[] {
   return TASKS.map(({ id }) => {
     const ref = models[id];
     const s = providers ? statusOf(providers.find((p) => p.id === ref.provider)) : { tone: "unknown" as const, label: "Checking…", via: "" };
-    return { task: id, provider: ref.provider, model: ref.model, ...s };
+    return { task: id, provider: ref.provider, model: ref.model, ...s, vision: vision[id] ?? null };
   });
 }
 

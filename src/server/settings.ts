@@ -1,17 +1,30 @@
 import { DEFAULT_KEY_ENV, parseModelChoice, PROVIDERS, withModels, type Config, type ModelRef, type ModelTask, type ProviderId } from "../config.ts";
+import { capabilitiesFor } from "../generation/context.ts";
 import { checkKey, keyStore, type KeyStore } from "../providers/keys.ts";
 import { defaultLoginDeps, LOGIN_COMMANDS, startLogin, type LoginDeps } from "../providers/login.ts";
 import { defaultModelListDeps, listModels, type ModelListDeps } from "../providers/models.ts";
+import { getProvider } from "../providers/registry.ts";
 import { usageEntries, type UsageEntry } from "../workspace/chat.ts";
 import { listProjects } from "../workspace/paths.ts";
 
 const TASKS: readonly ModelTask[] = ["generate", "edit", "extract"];
 const fail = (message: string, status = 400) => Response.json({ error: message }, { status });
 
+/** Whether the model can read images; null when doi has no adapter for its provider. */
+export function visionOf(config: Config, ref: ModelRef): boolean | null {
+  try {
+    return capabilitiesFor(getProvider(ref.provider, config), ref.model).vision;
+  } catch {
+    return null;
+  }
+}
+
 /** What the UI may know of the config: no provider settings, no key names. */
 export function configView(config: Config) {
   return {
     models: config.models,
+    /** Per task: whether its model can read images (the same check as a turn and the screenshot import). */
+    vision: Object.fromEntries(TASKS.map((t) => [t, visionOf(config, config.models[t])])) as Record<ModelTask, boolean | null>,
     workspace: config.workspace,
     editorUrl: config.editorUrl,
     prices: config.prices,

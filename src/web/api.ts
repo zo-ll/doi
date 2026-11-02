@@ -14,6 +14,8 @@ export type { DesignSystemView, ImportStreamEvent } from "../server/design-syste
 
 export interface AppConfig {
   models: Record<"generate" | "edit" | "extract", { provider: string; model: string }>;
+  /** Per task: whether its model can read images; null when doi cannot tell. */
+  vision?: Partial<Record<"generate" | "edit" | "extract", boolean | null>>;
   workspace: string;
   /** Link that opens a file in the user's editor; {path} is the absolute path. */
   editorUrl: string;

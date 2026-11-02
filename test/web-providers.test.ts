@@ -28,6 +28,9 @@ test("one status per task, in task order", () => {
     ["extract", "gpt-6", "warn"],
   ]);
   expect(taskStatuses(models, null)[0]).toMatchObject({ tone: "unknown", label: "Checking…" });
+  // vision comes from /api/config; without it doi cannot tell
+  expect(list.map((t) => t.vision)).toEqual([null, null, null]);
+  expect(taskStatuses(models, null, { generate: true, edit: false }).map((t) => t.vision)).toEqual([true, false, null]);
 });
 
 test("short model names", () => {
