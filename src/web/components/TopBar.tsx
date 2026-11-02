@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { TASKS, type TaskStatus } from "../providers.ts";
 import type { Theme } from "../theme.ts";
 
@@ -45,6 +45,17 @@ export function TopBar(props: {
   const { projectName, design, tasks } = props;
   const [menu, setMenu] = useState<null | "pages" | "providers">(null);
   const close = () => setMenu(null);
+  // Esc closes an open menu first; the app's own Esc (clear the selection) waits for the next press.
+  useEffect(() => {
+    if (!menu) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      setMenu(null);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [menu]);
   const attention = tasks.find((t) => t.tone === "err" || t.tone === "warn");
 
   return (

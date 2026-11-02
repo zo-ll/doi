@@ -140,6 +140,7 @@ export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onCh
     const r = await sendJSON<{ id: string; design: string }>("POST", "/api/projects", { name });
     close();
     onChanged({ project: r.id, design: r.design });
+    onClose(); // the new design opens empty: the next step is its first prompt in the chat
   };
   const renameProject = async (project: string, name: string) => {
     await sendJSON("PATCH", `/api/projects/${project}`, { name });
@@ -150,6 +151,7 @@ export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onCh
     await sendJSON("POST", `/api/projects/${project}/designs`, { id, kind: slides ? "slides" : "page" });
     close();
     onChanged({ project, design: id });
+    onClose();
   };
   const renameDesign = async (project: string, design: string, id: string) => {
     await sendJSON("PATCH", `/api/projects/${project}/designs/${design}`, { id });
@@ -169,6 +171,9 @@ export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onCh
         <div className="panel-header">
           <span className="panel-title">Projects</span>
           <span className="spacer" />
+          <button className="btn btn-ghost btn-md" onClick={onImport} title="Import a project or a workspace from a .doi.zip file (or drop the file on the window)">
+            Import…
+          </button>
           {!empty && (
             <button className="btn btn-secondary btn-md" onClick={() => setEditing({ kind: "new-project" })}>
               New project
@@ -213,9 +218,12 @@ export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onCh
             <div className="nav-state">
               <h3>No projects yet</h3>
               <p>A project groups designs and can use one design system. doi stores it as a folder in your workspace.</p>
-              <div>
+              <div className="nav-state-actions">
                 <button className="btn btn-primary" onClick={() => setEditing({ kind: "new-project" })}>
                   Create project
+                </button>
+                <button className="btn btn-secondary" onClick={onImport}>
+                  Import a project…
                 </button>
               </div>
             </div>
@@ -334,9 +342,6 @@ export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onCh
           <div className="nav-footer">
             <div className="nav-footer-head">
               <span>Workspace</span>
-              <button className="link-btn" onClick={onImport} title="Import a project or a workspace from an export file">
-                Import…
-              </button>
               <span className="status">
                 <span className={`dot ${workspace.data.changes === null ? "" : workspace.data.changes === 0 ? "dot-ok" : "dot-warn"}`} />
                 {workspace.data.changes === null

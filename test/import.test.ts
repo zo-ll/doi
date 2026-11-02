@@ -232,7 +232,7 @@ describe("import from screenshots", () => {
     }
     caps = { ...caps, vision: false };
     const res = await send({ name: "shop", images: [shot()] });
-    expect((await res.json()).error).toBe("anthropic:small cannot read images. Choose an extract model with vision in config.toml.");
+    expect((await res.json()).error).toBe("anthropic:small cannot read images. Choose an extract model with vision in Settings, Models and providers.");
     expect(calls).toHaveLength(0);
   });
 });

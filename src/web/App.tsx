@@ -231,8 +231,11 @@ export function App() {
       if (typeof e.key !== "string") return;
       const mod = e.metaKey || e.ctrlKey;
       if (e.key === "Escape" && !(e.target instanceof HTMLTextAreaElement)) {
+        const hadSelection = selectionRef.current !== null;
         setSelection(null);
         if (!document.querySelector('[aria-modal="true"]')) closePreview.current();
+        // With nothing selected, Esc closes the Tweaks panel (a dialog or the drawer closes itself first).
+        if (!hadSelection && !document.querySelector('[aria-modal="true"], .nav-drawer')) setTweaksOpen(false);
       }
       const key = e.key.toLowerCase();
       if (!mod && !e.altKey && key === "t" && !typing(e) && activeRef.current && !document.querySelector('[aria-modal="true"]')) {
@@ -265,6 +268,31 @@ export function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [toggleNav, togglePanel, activeProject, active]);
+
+  // A file dropped outside a drop zone must not replace the app (the browser opens it in the tab).
+  // A dropped .zip opens the import dialog; the composer and the screenshot import take their own drops first.
+  useEffect(() => {
+    const isFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes("Files");
+    const onOver = (e: DragEvent) => {
+      if (!isFiles(e) || e.defaultPrevented) return;
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = [...e.dataTransfer!.items].some((i) => /zip/.test(i.type)) ? "copy" : "none";
+    };
+    const onDrop = (e: DragEvent) => {
+      if (!isFiles(e) || e.defaultPrevented) return;
+      e.preventDefault();
+      const zip = [...e.dataTransfer!.files].find((f) => /\.zip$/i.test(f.name) || /zip/.test(f.type));
+      if (!zip || document.querySelector('[aria-modal="true"]')) return;
+      setScreen(null);
+      setImportFile(zip);
+    };
+    window.addEventListener("dragover", onOver);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragover", onOver);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, []);
 
   closePreview.current = () => history.preview && history.setPreview(null);
   const versionList = history.versions.state === "ready" ? history.versions.data : null;

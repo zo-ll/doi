@@ -3,7 +3,7 @@ import { simulateReadableStream } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import { parseConfig } from "../src/config.ts";
 import { createAnthropic } from "../src/providers/anthropic.ts";
-import { ProviderError, streamDesign, toInstructions, toModelMessages } from "../src/providers/ai-sdk.ts";
+import { fileOfPartialInput, ProviderError, streamDesign, toInstructions, toModelMessages } from "../src/providers/ai-sdk.ts";
 import { SEARCH_REPLACE_PROMPT } from "../src/providers/search-replace.ts";
 import type { GenerateEvent, GenerateRequest } from "../src/providers/types.ts";
 
@@ -107,6 +107,31 @@ describe("streamDesign", () => {
       { type: "usage", inputTokens: 120, outputTokens: 30, cachedTokens: 100 },
       { type: "done" },
     ]);
+  });
+
+  test("a streaming tool input gives one progress event with its file, before the call", async () => {
+    const input = JSON.stringify({ file: "pages/a \"b\".html", content: "<h1>x</h1>" });
+    const { model } = mockModel([
+      { type: "tool-input-start", id: "c1", toolName: "write" },
+      { type: "tool-input-delta", id: "c1", delta: input.slice(0, 12) },
+      { type: "tool-input-delta", id: "c1", delta: input.slice(12, 30) },
+      { type: "tool-input-delta", id: "c1", delta: input.slice(30) },
+      { type: "tool-input-end", id: "c1" },
+      { type: "tool-call", toolCallId: "c1", toolName: "write", input },
+      finish,
+    ]);
+    const events = await collect(streamDesign(model, req, TOOLS));
+    expect(events.slice(0, 2)).toEqual([
+      { type: "progress", file: 'pages/a "b".html' },
+      { type: "write", file: 'pages/a "b".html', content: "<h1>x</h1>" },
+    ]);
+  });
+
+  test("fileOfPartialInput waits for the closing quote of the file", () => {
+    expect(fileOfPartialInput('{"fi')).toBeNull();
+    expect(fileOfPartialInput('{"file": "sty')).toBeNull();
+    expect(fileOfPartialInput('{"file": "styles.css"')).toBe("styles.css");
+    expect(fileOfPartialInput('{"content": "say \\"file\\": \\"x\\"", "file": "a.html"}')).toBe("a.html");
   });
 
   test("fails on a tool call that does not match the schema", async () => {

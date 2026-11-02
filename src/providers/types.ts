@@ -37,6 +37,8 @@ export type GenerateEvent =
   | { type: "text"; delta: string }
   | { type: "edit"; file: string; oldText: string; newText: string }
   | { type: "write"; file: string; content: string }
+  /** The model started a change of `file`; its edit or write event follows. Only a hint for the UI. */
+  | { type: "progress"; file: string }
   | { type: "usage"; inputTokens: number; outputTokens: number; cachedTokens: number }
   | { type: "done" };
 

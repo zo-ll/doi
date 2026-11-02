@@ -136,7 +136,7 @@ function extractProvider(deps: ImportDeps, images: boolean): Provider | Response
     return fail((e as Error).message);
   }
   if (images && !capabilitiesFor(provider, ref.model).vision) {
-    return fail(`${ref.provider}:${ref.model} cannot read images. Choose an extract model with vision in config.toml.`);
+    return fail(`${ref.provider}:${ref.model} cannot read images. Choose an extract model with vision in Settings, Models and providers.`);
   }
   return provider;
 }

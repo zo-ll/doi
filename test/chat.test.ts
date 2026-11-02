@@ -100,6 +100,26 @@ describe("chat panel logic", () => {
     expect(failed).toMatchObject({ status: "error", error: expect.stringContaining("design is unchanged") });
   });
 
+  test("progress and proposed changes show while the turn runs, and go when it ends", () => {
+    let a = newAnswer(3);
+    a = applyEvent(a, { type: "progress", file: "index.html" });
+    expect(a.writing).toBe("index.html");
+    a = applyEvent(a, { type: "write", file: "index.html", content: "<p>x</p>" });
+    a = applyEvent(a, { type: "progress", file: "styles.css" });
+    expect(a).toMatchObject({ writing: "styles.css", proposed: ["index.html"] });
+    a = applyEvent(a, { type: "progress", file: "tweaks.json" });
+    expect(a).toMatchObject({ writing: "tweaks.json", proposed: ["index.html", "styles.css"] });
+    a = applyEvent(a, { type: "retry", attempt: 1, failures: [] });
+    expect(a.writing).toBeUndefined();
+    expect(a.proposed).toBeUndefined();
+    a = applyEvent(a, { type: "edit", file: "styles.css", oldText: "a", newText: "b" });
+    a = applyEvent(a, { type: "applied", files: ["styles.css"] });
+    a = applyEvent(a, { type: "done" });
+    expect(a).toMatchObject({ status: "done", files: ["styles.css"] });
+    expect(a.writing).toBeUndefined();
+    expect(a.proposed).toBeUndefined();
+  });
+
   test("readEvents parses events split across chunks", async () => {
     const text = 'event: text\ndata: {"type":"text","delta":"héllo"}\n\nevent: done\ndata: {"type":"done"}\n\n';
     const bytes = new TextEncoder().encode(text);
