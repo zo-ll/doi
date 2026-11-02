@@ -301,6 +301,13 @@ export function ChatPanel({
   const retry = (id: number) => {
     const s = sentRef.current.get(id);
     if (!s || running) return;
+    // The composer is empty after Send, so its vision warning cannot show for a retry.
+    if (s.images.length && current?.vision === false) {
+      setImageError(`${shortModel(current.model)} cannot read images. Pick a model with vision, then retry.`);
+      setModelMenu(true);
+      return;
+    }
+    setImageError(null);
     void (s.count > 1 ? sendVariants(s) : sendTurn(s));
   };
 
@@ -612,6 +619,7 @@ export function ChatPanel({
                       disabled={t.tone !== "ok"}
                       onClick={() => {
                         setChosen(t);
+                        setImageError(null); // a retry warning was about the model before
                         setModelMenu(false);
                       }}
                     >

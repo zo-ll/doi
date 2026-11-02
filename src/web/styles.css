@@ -652,6 +652,7 @@ a:hover { color: var(--text); }
 .model-menu { position: absolute; left: 0; right: 0; bottom: calc(100% + var(--space-1-5)); z-index: 41; }
 .model-menu .menu-item:disabled { color: var(--text-3); cursor: not-allowed; }
 .model-menu .meta { white-space: nowrap; }
+.model-menu .menu-item { height: auto; min-height: var(--control-h-lg); padding: var(--space-1) var(--space-2); }
 .model-menu-name { display: flex; flex-direction: column; min-width: 0; }
 .model-menu-note { font-size: var(--text-meta); color: var(--text-3); }
 .composer-hints { display: flex; flex-wrap: wrap; gap: 0 var(--space-2-5); white-space: nowrap; padding: 0 var(--space-0-5); font: var(--text-2xs) var(--font-mono); color: var(--text-3); }

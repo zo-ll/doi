@@ -598,7 +598,7 @@ function ScreenshotImport({ extract, onImported, onCancel }: { extract: TaskStat
       className="import-form"
       onSubmit={(e) => {
         e.preventDefault();
-        if (valid && !status.running) {
+        if (valid && !noVision && !status.running) {
           void run("/api/design-systems/import-screenshots", { name, notes, images: images.map(({ mediaType, data }) => ({ mediaType, data })) });
         }
       }}
