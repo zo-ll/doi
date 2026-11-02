@@ -120,6 +120,30 @@ describe("the server", () => {
   });
 });
 
+/** Source text without line and block comments; strings (quotes, backticks) stay as they are. */
+function withoutComments(text: string): string {
+  let out = "";
+  let quote: string | null = null;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!;
+    if (quote) {
+      out += c;
+      if (c === "\\") out += text[++i] ?? "";
+      else if (c === quote) quote = null;
+    } else if (c === '"' || c === "'" || c === "`") {
+      quote = c;
+      out += c;
+    } else if (c === "/" && text[i + 1] === "*") {
+      const end = text.indexOf("*/", i + 2);
+      i = end < 0 ? text.length : end + 1;
+    } else if (c === "/" && text[i + 1] === "/") {
+      const end = text.indexOf("\n", i);
+      i = end < 0 ? text.length : end - 1;
+    } else out += c;
+  }
+  return out;
+}
+
 describe("frame rules in the code", () => {
   const sources = async () => {
     const out: { path: string; text: string }[] = [];
@@ -127,16 +151,29 @@ describe("frame rules in the code", () => {
     return out;
   };
 
+  // The one exception: the hidden CSS source of the side panel (NodeCssBlock) reads stylesheets,
+  // so it has the app's origin, and therefore no scripts at all. Never both in one sandbox.
+  const CSS_SOURCE = "src/web/components/NodeCssBlock.tsx";
+
   test("every iframe is sandboxed with allow-scripts only (no same-origin access)", async () => {
     let count = 0;
     for (const { path, text } of await sources()) {
       for (const m of text.matchAll(/<iframe\b[^>]*>/gs)) {
         count++;
-        expect({ path, sandbox: m[0].match(/sandbox="([^"]*)"/)?.[1] }).toEqual({ path, sandbox: "allow-scripts" });
+        const sandbox = m[0].match(/sandbox="([^"]*)"/)?.[1];
+        expect({ path, sandbox }).toEqual({ path, sandbox: path === CSS_SOURCE ? "allow-same-origin" : "allow-scripts" });
       }
     }
     expect(count).toBeGreaterThan(0);
-    for (const { text } of await sources()) expect(text).not.toContain("allow-same-origin");
+    for (const { path, text } of await sources()) {
+      if (path === CSS_SOURCE) {
+        // The code without comments: one same-origin sandbox, no scripts, no sandbox change from JavaScript.
+        const code = withoutComments(text);
+        expect(code.match(/allow-same-origin/g)?.length).toBe(1);
+        expect(code).not.toContain("allow-scripts");
+        expect(code).not.toMatch(/\.sandbox\b|setAttribute\(\s*["']sandbox/);
+      } else expect(text).not.toContain("allow-same-origin");
+    }
   });
 
   test("every message listener checks the frame and parses the data", async () => {
