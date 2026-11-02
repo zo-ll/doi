@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-10-20, #72 closed (the user tested OpenCode Go with a real key), #130 (narrow windows) and #131 (Settings model list, Codex catalog) merged. The user needs no other providers for now. Tests: 461 pass, 1 skip. M1, M2, M3 and M4 have no open issues; the M1 and M4 gates are still open. `bun check`: no errors.
+Last update: 2026-11-02, a drive of the whole flow with `opencode-go:deepseek-v4.1-flash` and the UI fixes from it (branch `ui/seamless-flow`). Before: #72 closed (the user tested OpenCode Go with a real key), #130 (narrow windows) and #131 (Settings model list, Codex catalog) merged. The user needs no other providers for now. Tests: 465 pass, 1 skip. M1, M2, M3 and M4 have no open issues; the M1 and M4 gates are still open. `bun check`: no errors.
 
 ## 1. What doi is
 
@@ -121,11 +121,24 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 
 ### Provider contract
 
-- A provider yields `text`, `edit`, `write`, `usage`, `done`. Errors and aborts throw (an abort throws an `AbortError`). A provider never drops an edit silently.
+- A provider yields `text`, `edit`, `write`, `usage`, `done`, and optionally `progress { file }` when the model starts a change (only a hint for the chat; `streamDesign()` reads the file from the streamed tool input with `fileOfPartialInput()`). Errors and aborts throw (an abort throws an `AbortError`). A provider never drops an edit silently.
 - API providers (`editsFiles: false`) only propose `edit`/`write`. The edit applier (#6) applies them.
 - CLI backends (`editsFiles: true`) change the files in `GenerateRequest.cwd` themselves. Their `edit`/`write` events only report the change. **The edit applier must skip them.**
 
 ## 6. State and next steps
+
+**2026-11-02: drive with DeepSeek.** The user asked for a drive of the whole flow with `opencode-go:deepseek-v4.1-flash` (the models in the user's `config.toml`) and for a seamless app. Checked in Chromium on a scratch workspace: first turn (134 s, 21k out), selection + comment + Apply (12 s), 2 variants (26 s) and a pick, tweaks, history, the four design exports, project export and import, new project and design, hand off. All worked. Fixes from the drive:
+
+- The chat shows what a turn does: "Thinking…" (DeepSeek reasons for 40–100 s before its first text), "Writing <file>…" from the new `progress` event, the files so far, and the time since Send. With OpenCode Go the `write` events of all calls come at the end; a file counts as written when the next one starts.
+- Esc closes the top bar menus (pages, Models), the chat's model menu, and Tweaks (when nothing is selected, from the composer too; not when the Esc stopped a turn).
+- Ctrl/⌘ Enter sends from any control of the composer (after a click on the variant count it did nothing).
+- "+ Design" and "New project" close the drawer; an empty design puts the focus in the composer.
+- Import: "Import…" is in the drawer header and in the empty state (it was a small link in the footer); a `.zip` dropped on the window (the composer too: it takes only images) opens the import dialog. A file dropped outside a drop zone no longer opens in the tab in place of doi. A design frame is another document and cannot hand a file to the app: the bridge only blocks the drop there (after the page's own handlers), so a `.zip` on a frame does not import.
+- The chat's file list leaves out hidden files (`.comments.json`).
+- The toast is at the top of the canvas (it covered the Send button); below 560 px of window height it is fixed, because the page scrolls there.
+- The vision errors point to the chat's model menu and Settings, not to config.toml.
+
+Not changed: DeepSeek v4.1 Flash has no vision, so image turns and the screenshot import fail with a clear message after Send; the UI does not know a model's vision before that.
 
 **2026-10-20.** #129 (handoff), #130 (narrow windows: every control reachable from 960px; below 960 x 560 the page scrolls) and #131 (Settings: the model field lists every model; Codex models from `codex debug models`) are merged.
 

@@ -3,7 +3,7 @@ import { appendFile, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { appendChat, chatFile, historyMessages, readChat, type ChatEntry } from "../src/workspace/chat.ts";
-import { applyEvent, fromEntries, newAnswer, readEvents } from "../src/web/chat.ts";
+import { applyEvent, clock, fromEntries, newAnswer, readEvents, shown } from "../src/web/chat.ts";
 
 const at = "2026-10-12T00:00:00.000Z";
 const usage = { inputTokens: 100, outputTokens: 20, cachedTokens: 80 };
@@ -98,6 +98,35 @@ describe("chat panel logic", () => {
 
     const failed = applyEvent(newAnswer(2), { type: "error", kind: "apply", message: "x" });
     expect(failed).toMatchObject({ status: "error", error: expect.stringContaining("design is unchanged") });
+  });
+
+  test("progress and proposed changes show while the turn runs, and go when it ends", () => {
+    let a = newAnswer(3);
+    a = applyEvent(a, { type: "progress", file: "index.html" });
+    expect(a.writing).toBe("index.html");
+    a = applyEvent(a, { type: "write", file: "index.html", content: "<p>x</p>" });
+    a = applyEvent(a, { type: "progress", file: "styles.css" });
+    expect(a).toMatchObject({ writing: "styles.css", proposed: ["index.html"] });
+    a = applyEvent(a, { type: "progress", file: "tweaks.json" });
+    expect(a).toMatchObject({ writing: "tweaks.json", proposed: ["index.html", "styles.css"] });
+    a = applyEvent(a, { type: "retry", attempt: 1, failures: [] });
+    expect(a.writing).toBeUndefined();
+    expect(a.proposed).toBeUndefined();
+    a = applyEvent(a, { type: "edit", file: "styles.css", oldText: "a", newText: "b" });
+    a = applyEvent(a, { type: "applied", files: ["styles.css"] });
+    a = applyEvent(a, { type: "done" });
+    expect(a).toMatchObject({ status: "done", files: ["styles.css"] });
+    expect(a.writing).toBeUndefined();
+    expect(a.proposed).toBeUndefined();
+  });
+
+  test("the file list leaves out hidden files; the clock shows m:ss", () => {
+    expect(shown(".comments.json")).toBe(false);
+    expect(shown(".hidden/styles.css")).toBe(false);
+    expect(shown("pages/index.html")).toBe(true);
+    expect(clock(0)).toBe("0:00");
+    expect(clock(75)).toBe("1:15");
+    expect(clock(605)).toBe("10:05");
   });
 
   test("readEvents parses events split across chunks", async () => {

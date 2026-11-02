@@ -37,6 +37,9 @@ export type ChatMessage =
       commitError?: string;
       /** How many of the turn's comments are done now. */
       commentsDone?: number;
+      /** While the turn runs: the file the model writes now, and the files it changed so far. */
+      writing?: string;
+      proposed?: string[];
     }
   | VariantsMessage
   | { id: number; kind: "error"; text: string }
@@ -159,20 +162,29 @@ export function fromEntries(entries: ChatEntryView[], nextId: () => number, imag
 
 const addFile = (files: string[], file: string) => (files.includes(file) ? files : [...files, file]);
 
+/** Seconds as m:ss. */
+export const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+
+/** Hidden files (comments) are doi's own data, not part of the design: the file list leaves them out. */
+export const shown = (file: string) => !file.split("/").some((part) => part.startsWith("."));
+
 /** Applies one stream event to the answer. */
 export function applyEvent(a: Answer, e: TurnStreamEvent): Answer {
   switch (e.type) {
     case "text":
       return { ...a, text: a.text + e.delta };
     case "retry":
-      // The changes failed and the model answers again; its first text no longer applies.
-      return { ...a, text: "", retries: a.retries + 1 };
+      // The changes failed and the model answers again; its first text and changes no longer apply.
+      return { ...a, text: "", retries: a.retries + 1, writing: undefined, proposed: undefined };
+    case "progress":
+      // Some providers send all calls at the end: a file is written when the model starts the next one.
+      return { ...a, writing: e.file, ...(a.writing && a.writing !== e.file ? { proposed: addFile(a.proposed ?? [], a.writing) } : {}) };
     case "edit":
     case "write":
-      // Proposed or reported changes; "applied" lists the files that really changed.
-      return a;
+      // Proposed or reported changes, for the progress line; "applied" lists the files that really changed.
+      return { ...a, writing: undefined, proposed: addFile(a.proposed ?? [], e.file) };
     case "applied":
-      return { ...a, files: e.files.reduce(addFile, a.files) };
+      return { ...a, writing: undefined, proposed: undefined, files: e.files.reduce(addFile, a.files) };
     case "usage": {
       const u = a.usage ?? { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
       return {
@@ -185,9 +197,9 @@ export function applyEvent(a: Answer, e: TurnStreamEvent): Answer {
       };
     }
     case "done":
-      return { ...a, status: "done" };
+      return { ...a, status: "done", writing: undefined, proposed: undefined };
     case "error":
-      return { ...a, status: "error", error: errorText(e.kind, e.message) };
+      return { ...a, status: "error", error: errorText(e.kind, e.message), writing: undefined, proposed: undefined };
     case "commit":
       return e.sha ? { ...a, commit: e.sha, ...(e.stats ? { stats: e.stats } : {}) } : e.error ? { ...a, commitError: e.error } : a;
     case "comments":

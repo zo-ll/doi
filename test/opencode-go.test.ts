@@ -143,7 +143,7 @@ describe("opencode-go provider requests", () => {
 });
 
 describe("opencode-go chat stream", () => {
-  test("a streamed chat completion maps to text, edit, usage and done", async () => {
+  test("a streamed chat completion maps to text, progress, edit, usage and done", async () => {
     const chunk = (delta: object, finish: string | null = null, usage?: object) =>
       `data: ${JSON.stringify({
         id: "c1",
@@ -165,6 +165,7 @@ describe("opencode-go chat stream", () => {
     const events = await collect(createOpenCodeGo(config, { fetch: fn }).generate(req("glm-5.3")));
     expect(events).toEqual([
       { type: "text", delta: "On it." },
+      { type: "progress", file: "styles.css" },
       { type: "edit", file: "styles.css", oldText: "red", newText: "blue" },
       { type: "usage", inputTokens: 50, outputTokens: 12, cachedTokens: 0 },
       { type: "done" },

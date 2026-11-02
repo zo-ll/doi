@@ -5,10 +5,12 @@ import { IMAGE_LIMITS } from "../../workspace/image-limits.ts";
 import {
   applyEvent,
   applyVariantEvent,
+  clock,
   formatTokens,
   fromEntries,
   newAnswer,
   readEvents,
+  shown,
   type Answer,
   type ChatMessage,
   type Task,
@@ -197,6 +199,8 @@ export function ChatPanel({
           }
         });
         setMessages((list) => [...loaded, ...list]);
+        // An empty design waits for its first prompt: the composer takes the focus.
+        if (loaded.length === 0 && !document.querySelector('[aria-modal="true"], .nav-drawer')) inputRef.current?.focus();
       })
       .catch((e: unknown) => {
         if (live) push({ kind: "error", text: `The chat history could not load: ${e instanceof Error ? e.message : String(e)}` });
@@ -300,7 +304,20 @@ export function ChatPanel({
     void (s.count > 1 ? sendVariants(s) : sendTurn(s));
   };
 
-  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  // Esc closes the model menu, wherever the focus is.
+  useEffect(() => {
+    if (!modelMenu) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      setModelMenu(false);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [modelMenu]);
+
+  /** On the whole composer: Ctrl/⌘ Enter sends from the text, the variant count or any other control. */
+  const onKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       if (canSend) send();
@@ -428,6 +445,7 @@ export function ChatPanel({
         )}
         <div
           className={`composer${disabled ? " is-disabled" : ""}${dragging ? " is-dragging" : ""}`}
+          onKeyDown={onKeyDown}
           onDragOver={(e) => {
             if (disabled || !e.dataTransfer.types.includes("Files")) return;
             e.preventDefault();
@@ -438,9 +456,12 @@ export function ChatPanel({
           }}
           onDrop={(e) => {
             if (disabled) return;
-            e.preventDefault();
             setDragging(false);
-            void addImages([...e.dataTransfer.files]);
+            const files = [...e.dataTransfer.files];
+            // Only images belong here; the window takes a .zip (import) and blocks other files.
+            if (!files.some((f) => f.type.startsWith("image/"))) return;
+            e.preventDefault();
+            void addImages(files);
           }}
         >
           {hasChips && (
@@ -493,7 +514,6 @@ export function ChatPanel({
             ref={inputRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={onKeyDown}
             onPaste={(e) => {
               const files = [...e.clipboardData.files].filter((f) => f.type.startsWith("image/"));
               if (files.length) {
@@ -645,9 +665,27 @@ function VariantsLine({ message: m }: { message: VariantsMessage }) {
   );
 }
 
+/** The seconds since `since` (an ISO time), counted while `on`. */
+function useElapsed(since: string | undefined, on: boolean): number {
+  const start = since ? Date.parse(since) : Date.now();
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!on) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [on]);
+  return Math.max(0, Math.floor((now - start) / 1000));
+}
+
 function AnswerView({ answer: a, running, onRetry, onOtherModel }: { answer: Answer; running: boolean; onRetry: () => void; onOtherModel: () => void }) {
   const streaming = a.status === "running";
-  const files = a.stats ?? a.files.map((file) => ({ file, add: null as number | null, del: null as number | null }));
+  const elapsed = useElapsed(a.at, streaming);
+  const none = null as number | null;
+  const files = (
+    streaming && a.files.length === 0
+      ? (a.proposed ?? []).map((file) => ({ file, add: none, del: none }))
+      : (a.stats ?? a.files.map((file) => ({ file, add: none, del: none })))
+  ).filter((f) => shown(f.file));
   return (
     <div className="turn-ai">
       <div className="turn-meta">
@@ -664,7 +702,18 @@ function AnswerView({ answer: a, running, onRetry, onOtherModel }: { answer: Ans
       {streaming && (
         <p className="turn-progress">
           <span className="spinner" />
-          {a.retries > 0 ? `Some changes did not match. Trying again (${a.retries})…` : "Working…"}
+          <span className="spacer">
+            {a.retries > 0
+              ? `Some changes did not match. Trying again (${a.retries})…`
+              : a.writing && shown(a.writing)
+                ? `Writing ${a.writing}…`
+                : a.text || a.proposed?.length
+                  ? "Working…"
+                  : "Thinking…"}
+          </span>
+          <span className="turn-elapsed" title="Time since you sent the message">
+            {clock(elapsed)}
+          </span>
         </p>
       )}
       {files.length > 0 && (

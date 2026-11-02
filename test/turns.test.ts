@@ -353,7 +353,7 @@ describe("POST turns", () => {
     capabilities = { ...caps, vision: false };
     const res = await post({ text: "x", images: [{ mediaType: "image/png", data: "AQ==" }] });
     expect(res.status).toBe(400);
-    expect((await res.json()).error).toBe("anthropic:big-model cannot read images. Remove the images, or choose a model with vision in config.toml.");
+    expect((await res.json()).error).toBe("anthropic:big-model cannot read images. Remove the images, or pick a model with vision in the model menu of the chat.");
     expect(calls).toHaveLength(0);
     // The design is not locked by the refused request.
     const res2 = await post({ text: "no images" });

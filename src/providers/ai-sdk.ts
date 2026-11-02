@@ -60,6 +60,17 @@ export function toModelMessages(messages: Message[]): ModelMessage[] {
   });
 }
 
+/** The "file" value of a tool input that is still streaming, once its closing quote has come; else null. */
+export function fileOfPartialInput(json: string): string | null {
+  const m = /"file"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(json);
+  if (!m) return null;
+  try {
+    return JSON.parse(`"${m[1]}"`) as string;
+  } catch {
+    return null;
+  }
+}
+
 export class ProviderError extends Error {
   override name = "ProviderError";
 }
@@ -95,8 +106,25 @@ export async function* streamDesign(
     onError: () => {},
   });
 
+  // The input of a tool call streams as JSON text: its "file" names the file before the call ends.
+  const inputs = new Map<string, string>();
   for await (const part of result.stream) {
     switch (part.type) {
+      case "tool-input-start":
+        inputs.set(part.id, "");
+        break;
+      case "tool-input-delta": {
+        const sofar = inputs.get(part.id);
+        if (sofar === undefined) break;
+        const next = sofar + part.delta;
+        const file = fileOfPartialInput(next);
+        if (file === null) inputs.set(part.id, next);
+        else {
+          inputs.delete(part.id); // one progress event per call
+          yield { type: "progress", file };
+        }
+        break;
+      }
       case "text-delta":
         if (!part.text) break;
         if (blocks) yield* parsed(() => blocks.push(part.text));

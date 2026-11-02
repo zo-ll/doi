@@ -168,7 +168,7 @@ export function createTurnHandler(deps: TurnDeps) {
     }
     if (body.images.length && !capabilitiesFor(provider, ref.model).vision) {
       return Response.json(
-        { error: `${ref.provider}:${ref.model} cannot read images. Remove the images, or choose a model with vision in config.toml.` },
+        { error: `${ref.provider}:${ref.model} cannot read images. Remove the images, or pick a model with vision in the model menu of the chat.` },
         { status: 400 },
       );
     }

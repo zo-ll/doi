@@ -277,10 +277,13 @@ a:hover { color: var(--text); }
 }
 
 .toast {
-  /* Fixed: in a window shorter than the app minimum, the toast stays in view. */
-  position: fixed;
-  left: var(--space-4);
-  bottom: var(--space-4);
+  /* At the top of the canvas: at the bottom it covered the chat's Send button and the canvas tools. */
+  position: absolute;
+  top: var(--space-4);
+  inset-inline: 0;
+  width: max-content;
+  max-width: calc(100% - 2 * var(--space-4));
+  margin-inline: auto;
   z-index: 20;
   display: flex;
   align-items: center;
@@ -292,6 +295,10 @@ a:hover { color: var(--text); }
   font-size: var(--text-control);
   box-shadow: var(--shadow);
   animation: doi-in 0.16s ease-out;
+}
+/* A window shorter than the app minimum scrolls: the toast stays fixed in view there, below the top bar. */
+@media (max-height: 559px) {
+  .toast { position: fixed; top: calc(var(--topbar-h) + var(--space-4)); }
 }
 
 .scrim { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: var(--scrim); }
@@ -480,6 +487,7 @@ a:hover { color: var(--text); }
 .nav-state { margin: auto 0; display: flex; flex-direction: column; gap: var(--space-2-5); padding: var(--space-6); }
 .nav-state h3 { font-size: var(--text-md); font-weight: var(--weight-semibold); }
 .nav-state p { font-size: var(--text-control); line-height: var(--leading-loose); color: var(--text-2); }
+.nav-state-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .nav-skeleton { display: grid; gap: var(--space-3); padding: var(--space-2); }
 .nav-skeleton > :nth-child(1) { width: 60%; }
 .nav-skeleton > :nth-child(2) { width: 75%; margin-left: var(--space-6); }
@@ -536,6 +544,7 @@ a:hover { color: var(--text); }
 .msg-info { font-size: var(--text-sm); color: var(--text-2); }
 .stream-cursor { display: inline-block; width: 7px; height: 14px; margin-left: var(--space-0-5); vertical-align: -2px; background: var(--accent); animation: doi-pulse 1s infinite; }
 .turn-progress { display: flex; align-items: center; gap: var(--space-2); font: var(--text-meta) var(--font-mono); color: var(--text-2); }
+.turn-elapsed { color: var(--text-3); font-variant-numeric: tabular-nums; }
 .turn-files { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius-md); overflow: hidden; }
 .turn-file { display: flex; align-items: center; gap: var(--space-2); height: 26px; padding: 0 var(--space-2-5); font: var(--text-meta) var(--font-mono); }
 .turn-file + .turn-file { border-top: 1px solid var(--line); }
