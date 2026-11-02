@@ -46,27 +46,30 @@ export const FALLBACK_IDENTITY = { name: "doi", email: "doi@localhost" } as cons
 const IDENTITY_KEYS = /^(user|author|committer)\.(name|email)$/;
 
 /**
- * The variables a commit needs. Only an identity that the user set explicitly counts: a
- * `GIT_AUTHOR_*`/`GIT_COMMITTER_*` variable, or `user.*`, `author.*` or `committer.*` in a git
- * config; then `EMAIL` for an email. Each other part is FALLBACK_IDENTITY, so git never derives one
- * from the passwd name and login@host, and no machine detail reaches the history or `.doi.zip`
- * exports. Only for this command: nothing is written to any git config.
+ * The variables a commit needs. Only an identity that the user set explicitly counts, in git's
+ * order: a `GIT_AUTHOR_*`/`GIT_COMMITTER_*` variable, then `author.*` or `committer.*`, then
+ * `user.*` in a git config, then `EMAIL` for an email. Each other part is FALLBACK_IDENTITY, so
+ * git never derives one from the passwd name and login@host, and no machine detail reaches the
+ * history or `.doi.zip` exports. doi passes every part that no variable holds, also an empty
+ * variable, so git uses only these values. Only for this command: nothing is written to any git config.
  */
 export async function identityEnv(workspace: string): Promise<Record<string, string>> {
-  const out = await $`git config --get-regexp ${IDENTITY_KEYS.source}`.cwd(workspace).env({ ...process.env }).quiet().nothrow();
-  const config = new Set<string>();
-  for (const line of out.stdout.toString().split("\n")) {
-    const at = line.indexOf(" ");
-    if (at > 0 && line.slice(at + 1).trim()) config.add(line.slice(0, at));
+  // --null: a value with a newline cannot look like another key.
+  const out = await $`git config --null --get-regexp ${IDENTITY_KEYS.source}`.cwd(workspace).env({ ...process.env }).quiet().nothrow();
+  const config = new Map<string, string>();
+  for (const entry of out.stdout.toString().split("\0")) {
+    const at = entry.indexOf("\n");
+    const value = at > 0 ? entry.slice(at + 1).trim() : "";
+    if (value) config.set(entry.slice(0, at), value); // the last value wins, as in git
   }
   const env: Record<string, string> = {};
   for (const role of ["author", "committer"] as const) {
     for (const part of ["name", "email"] as const) {
       const key = `GIT_${role.toUpperCase()}_${part.toUpperCase()}`;
-      if (process.env[key]?.trim() || config.has(`${role}.${part}`) || config.has(`user.${part}`)) continue;
+      if (process.env[key]?.trim()) continue;
       // doi passes EMAIL itself: git 2.43 drops it when only committer.email is configured.
       const email = part === "email" ? process.env.EMAIL?.trim() : undefined;
-      env[key] = email || FALLBACK_IDENTITY[part];
+      env[key] = config.get(`${role}.${part}`) ?? config.get(`user.${part}`) ?? (email || FALLBACK_IDENTITY[part]);
     }
   }
   return env;

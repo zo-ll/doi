@@ -51,7 +51,12 @@ describe("git identity", () => {
     await writeFile(globalConfig, `${GLOBAL}[user]\n\tname = Grace\n\temail = grace@example.com\n`);
     try {
       const dir = await workspace();
-      expect(await identityEnv(dir)).toEqual({});
+      expect(await identityEnv(dir)).toEqual({
+        GIT_AUTHOR_NAME: "Grace",
+        GIT_AUTHOR_EMAIL: "grace@example.com",
+        GIT_COMMITTER_NAME: "Grace",
+        GIT_COMMITTER_EMAIL: "grace@example.com",
+      });
       await commitPaths(dir, [join(dir, "a.txt")], "Global");
       expect((await git(dir, ["log", "-1", "--format=%an <%ae>"])).stdout.toString().trim()).toBe("Grace <grace@example.com>");
     } finally {
@@ -76,7 +81,6 @@ describe("git identity", () => {
     const dir = await workspace();
     await git(dir, ["config", "user.name", "Ada"]);
     await git(dir, ["config", "user.email", "ada@example.com"]);
-    expect(await identityEnv(dir)).toEqual({});
     await commitPaths(dir, [join(dir, "a.txt")], "Mine");
     expect((await git(dir, ["log", "-1", "--format=%an <%ae>"])).stdout.toString().trim()).toBe("Ada <ada@example.com>");
 
@@ -94,13 +98,15 @@ describe("git identity", () => {
     await git(dir, ["config", "author.name", "Ann"]);
     await git(dir, ["config", "committer.email", "c@example.com"]);
     expect(await identityEnv(dir)).toEqual({
+      GIT_AUTHOR_NAME: "Ann",
       GIT_AUTHOR_EMAIL: FALLBACK_IDENTITY.email,
       GIT_COMMITTER_NAME: FALLBACK_IDENTITY.name,
+      GIT_COMMITTER_EMAIL: "c@example.com",
     });
     process.env.GIT_COMMITTER_NAME = "Cy";
     process.env.EMAIL = "e@example.com";
     try {
-      expect(await identityEnv(dir)).toEqual({ GIT_AUTHOR_EMAIL: "e@example.com" });
+      expect(await identityEnv(dir)).toEqual({ GIT_AUTHOR_NAME: "Ann", GIT_AUTHOR_EMAIL: "e@example.com", GIT_COMMITTER_EMAIL: "c@example.com" });
       await commitPaths(dir, [join(dir, "a.txt")], "Explicit");
       expect((await git(dir, ["log", "-1", "--format=%an <%ae>|%cn <%ce>"])).stdout.toString().trim()).toBe(
         "Ann <e@example.com>|Cy <c@example.com>",
@@ -109,5 +115,23 @@ describe("git identity", () => {
       delete process.env.GIT_COMMITTER_NAME;
       delete process.env.EMAIL;
     }
+  });
+
+  test("an empty identity variable does not stop a commit", async () => {
+    const dir = await workspace();
+    await git(dir, ["config", "user.name", "Ada"]);
+    process.env.GIT_AUTHOR_NAME = "";
+    try {
+      expect(await commitPaths(dir, [join(dir, "a.txt")], "Empty")).toMatch(/^[0-9a-f]{40}$/);
+      expect((await git(dir, ["log", "-1", "--format=%an <%ae>"])).stdout.toString().trim()).toBe(`Ada <${FALLBACK_IDENTITY.email}>`);
+    } finally {
+      delete process.env.GIT_AUTHOR_NAME;
+    }
+  });
+
+  test("a value with a newline cannot stand for another key", async () => {
+    const dir = await workspace();
+    await git(dir, ["config", "user.name", "Ada\nuser.email injected@example.com"]);
+    expect((await identityEnv(dir)).GIT_AUTHOR_EMAIL).toBe(FALLBACK_IDENTITY.email);
   });
 });
