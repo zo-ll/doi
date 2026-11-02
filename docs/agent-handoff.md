@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-11-02, a drive of the whole flow with `opencode-go:deepseek-v4.1-flash` and the UI fixes from it (branch `ui/seamless-flow`). Before: #72 closed (the user tested OpenCode Go with a real key), #130 (narrow windows) and #131 (Settings model list, Codex catalog) merged. The user needs no other providers for now. Tests: 486 pass, 2 skip (CI only). M1, M2, M3 and M4 have no open issues. The M1 gate is done (the user, 2026-11-02); the M4 gate is still open. `bun check`: no errors.
+Last update: 2026-11-02, a drive of the whole flow with `opencode-go:deepseek-v4.1-flash` and the UI fixes from it (branch `ui/seamless-flow`). Before: #72 closed (the user tested OpenCode Go with a real key), #130 (narrow windows) and #131 (Settings model list, Codex catalog) merged. The user needs no other providers for now. Tests: 489 pass, 2 skip (CI only). M1, M2, M3 and M4 have no open issues. The M1 gate is done (the user, 2026-11-02); the M4 gate is still open. `bun check`: no errors.
 
 ## 1. What doi is
 
