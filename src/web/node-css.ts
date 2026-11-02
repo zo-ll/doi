@@ -40,41 +40,62 @@ export function readNodeCss(doc: Document, oid: string): NodeCss | null {
   };
   const rules: CssRule[] = [];
   type AnyRule = CSSRule & { selectorText?: string; style?: CSSStyleDeclaration; cssRules?: CSSRuleList; styleSheet?: CSSStyleSheet | null; conditionText?: string; name?: string; href?: string };
-  const walk = (list: CSSRuleList, within: string[], source: string) => {
+  // A nested rule (`.card { & .inner {} }`) has a relative selector: `&` stands for the parent,
+  // and no `&` means a descendant of it. `parent` is the resolved selector of the rule around it.
+  const resolve = (selector: string, parent: string | null) =>
+    parent === null ? selector : selector.includes("&") ? selector.replace(/&/g, `:is(${parent})`) : `:is(${parent}) ${selector}`;
+  const walk = (list: CSSRuleList, within: string[], source: string, parent: string | null) => {
     for (const rule of [...list] as AnyRule[]) {
       if (rules.length >= MAX_RULES) return;
       if (typeof rule.selectorText === "string" && rule.style) {
+        const full = resolve(rule.selectorText, parent);
         let match = false;
         try {
-          match = el.matches(rule.selectorText);
+          match = el.matches(full);
         } catch {}
-        if (match) rules.push({ selector: cut(rule.selectorText, 2000), declarations: cut(rule.style.cssText, MAX_TEXT), within, source });
-        if (rule.cssRules?.length) walk(rule.cssRules, [...within, cut(rule.selectorText, 300)], source);
+        // A rule that only holds nested rules has no declarations of its own.
+        if (match && rule.style.length > 0) rules.push({ selector: cut(rule.selectorText, 2000), declarations: cut(rule.style.cssText, MAX_TEXT), within, source });
+        if (rule.cssRules?.length) walk(rule.cssRules, [...within, cut(rule.selectorText, 300)], source, full);
       } else if (rule.styleSheet !== undefined && typeof rule.href === "string") {
         try {
-          if (rule.styleSheet) walk(rule.styleSheet.cssRules, within, sourceOf(rule.styleSheet));
+          if (rule.styleSheet) walk(rule.styleSheet.cssRules, within, sourceOf(rule.styleSheet), parent);
         } catch {}
       } else if (rule.cssRules?.length) {
         const at = (rule.cssText.match(/^@[\w-]+/) ?? ["@rule"])[0];
         const label = rule.conditionText ? `${at} ${rule.conditionText}` : rule.name ? `${at} ${rule.name}` : at;
-        walk(rule.cssRules, [...within, cut(label, 300)], source);
+        walk(rule.cssRules, [...within, cut(label, 300)], source, parent);
       }
     }
   };
   for (const sheet of [...doc.styleSheets]) {
     try {
-      walk(sheet.cssRules, [], sourceOf(sheet));
+      walk(sheet.cssRules, [], sourceOf(sheet), null);
     } catch {} // a sheet from another origin (a font host) has no readable rules
   }
   return { rules, inline: cut(el.getAttribute("style") ?? "", MAX_TEXT) };
 }
 
-/** The declarations of a rule, one per line; a ";" inside a value (a string, a url) stays. */
+/** The declarations of a rule, one per line; a ";" inside quotes or parentheses (a string, a url) stays. */
 export function declarationLines(declarations: string): string[] {
-  return declarations
-    .split(/;\s*(?=(?:--)?[A-Za-z][\w-]*\s*:)/)
-    .map((d) => d.trim().replace(/;$/, "").trim())
-    .filter(Boolean);
+  const out: string[] = [];
+  let quote: string | null = null;
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < declarations.length; i++) {
+    const c = declarations[i]!;
+    if (quote) {
+      if (c === "\\") i++;
+      else if (c === quote) quote = null;
+    } else if (c === '"' || c === "'") quote = c;
+    else if (c === "(") depth++;
+    else if (c === ")") depth = Math.max(0, depth - 1);
+    else if (c === ";" && depth === 0) {
+      out.push(declarations.slice(start, i));
+      start = i + 1;
+    }
+  }
+  out.push(declarations.slice(start));
+  return out.map((d) => d.trim()).filter(Boolean);
 }
 
 /**

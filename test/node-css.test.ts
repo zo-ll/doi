@@ -5,6 +5,9 @@ import { declarationLines, formatNodeCss, readNodeCss } from "../src/web/node-cs
 test("declarations split one per line; a ; in a value stays", () => {
   expect(declarationLines("color: red; margin: 10px;")).toEqual(["color: red", "margin: 10px"]);
   expect(declarationLines('content: "a; b"; --x: 1px;')).toEqual(['content: "a; b"', "--x: 1px"]);
+  expect(declarationLines('content: "a; b: c"; width: 3px')).toEqual(['content: "a; b: c"', "width: 3px"]);
+  const svg = `url("data:image/svg+xml,<svg><rect style='fill:red;stroke:blue'/></svg>")`;
+  expect(declarationLines(`background-image: ${svg}; color: red;`)).toEqual([`background-image: ${svg}`, "color: red"]);
   expect(declarationLines("")).toEqual([]);
 });
 
@@ -40,8 +43,9 @@ test.skipIf(!hasBrowser)("readNodeCss gives the matching rules with their at-rul
   try {
     const page = await browser.newPage();
     await page.setContent(
-      '<style>a { color: red; } [data-oid=x] .no { color: blue; } @media (min-width: 99999px) { .b { margin: 1px; } } @supports (display: grid) { a.b { gap: 2px; } }</style>' +
-        '<a class="b" data-oid="x" style="width: 3px">x</a>',
+      '<style>a { color: red; } [data-oid=x] .no { color: blue; } @media (min-width: 99999px) { .b { margin: 1px; } } @supports (display: grid) { a.b { gap: 2px; } }' +
+        ".card { & .inner { color: green; } .plain { padding: 1px; } }</style>" +
+        '<a class="b" data-oid="x" style="width: 3px">x</a><div class="card"><span class="inner plain" data-oid="in">i</span></div>',
     );
     const read = (oid: string) => page.evaluate(`(${readNodeCss.toString()})(document, ${JSON.stringify(oid)})`);
     expect(await read("x")).toEqual({
@@ -51,6 +55,14 @@ test.skipIf(!hasBrowser)("readNodeCss gives the matching rules with their at-rul
         // a @media that does not apply at this width is listed too
         { selector: ".b", declarations: "margin: 1px;", within: ["@media (min-width: 99999px)"], source: "<style>" },
         { selector: "a.b", declarations: "gap: 2px;", within: ["@supports (display: grid)"], source: "<style>" },
+      ],
+    });
+    // nested rules: `&` is the parent, no `&` is a descendant; the parent without declarations is left out
+    expect(await read("in")).toEqual({
+      inline: "",
+      rules: [
+        { selector: "& .inner", declarations: "color: green;", within: [".card"], source: "<style>" },
+        { selector: "& .plain", declarations: "padding: 1px;", within: [".card"], source: "<style>" }, // Chromium adds the &
       ],
     });
     expect(await read("nope")).toBeNull();

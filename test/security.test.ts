@@ -142,8 +142,13 @@ describe("frame rules in the code", () => {
     }
     expect(count).toBeGreaterThan(0);
     for (const { path, text } of await sources()) {
-      if (path === CSS_SOURCE) expect(text.match(/allow-same-origin/g)?.length).toBe(1);
-      else expect(text).not.toContain("allow-same-origin");
+      if (path === CSS_SOURCE) {
+        // The code without comments: one same-origin sandbox, no scripts, no sandbox change from JavaScript.
+        const code = text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+        expect(code.match(/allow-same-origin/g)?.length).toBe(1);
+        expect(code).not.toContain("allow-scripts");
+        expect(code).not.toMatch(/\.sandbox\b|setAttribute\(\s*["']sandbox/);
+      } else expect(text).not.toContain("allow-same-origin");
     }
   });
 

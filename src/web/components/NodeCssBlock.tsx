@@ -8,6 +8,8 @@ import { formatNodeCss, readNodeCss } from "../node-css.ts";
  * It is the one exception to "every iframe is allow-scripts only" (test/security.test.ts); never
  * add allow-scripts here: scripts and the app's origin together would give a design the app.
  */
+const NO_RULE = "/* No CSS rule matches this element. */";
+
 export function NodeCssBlock({ src, oid, onToast }: { src: string; oid: string; onToast: (text: string) => void }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [css, setCss] = useState<string | null>(null);
@@ -21,7 +23,7 @@ export function NodeCssBlock({ src, oid, onToast }: { src: string; oid: string; 
 
   const copy = () => {
     if (css === null) return;
-    navigator.clipboard.writeText(css).then(
+    navigator.clipboard.writeText(css || NO_RULE).then(
       () => onToast("CSS copied"),
       () => onToast("Copy failed. Select the CSS and copy it."),
     );
@@ -39,7 +41,7 @@ export function NodeCssBlock({ src, oid, onToast }: { src: string; oid: string; 
             </button>
           </div>
           <pre className="node-css-code mono" tabIndex={0} aria-label={`CSS of ${oid}`}>
-            {css || "/* No CSS rule matches this element. */"}
+            {css || NO_RULE}
           </pre>
         </div>
       )}

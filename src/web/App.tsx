@@ -648,7 +648,7 @@ export function App() {
                   </button>
                 </div>
                 <input className="node-link-url mono" readOnly value={nodeLink} aria-label="Node link" onFocus={(e) => e.currentTarget.select()} />
-                {active && <NodeCssBlock src={`${designUrl(active.project, active.design)}${page === "index.html" ? "" : page}?v=${revision}`} oid={selection.oid} onToast={setToast} />}
+                {active && !history.preview && <NodeCssBlock src={`${designUrl(active.project, active.design)}${page === "index.html" ? "" : page}?v=${revision}`} oid={selection.oid} onToast={setToast} />}
               </div>
             )}
             <div className="pane-body">
