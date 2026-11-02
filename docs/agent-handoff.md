@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-11-02, a drive of the whole flow with `opencode-go:deepseek-v4.1-flash` and the UI fixes from it (branch `ui/seamless-flow`). Before: #72 closed (the user tested OpenCode Go with a real key), #130 (narrow windows) and #131 (Settings model list, Codex catalog) merged. The user needs no other providers for now. Tests: 465 pass, 1 skip. M1, M2, M3 and M4 have no open issues; the M1 and M4 gates are still open. `bun check`: no errors.
+Last update: 2026-11-02, a drive of the whole flow with `opencode-go:deepseek-v4.1-flash` and the UI fixes from it (branch `ui/seamless-flow`). Before: #72 closed (the user tested OpenCode Go with a real key), #130 (narrow windows) and #131 (Settings model list, Codex catalog) merged. The user needs no other providers for now. Tests: 465 pass, 1 skip. M1, M2, M3 and M4 have no open issues. The M1 gate is done (the user, 2026-11-02); the M4 gate is still open. `bun check`: no errors.
 
 ## 1. What doi is
 
@@ -155,7 +155,7 @@ Not changed: DeepSeek v4.1 Flash has no vision, so image turns and the screensho
 
 Done and closed: #1 CI, #13 app shell, #74 credentials and status, #60 Claude Code backend, #73 Codex backend, #4 system prompt v0, #5 context assembler, #6 edit applier, #7 generation endpoint, #8 chat history, #10 live reload, #11 git history, #12 projects, #9 image input.
 
-M1 is complete. The user chose to start M2 before the M1 gate (one real design), so the gate is still open.
+M1 is complete. On 2026-11-02 the user said the M1 gate (one real design) is done and works.
 
 M2 is complete: #14 data-oid post-processing, #15 selection, #16 comments, #17 targeted edits, #18 canvas, #19 variants, #20 version history, #41 sandbox hardening.
 
@@ -169,7 +169,6 @@ Next, in this order:
 
 1. M5 (breadth): on 2026-10-20 the user said that no other providers are necessary for now. The adapters #57 Ollama, #56 OpenRouter and #55 Gemini wait. Do not start them unless the user asks. v1.2 (#67) and Later (#68, #75) wait.
 2. M4 (handoff): #46, #47, #48, #49, #53 and #54 are done. On 2026-10-14 the user removed the harness layer: doi does not start coding agents. #50, #51 and #52 are closed as not planned. The handoff is the prompt plus the MCP server. The top bar "Hand off" button opens the Export dialog at the agent prompt. Open: the M4 gate (one design through a coding agent into a real repo of the user). Every export and the handoff bundle (#49) must copy or inline the `/ds/<name>/` files that pages link: reuse `exportFolder()`/`exportPage()` from `src/export/html.ts`.
-3. Still open for the user: the M1 gate (one real design).
 
 After M1: M2 (precision), M3 (design systems), M4 (handoff), M5 (breadth). #75 (Sign in with ChatGPT) waits for a client ID from OpenAI.
 
