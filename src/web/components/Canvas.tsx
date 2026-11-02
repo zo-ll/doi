@@ -84,6 +84,7 @@ const Frame = memo(function Frame({
   onOpenHistory,
   liveVars,
   editable,
+  deepest,
   dropLine,
   onEditStart,
   onAlign,
@@ -109,6 +110,8 @@ const Frame = memo(function Frame({
   liveVars: Record<string, string>;
   /** The selected element shows handles: resize, drag among the siblings, align. */
   editable: boolean;
+  /** A click picks the deepest element under the pointer (Comment tool), not one level per click. */
+  deepest: boolean;
   /** The insert line of a drag among the siblings, in this frame. */
   dropLine: Rect | null;
   onEditStart: (e: React.PointerEvent, edit: EditStart) => void;
@@ -129,7 +132,7 @@ const Frame = memo(function Frame({
   // One string, so the effect below runs only when the set of pinned elements changes.
   const pinKey = shownPins.map((p) => p.oid).join(" ");
   const track = useRef(trackMessage(null));
-  track.current = trackMessage(oid, pinKey ? pinKey.split(" ") : []);
+  track.current = trackMessage(oid, pinKey ? pinKey.split(" ") : [], deepest);
   // The latest frame and handlers, so the message listener stays the same while the frame moves.
   const latest = useRef({ frame, readOnly, onSelect, onClear, onWheel, onKey });
   latest.current = { frame, readOnly, onSelect, onClear, onWheel, onKey };
@@ -171,7 +174,7 @@ const Frame = memo(function Frame({
   useEffect(() => {
     if (!oid) setRects((r) => ({ ...r, selected: null, layout: null }));
     ref.current?.contentWindow?.postMessage(track.current, "*");
-  }, [oid, pinKey]);
+  }, [oid, pinKey, deepest]);
 
   // Live tweaks: send the changed values, and null for the ones that are gone.
   const sentVars = useRef<Record<string, string>>({});
@@ -991,6 +994,7 @@ export function Canvas({
               onOpenHistory={onOpenHistory}
               liveVars={preview ? NO_VARS : liveVars}
               editable={tool === "select" && preview === null}
+              deepest={tool === "comment"}
               dropLine={drag?.kind === "edit" && drag.edit.frameId === f.id ? (drag.drop?.line ?? null) : null}
               onEditStart={onEditStart}
               onAlign={onAlign}

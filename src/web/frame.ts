@@ -133,5 +133,9 @@ export function parseFrameMessage(data: unknown): FrameMessage | null {
   }
 }
 
-/** The message that tells a frame which element is selected and which elements have pins. */
-export const trackMessage = (oid: string | null, pins: string[] = []) => ({ type: "doi:track", oid, pins }) as const;
+/**
+ * The message that tells a frame which element is selected, which elements have pins, and
+ * whether a click picks the deepest element (`deepest`, the Comment tool) or goes one level
+ * deeper per click (the Select tool).
+ */
+export const trackMessage = (oid: string | null, pins: string[] = [], deepest = false) => ({ type: "doi:track", oid, pins, deepest }) as const;

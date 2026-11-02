@@ -29,6 +29,8 @@ const SHORTCUTS: [string, string][] = [
   ["Tweaks", "T"],
   ["Zoom in / out / 100% / fit", "+  −  0  ⇧1"],
   ["Send / stop", `${MOD}↵  Esc`],
+  ["Select one level deeper", "click again"],
+  ["Select the deepest element", `${MOD}-click`],
   ["Select the parent element", "⇧-click"],
 ];
 

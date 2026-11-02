@@ -90,7 +90,8 @@ describe("frame messages", () => {
   });
 
   test("track names the selected element or null", () => {
-    expect(trackMessage("a")).toEqual({ type: "doi:track", oid: "a", pins: [] });
-    expect(trackMessage(null, ["b", "c"])).toEqual({ type: "doi:track", oid: null, pins: ["b", "c"] });
+    expect(trackMessage("a")).toEqual({ type: "doi:track", oid: "a", pins: [], deepest: false });
+    expect(trackMessage(null, ["b", "c"])).toEqual({ type: "doi:track", oid: null, pins: ["b", "c"], deepest: false });
+    expect(trackMessage("a", [], true)).toEqual({ type: "doi:track", oid: "a", pins: [], deepest: true });
   });
 });

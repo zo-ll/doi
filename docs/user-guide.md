@@ -178,8 +178,8 @@ You can attach images to a message (Attach), for example a sketch or a screensho
 
 The canvas has three tools:
 
-- Select (V): click an element to select it. Shift-click selects its parent.
-- Comment (C): click an element to add a comment to it.
+- Select (V): click to select, as in Figma. The first click selects the outermost element under the pointer. Each click inside the selection selects one level deeper. A click elsewhere selects at the same level as the selection (for example a sibling). Ctrl/⌘-click selects the deepest element at once. Shift-click selects the parent. The hover outline shows what a click selects.
+- Comment (C): click an element to add a comment to it. The comment goes to the deepest element under the pointer.
 - Hand (H): move the canvas.
 
 "+ Frame" (F) adds a frame size. "Arrange" puts the frames in a row. The zoom controls are at the bottom.
@@ -349,6 +349,8 @@ On macOS, use ⌘ in place of Ctrl.
 | Zoom in / out / 100% / fit | + / − / 0 / Shift + 1 |
 | Send / stop | Ctrl + Enter / Esc |
 | Undo the last canvas edit | Ctrl + Z |
+| Select one level deeper | Click again |
+| Select the deepest element | Ctrl-click (⌘-click on macOS) |
 | Select the parent element | Shift-click |
 
 Settings → Shortcuts shows the same list without Ctrl + Z.

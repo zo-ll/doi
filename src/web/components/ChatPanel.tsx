@@ -628,6 +628,8 @@ export function ChatPanel({
         <div className="composer-hints">
           <span>{MOD}↵ send</span>
           <span>Esc stop</span>
+          <span title="Each click on the selection selects one level deeper">click: deeper</span>
+          <span>{MOD}-click deepest</span>
           <span>⇧-click parent</span>
         </div>
       </div>
