@@ -296,9 +296,9 @@ a:hover { color: var(--text); }
   box-shadow: var(--shadow);
   animation: doi-in 0.16s ease-out;
 }
-/* A window shorter than the app minimum scrolls: the toast stays fixed in view there. */
+/* A window shorter than the app minimum scrolls: the toast stays fixed in view there, below the top bar. */
 @media (max-height: 559px) {
-  .toast { position: fixed; top: var(--space-4); }
+  .toast { position: fixed; top: calc(var(--topbar-h) + var(--space-4)); }
 }
 
 .scrim { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: var(--scrim); }
