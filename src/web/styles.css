@@ -414,6 +414,10 @@ a:hover { color: var(--text); }
 .node-link { flex: none; display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--line); }
 .node-link-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-width: 0; font-size: var(--text-sm); color: var(--accent-text); }
 .node-link-url { width: 100%; min-width: 0; padding: var(--space-1) var(--space-1-5); border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg); color: var(--text-2); font-size: var(--text-2xs); text-overflow: ellipsis; }
+.node-css-source { position: absolute; width: 390px; height: 1px; left: -10000px; border: 0; visibility: hidden; }
+.node-css { display: flex; flex-direction: column; gap: var(--space-1); margin-top: var(--space-1); }
+.node-css-title { color: var(--text-2); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.04em; }
+.node-css-code { margin: 0; max-height: 40vh; overflow: auto; padding: var(--space-2); border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font-size: var(--text-2xs); line-height: 1.5; white-space: pre; tab-size: 2; }
 .side-pane .tabs .collapse-btn { align-self: center; margin-left: auto; }
 .pane-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .pane-body > [hidden] { display: none; }

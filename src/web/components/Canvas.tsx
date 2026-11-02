@@ -1001,7 +1001,7 @@ export function Canvas({
         />
       ) : (
         <div className="canvas-world" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`, "--zoom": view.zoom } as React.CSSProperties}>
-          {frames?.map((f) => (
+          {frames?.filter((f) => !f.page || !screens || screens.includes(f.page)).map((f) => (
             <Frame
               key={f.id}
               frame={f}
