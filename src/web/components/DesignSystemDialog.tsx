@@ -577,6 +577,8 @@ function ScreenshotImport({ extract, onImported, onCancel }: { extract: TaskStat
   const [over, setOver] = useState(false);
   const { status, run, stop } = useImport(onImported);
   const valid = NAME.test(name) && images.length > 0;
+  // The server refuses screenshots for an extract model without vision; say so before the upload.
+  const noVision = extract?.vision === false;
 
   const add = async (files: File[]) => {
     setImageError(null);
@@ -612,6 +614,11 @@ function ScreenshotImport({ extract, onImported, onCancel }: { extract: TaskStat
         <h2>Import from screenshots</h2>
       </div>
       <div className="import-body">
+        {noVision && extract && (
+          <p className="field-error" role="alert">
+            The extract model {shortModel(extract.model)} cannot read images. Choose an extract model with vision in Settings, Models and providers.
+          </p>
+        )}
         <label className="field">
           Name
           <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="my-product" spellCheck={false} aria-invalid={!!name && !NAME.test(name)} disabled={status.running} />
@@ -668,7 +675,7 @@ function ScreenshotImport({ extract, onImported, onCancel }: { extract: TaskStat
         </label>
         <ImportProgress status={status} extract={extract} label="Reading the screenshots" />
       </div>
-      <ImportFooter extract={extract} running={status.running} canStart={valid} start={status.error ? "Retry import" : "Extract design system"} onStop={stop} onCancel={onCancel} />
+      <ImportFooter extract={extract} running={status.running} canStart={valid && !noVision} start={status.error ? "Retry import" : "Extract design system"} onStop={stop} onCancel={onCancel} />
     </form>
   );
 }

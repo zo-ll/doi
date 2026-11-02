@@ -332,7 +332,10 @@ export function ChatPanel({
   // The variants route takes text only: applied comments would be lost.
   const variantsWithComments = count > 1 && applied.length > 0;
   const hasInput = draft.trim().length > 0 || (applied.length > 0 && count === 1);
-  const canSend = hasInput && !disabled && !variantsOpen && !variantsWithImages && !variantsWithComments;
+  // The server refuses images for a model without vision; say so before Send.
+  const imagesUnread = images.length > 0 && !variantsWithImages && current?.vision === false;
+  const visionChoice = choices.some((t) => t.tone === "ok" && t.vision === true);
+  const canSend = hasInput && !disabled && !variantsOpen && !variantsWithImages && !variantsWithComments && !imagesUnread;
   const modelProblem = current && (current.tone === "err" || current.tone === "warn") ? current : null;
   const turns = messages.filter((m) => m.kind === "user").length;
   const hasChips = selection !== null || applied.length > 0 || images.length > 0;
@@ -505,6 +508,16 @@ export function ChatPanel({
               Variants do not take images. Remove the images, or make one design.
             </p>
           )}
+          {imagesUnread && current && (
+            <p className="field-error composer-error" role="alert">
+              {shortModel(current.model)} cannot read images. Remove the images, or pick a model with vision.{" "}
+              {visionChoice && (
+                <button className="link-btn" onClick={() => setModelMenu(true)}>
+                  Pick a model
+                </button>
+              )}
+            </p>
+          )}
           {variantsWithComments && (
             <p className="field-error composer-error" role="alert">
               Variants do not take comments. Remove the comments, or make one design.
@@ -603,7 +616,10 @@ export function ChatPanel({
                       }}
                     >
                       <span className={`dot ${TONE_DOT[t.tone]}`} />
-                      <span className="mono truncate">{t.model}</span>
+                      <span className="model-menu-name">
+                        <span className="mono truncate">{t.model}</span>
+                        {t.vision === false && <span className="model-menu-note">No images</span>}
+                      </span>
                       <span className="meta">
                         {t.provider}
                         {on ? " ✓" : ""}
