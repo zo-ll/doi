@@ -12,6 +12,8 @@ import {
   readEvents,
   shown,
   type Answer,
+  stoppedText,
+  UNFINISHED,
   type ChatMessage,
   type Task,
   type VariantsMessage,
@@ -187,10 +189,17 @@ export function ChatPanel({
   useEffect(() => {
     if (!target) return;
     let live = true;
-    getJSON<ChatEntryView[]>(chatUrl(target.project, target.design))
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let shownIds = new Set<number>();
+    const load = (attempt: number) =>
+      getJSON<ChatEntryView[]>(chatUrl(target.project, target.design))
       .then((entries) => {
         if (!live) return;
         const loaded = fromEntries(entries, () => nextId.current++, (name) => uploadUrl(target.project, name));
+        // After a reload during a turn, the server can still be writing that turn's answer:
+        // load again a few times while the newest turn has no answer.
+        const last = loaded.at(-1);
+        if (last?.kind === "info" && last.text === UNFINISHED && attempt < 3) timer = setTimeout(() => void load(attempt + 1), 1500);
         // A stored turn can be sent again (without its images, which the server keeps as files).
         loaded.forEach((m, i) => {
           const before = loaded[i - 1];
@@ -198,15 +207,19 @@ export function ChatPanel({
             sentRef.current.set(m.id, { text: before.text, target: before.target ?? null, images: [], comments: [], count: 1 });
           }
         });
-        setMessages((list) => [...loaded, ...list]);
+        const before = shownIds;
+        shownIds = new Set(loaded.map((m) => m.id));
+        setMessages((list) => [...loaded, ...list.filter((m) => !before.has(m.id))]);
         // An empty design waits for its first prompt: the composer takes the focus.
-        if (loaded.length === 0 && !document.querySelector('[aria-modal="true"], .nav-drawer')) inputRef.current?.focus();
+        if (attempt === 0 && loaded.length === 0 && !document.querySelector('[aria-modal="true"], .nav-drawer')) inputRef.current?.focus();
       })
       .catch((e: unknown) => {
-        if (live) push({ kind: "error", text: `The chat history could not load: ${e instanceof Error ? e.message : String(e)}` });
+        if (live && attempt === 0) push({ kind: "error", text: `The chat history could not load: ${e instanceof Error ? e.message : String(e)}` });
       });
+    void load(0);
     return () => {
       live = false;
+      clearTimeout(timer);
     };
   }, [target?.project, target?.design]);
 
@@ -277,15 +290,26 @@ export function ChatPanel({
       }
       if (!ended) updateAnswer(answerId, (a) => ({ ...a, status: "error", error: "The connection closed before the turn ended." }));
     } catch (e) {
-      if (controller.signal.aborted) updateAnswer(answerId, (a) => ({ ...a, status: "stopped" }));
-      else updateAnswer(answerId, (a) => ({ ...a, status: "error", error: `The request failed: ${e instanceof Error ? e.message : String(e)}` }));
+      if (controller.signal.aborted) {
+        const byUser = stoppedByUser.current === controller;
+        updateAnswer(answerId, (a) => ({ ...a, status: "stopped", ...(byUser ? { stop: "user" as const } : {}) }));
+      } else updateAnswer(answerId, (a) => ({ ...a, status: "error", error: `The request failed: ${e instanceof Error ? e.message : String(e)}` }));
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
       setRunning(false);
     }
   };
 
-  const stop = () => abortRef.current?.abort();
+  /** The run that the user stopped (Stop, Esc), as opposed to a design switch or an unmount. */
+  const stoppedByUser = useRef<AbortController | null>(null);
+  /** Tells the server first, so it stores the stop as the user's; then ends the stream. */
+  const stop = async () => {
+    const controller = abortRef.current;
+    if (!controller || controller.signal.aborted) return;
+    stoppedByUser.current = controller;
+    if (target) await fetch(turnUrl(target.project, target.design), { method: "DELETE" }).catch(() => {});
+    controller.abort();
+  };
   useEffect(() => onRunningChange?.(running), [running]);
 
   const send = () => {
@@ -784,7 +808,7 @@ function AnswerView({ answer: a, running, onRetry, onOtherModel }: { answer: Ans
       {a.status === "stopped" && (
         <div className="turn-stopped">
           <span className="dot dot-stopped" />
-          Stopped by you.{a.files.length === 0 && " No files changed."}
+          {stoppedText(a)}
           <button className="btn btn-secondary btn-sm" onClick={onRetry} disabled={running}>
             Retry
           </button>

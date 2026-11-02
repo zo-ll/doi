@@ -135,8 +135,10 @@ export async function getChat(
  */
 export function createTurnHandler(deps: TurnDeps) {
   const locks = deps.locks ?? new DesignLocks();
+  /** The running turn of each design. `byUser`: the user stopped it (DELETE …/turns), not a closed connection. */
+  const running = new Map<string, { abort: AbortController; byUser: boolean }>();
 
-  return async (
+  const handler = async (
     req: Request,
     params: { project: string; design: string },
     server?: Pick<Bun.Server<unknown>, "timeout">,
@@ -194,6 +196,8 @@ export function createTurnHandler(deps: TurnDeps) {
     const abort = new AbortController();
     const onClientAbort = () => abort.abort();
     req.signal.addEventListener("abort", onClientAbort);
+    const run = { abort, byUser: false };
+    running.set(key, run);
     const turn = { ...body, comments };
 
     const workspace = deps.config.workspace;
@@ -207,6 +211,7 @@ export function createTurnHandler(deps: TurnDeps) {
         const usage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
         const files = new Set<string>();
         let status: "done" | "error" | "stopped" = "done";
+        let stop: "user" | undefined;
         let error: string | undefined;
         let started = false;
         let commentsDone: string[] = [];
@@ -290,6 +295,7 @@ export function createTurnHandler(deps: TurnDeps) {
           // An abort means the client is gone or stopped the turn: nobody reads an error event.
           if (abort.signal.aborted) {
             status = "stopped";
+            if (run.byUser) stop = "user";
           } else {
             status = "error";
             const event = errorEvent(e);
@@ -310,6 +316,7 @@ export function createTurnHandler(deps: TurnDeps) {
               usage,
               files: [...files],
               ...(error ? { error } : {}),
+              ...(stop ? { stop } : {}),
               ...(commentsDone.length ? { commentsDone } : {}),
               prompt: SYSTEM_PROMPT.version,
             }).catch((e) => console.error("Could not write chat.jsonl:", e));
@@ -329,6 +336,7 @@ export function createTurnHandler(deps: TurnDeps) {
               send({ type: "commit", sha: null, error: message });
             }
           }
+          if (running.get(key) === run) running.delete(key);
           locks.unlock(key);
           deps.watcher?.release(params);
           req.signal.removeEventListener("abort", onClientAbort);
@@ -351,4 +359,26 @@ export function createTurnHandler(deps: TurnDeps) {
       headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache" },
     });
   };
+
+  /**
+   * DELETE …/turns: the user stops the design's running turn. The answer is stored with
+   * `stop: "user"`; a turn that ends because its connection closed (a reload, a closed tab)
+   * is stored without it.
+   */
+  const stop = (params: { project: string; design: string }): Response => {
+    let key: string;
+    try {
+      designDir(deps.config.workspace, params.project, params.design);
+      key = designKey(params.project, params.design);
+    } catch (e) {
+      return Response.json({ error: (e as Error).message }, { status: 400 });
+    }
+    const run = running.get(key);
+    if (!run) return new Response(null, { status: 204 });
+    run.byUser = true;
+    run.abort.abort();
+    return new Response(null, { status: 204 });
+  };
+
+  return Object.assign(handler, { stop });
 }

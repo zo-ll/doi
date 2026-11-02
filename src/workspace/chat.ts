@@ -45,6 +45,8 @@ export type ChatEntry =
       /** Files the turn changed. */
       files: string[];
       error?: string;
+      /** "user": the user stopped the turn. A stopped turn without it ended when its connection closed. */
+      stop?: "user";
       /** Ids of the comments this turn marked done. */
       commentsDone?: string[];
       /** The variant the user picked, when the answer came from a variants run. */

@@ -61,7 +61,7 @@ beforeEach(async () => {
   server = Bun.serve({
     port: 0,
     idleTimeout: 1, // seconds; the default is 10
-    routes: { "/api/projects/:project/designs/:design/turns": { POST: (req, srv) => handler(req, req.params, srv) } },
+    routes: { "/api/projects/:project/designs/:design/turns": { POST: (req, srv) => handler(req, req.params, srv), DELETE: (req) => handler.stop(req.params) } },
   });
 });
 
@@ -217,6 +217,32 @@ describe("POST turns", () => {
     expect(status).toBe(200);
     const stored = (await readChat(config.workspace, "p", "d")).find((e) => e.role === "assistant");
     expect(stored).toMatchObject({ status: "stopped", text: "working" });
+    expect(stored).not.toHaveProperty("stop"); // a closed connection is not the user's stop
+  });
+
+  test("DELETE …/turns stops the running turn and stores it as the user's stop", async () => {
+    let started!: () => void;
+    const running = new Promise<void>((r) => (started = r));
+    behave = async function* (req) {
+      yield { type: "text", delta: "busy" };
+      started();
+      await new Promise((_, reject) => req.signal!.addEventListener("abort", () => reject(new DOMException("stopped", "AbortError"))));
+    };
+    const res = await post({ text: "stop me" });
+    const reader = res.body!.getReader();
+    await reader.read();
+    await running;
+    expect((await fetch(url("d"), { method: "DELETE" })).status).toBe(204);
+    while (!(await reader.read()).done); // the server ends the stream
+    let stored;
+    for (let i = 0; i < 50 && !stored; i++) {
+      stored = (await readChat(config.workspace, "p", "d")).filter((e) => e.role === "assistant" && e.text === "busy").at(-1);
+      if (!stored) await Bun.sleep(10);
+    }
+    expect(stored).toMatchObject({ status: "stopped", stop: "user" });
+    // nothing runs now; a bad name is refused
+    expect((await fetch(url("d"), { method: "DELETE" })).status).toBe(204);
+    expect((await fetch(url("Bad_Name"), { method: "DELETE" })).status).toBe(400);
   });
 
   test("a quiet turn is not cut by the server idle timeout", async () => {
