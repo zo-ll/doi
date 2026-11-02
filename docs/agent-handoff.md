@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-11-02, a drive of the whole flow with `opencode-go:deepseek-v4.1-flash` and the UI fixes from it (branch `ui/seamless-flow`). Before: #72 closed (the user tested OpenCode Go with a real key), #130 (narrow windows) and #131 (Settings model list, Codex catalog) merged. The user needs no other providers for now. Tests: 478 pass, 2 skip (CI only). M1, M2, M3 and M4 have no open issues. The M1 gate is done (the user, 2026-11-02); the M4 gate is still open. `bun check`: no errors.
+Last update: 2026-11-02, a drive of the whole flow with `opencode-go:deepseek-v4.1-flash` and the UI fixes from it (branch `ui/seamless-flow`). Before: #72 closed (the user tested OpenCode Go with a real key), #130 (narrow windows) and #131 (Settings model list, Codex catalog) merged. The user needs no other providers for now. Tests: 484 pass, 2 skip (CI only). M1, M2, M3 and M4 have no open issues. The M1 gate is done (the user, 2026-11-02); the M4 gate is still open. `bun check`: no errors.
 
 ## 1. What doi is
 
@@ -61,7 +61,7 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 | `src/server/security.ts` | `checkRequest()` runs before every route (through `guardRoutes()`) and in `fetch`: the Host must be `127.0.0.1:<port>` or `localhost:<port>` (DNS rebinding); a request that changes data must have no `Origin` or the app's own, and a body must be `application/json` (no cross-site or sandboxed-page requests). `PAGE_CSP` and `nosniff` on every design, variant and version file |
 | `src/config.ts` | `config.toml` loading, provider ids, `keyEnvFor()` |
 | `src/workspace/paths.ts` | Safe design paths, `listProjects()`, sample workspace |
-| `src/frame/bridge.js` | Script in each design iframe. Sends `doi:ready`, `doi:select` (Shift-click = parent), `doi:clear` (Escape), and `doi:rects` (selected and hover boxes, on each animation frame while one is shown, only when they changed). Gets `doi:track { oid }` |
+| `src/frame/bridge.js` | Script in each design iframe. Sends `doi:ready`, `doi:select`, `doi:clear` (Escape), and `doi:rects` (selected and hover boxes, on each animation frame while one is shown, only when they changed). Gets `doi:track { oid, pins, deepest }`. A click picks as in Figma (`pick()`): with nothing selected the outermost element with a `data-oid`; inside the selection one level deeper; elsewhere the element at the level where the click and the selection meet. Ctrl/⌘-click and the Comment tool (`deepest`) pick the deepest element; Shift-click the parent. The hover outline is the element a click would pick. `test/bridge-pick.test.ts` runs the bridge in Chromium |
 | `src/workspace/comments.ts`, `src/server/comments.ts` | Comments per design in `<design>/.comments.json` (id, oid, text, status, version = last commit of the design). GET adds `detached` from the current HTML. One write at a time per file (`file-lock.ts`); a write does not create folders, so a renamed design gives 404 |
 | `src/web/comments.ts`, `src/web/components/CommentsPanel.tsx` | `useComments()` (loads again on each design change), `pinsOf()`, the Comments tab. Pins come from the bridge (`doi:track { pins }`, `doi:rects { pins }`) |
 | `src/generation/touched.ts` | `touchedOids()`: which elements a turn changed (own HTML, or a changed CSS rule that names a class, the id or the `data-oid`). A comment of the turn is done when its element changed |

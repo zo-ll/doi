@@ -17,7 +17,7 @@ import {
   type VariantsMessage,
 } from "../chat.ts";
 import { shortModel, type TaskStatus } from "../providers.ts";
-import { MOD } from "./TopBar.tsx";
+import { MOD, MOD_CLICK } from "./TopBar.tsx";
 
 /** The selected element. Each frame finds it by its data-oid and draws it. */
 export interface Selection {
@@ -653,6 +653,8 @@ export function ChatPanel({
         <div className="composer-hints">
           <span>{MOD}↵ send</span>
           <span>Esc stop</span>
+          <span title="Each click on the selection selects one level deeper">click: deeper</span>
+          <span>{MOD_CLICK}-click deepest</span>
           <span>⇧-click parent</span>
         </div>
       </div>

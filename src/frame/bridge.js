@@ -3,8 +3,8 @@
 //
 // Frame → app: doi:ready, doi:select { oid }, doi:clear, doi:rects { selected, hover, pins },
 // doi:wheel { deltaY, x, y } (a pinch or Ctrl/⌘ + wheel), doi:key { key, down, shift, mod }.
-// App → frame: doi:track { oid, pins } names the selected element (or null) and the elements
-// with open comments; doi:vars { vars } sets CSS variables on the page for a live tweak
+// App → frame: doi:track { oid, pins, deepest } names the selected element (or null), the elements
+// with open comments, and whether a click picks the deepest element (the Comment tool); doi:vars { vars } sets CSS variables on the page for a live tweak
 // (a null value removes one); doi:style { oid, style } shows a canvas edit on the element
 // before it is saved (style null takes the preview away); doi:move { oid, target, position }
 // moves the element next to a sibling, until the page loads again.
@@ -13,7 +13,9 @@
 (() => {
   let selectedOid = null;
   let pinOids = [];
-  let hovered = null; // element under the pointer
+  let hovered = null; // the element a click would pick, for the hover outline
+  let pointed = null; // the deepest element with a data-oid under the pointer
+  let deepest = false;
   let last = "";
 
   const send = (message) => parent.postMessage(message, "*");
@@ -93,6 +95,22 @@
     requestAnimationFrame(report);
   };
 
+  /**
+   * The element a click on `el` picks, as in Figma: with nothing selected, the outermost element;
+   * inside the selection, one level deeper; elsewhere, the element at the level where the click
+   * and the selection meet (a sibling of the selection, or of one of its ancestors).
+   * The Comment tool and Ctrl/⌘ + click pick `el` itself.
+   */
+  const pick = (el, mod) => {
+    if (deepest || mod) return el;
+    const chain = [];
+    for (let n = el; n; n = owner(n.parentElement)) chain.unshift(n);
+    let meet = find(selectedOid);
+    while (meet && !meet.contains(el)) meet = owner(meet.parentElement);
+    if (!meet) return chain[0];
+    return chain[chain.indexOf(meet) + 1] ?? meet;
+  };
+
   document.addEventListener(
     "click",
     (event) => {
@@ -100,7 +118,7 @@
       if (!el) return;
       event.preventDefault();
       event.stopPropagation();
-      let target = el;
+      let target = pick(el, event.ctrlKey || event.metaKey);
       if (event.shiftKey) {
         // Shift-click selects the parent: of the current selection when the click is inside it,
         // else of the clicked element.
@@ -113,13 +131,14 @@
     true,
   );
 
-  // Hover outline before a click.
+  // Hover outline before a click: the element that a click would pick.
   document.addEventListener("mouseover", (event) => {
-    hovered = owner(event.target);
+    pointed = owner(event.target);
+    hovered = pointed && pick(pointed, event.ctrlKey || event.metaKey);
     schedule();
   });
   document.documentElement.addEventListener("mouseleave", () => {
-    hovered = null;
+    pointed = hovered = null;
     schedule();
   });
 
@@ -216,6 +235,8 @@
     if (d?.type !== "doi:track" || (d.oid !== null && typeof d.oid !== "string")) return;
     selectedOid = d.oid;
     pinOids = Array.isArray(d.pins) ? d.pins.filter((p) => typeof p === "string") : [];
+    deepest = d.deepest === true;
+    hovered = pointed && pick(pointed, false); // the next click picks from the new selection
     last = ""; // the app may have dropped the old rects, so send them again
     schedule();
   });
