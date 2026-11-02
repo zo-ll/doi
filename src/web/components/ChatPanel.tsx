@@ -602,6 +602,7 @@ export function ChatPanel({
                     role="menuitem"
                     onClick={() => {
                       setChosen(null);
+                      setImageError(null); // a retry warning was about the model before
                       setModelMenu(false);
                     }}
                   >
