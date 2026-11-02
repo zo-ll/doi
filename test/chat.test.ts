@@ -148,5 +148,6 @@ describe("chat panel logic", () => {
 
 test("only a stop by the user says by you", () => {
   expect(stoppedText({ stop: "user", files: [] })).toBe("Stopped by you. No files changed.");
-  expect(stoppedText({ files: ["index.html"] })).toBe("Stopped: the connection to doi closed before the end, for example by a reload or a closed tab.");
+  expect(stoppedText({ stop: "connection", files: ["index.html"] })).toBe("Stopped: the connection to doi closed before the end, for example by a reload or a closed tab.");
+  expect(stoppedText({ files: ["index.html"] })).toBe("Stopped before the end."); // an entry from before the stop field
 });

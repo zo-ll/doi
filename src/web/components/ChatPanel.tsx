@@ -288,7 +288,11 @@ export function ChatPanel({
         if (event.type === "comments") onCommentsChanged?.();
         updateAnswer(answerId, (a) => applyEvent(a, event));
       }
-      if (!ended) updateAnswer(answerId, (a) => ({ ...a, status: "error", error: "The connection closed before the turn ended." }));
+      if (!ended) {
+        // After the user's stop the server ends the stream without a done event, maybe before the abort below lands.
+        if (stoppedByUser.current === controller) updateAnswer(answerId, (a) => ({ ...a, status: "stopped", stop: "user" }));
+        else updateAnswer(answerId, (a) => ({ ...a, status: "error", error: "The connection closed before the turn ended." }));
+      }
     } catch (e) {
       if (controller.signal.aborted) {
         const byUser = stoppedByUser.current === controller;

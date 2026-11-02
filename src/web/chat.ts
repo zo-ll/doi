@@ -35,8 +35,8 @@ export type ChatMessage =
       usage: Usage | null;
       retries: number;
       error?: string;
-      /** "user": the user stopped the turn (Stop, Esc). Another stop: the connection closed. */
-      stop?: "user";
+      /** Why a stopped turn stopped: "user" (Stop, Esc), "connection" (a reload, a closed tab); none: unknown. */
+      stop?: "user" | "connection";
       /** The commit of the turn; commitError when it failed (the turn itself succeeded). */
       commit?: string;
       commitError?: string;
@@ -245,8 +245,13 @@ export function formatTokens(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n);
 }
 
-/** The line under a stopped answer: only a stop by the user says "by you". */
+/** The line under a stopped answer: only a stop by the user says "by you"; an old entry names no cause. */
 export function stoppedText(a: Pick<Answer, "stop" | "files">): string {
-  const why = a.stop === "user" ? "Stopped by you." : "Stopped: the connection to doi closed before the end, for example by a reload or a closed tab.";
+  const why =
+    a.stop === "user"
+      ? "Stopped by you."
+      : a.stop === "connection"
+        ? "Stopped: the connection to doi closed before the end, for example by a reload or a closed tab."
+        : "Stopped before the end.";
   return a.files.length === 0 ? `${why} No files changed.` : why;
 }

@@ -211,7 +211,7 @@ export function createTurnHandler(deps: TurnDeps) {
         const usage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
         const files = new Set<string>();
         let status: "done" | "error" | "stopped" = "done";
-        let stop: "user" | undefined;
+        let stop: "user" | "connection" | undefined;
         let error: string | undefined;
         let started = false;
         let commentsDone: string[] = [];
@@ -295,7 +295,7 @@ export function createTurnHandler(deps: TurnDeps) {
           // An abort means the client is gone or stopped the turn: nobody reads an error event.
           if (abort.signal.aborted) {
             status = "stopped";
-            if (run.byUser) stop = "user";
+            stop = run.byUser ? "user" : "connection";
           } else {
             status = "error";
             const event = errorEvent(e);
@@ -363,7 +363,7 @@ export function createTurnHandler(deps: TurnDeps) {
   /**
    * DELETE …/turns: the user stops the design's running turn. The answer is stored with
    * `stop: "user"`; a turn that ends because its connection closed (a reload, a closed tab)
-   * is stored without it.
+   * is stored with `stop: "connection"`.
    */
   const stop = (params: { project: string; design: string }): Response => {
     let key: string;
