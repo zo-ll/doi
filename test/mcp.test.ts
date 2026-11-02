@@ -6,6 +6,8 @@ import { mkdir, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseConfig } from "../src/config.ts";
+import { chromium } from "playwright-core";
+import type { ElementInfo } from "../src/mcp/element.ts";
 import { createMcpServer } from "../src/mcp/server.ts";
 import { startServer } from "../src/server/app.ts";
 import { appendChat } from "../src/workspace/chat.ts";
@@ -39,9 +41,15 @@ const fakeRender = async (html: string, frames: { width: number; height: number 
   return frames.map(() => Buffer.from("png-bytes"));
 };
 
-async function connect(): Promise<Client> {
+const inspections: { html: string; width: number; oid: string }[] = [];
+const fakeInspect = async (html: string, frame: { width: number }, oid: string) => {
+  inspections.push({ html, width: frame.width, oid });
+  return html.includes(`data-oid="${oid}"`) ? ({ oid, tag: "x" } as ElementInfo) : null;
+};
+
+async function connect(useChromium = false): Promise<Client> {
   const [a, b] = InMemoryTransport.createLinkedPair();
-  await createMcpServer({ workspace: ws, render: fakeRender }).connect(a);
+  await createMcpServer({ workspace: ws, render: fakeRender, ...(useChromium ? {} : { inspect: fakeInspect }) }).connect(a);
   const client = new Client({ name: "test", version: "1" });
   await client.connect(b);
   return client;
@@ -57,7 +65,7 @@ describe("MCP tools", () => {
   test("lists the tools", async () => {
     const client = await connect();
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(["export_png", "get_comments", "get_design", "get_design_system", "list_designs"]);
+    expect(tools.map((t) => t.name).sort()).toEqual(["export_png", "get_comments", "get_design", "get_design_system", "get_element", "list_designs"]);
   });
 
   test("list_designs", async () => {
@@ -98,6 +106,25 @@ describe("MCP tools", () => {
     expect(renders[0]!.frames[0]!.width).toBe(390);
   });
 
+  test("get_element finds the element's page and inspects it in the frame", async () => {
+    inspections.length = 0;
+    const client = await connect();
+    const r = parsed(await client.callTool({ name: "get_element", arguments: { project: "shop", design: "home", oid: "about", frame: "mobile" } }));
+    expect(r.page).toBe("about.html");
+    expect(r.frame).toEqual({ id: "mobile", label: "Mobile", width: 390, height: 844 });
+    expect(r.element).toEqual({ oid: "about", tag: "x" });
+    expect(inspections[0]!.width).toBe(390);
+    expect(inspections[0]!.html).toContain('data-oid="about"'); // the page keeps its data-oids
+
+    const none: any = await client.callTool({ name: "get_element", arguments: { project: "shop", design: "home", oid: "gone" } });
+    expect(none.isError).toBe(true);
+    expect(none.content[0].text).toBe('No page of "shop/home" has data-oid "gone". Call get_design or get_comments.');
+    const wrongPage: any = await client.callTool({ name: "get_element", arguments: { project: "shop", design: "home", oid: "hero", page: "about.html" } });
+    expect(wrongPage.content[0].text).toBe('about.html has no element with data-oid "hero".');
+    const bad: any = await client.callTool({ name: "get_element", arguments: { project: "shop", design: "home", oid: "a\"b" } });
+    expect(bad.content[0].text).toBe("A data-oid has only letters, digits, - and _.");
+  });
+
   test("bad names and missing designs are tool errors", async () => {
     const client = await connect();
     const missing: any = await client.callTool({ name: "get_design", arguments: { project: "shop", design: "nope" } });
@@ -107,6 +134,55 @@ describe("MCP tools", () => {
     expect(bad.isError).toBe(true);
     const frame: any = await client.callTool({ name: "export_png", arguments: { project: "shop", design: "home", frame: "tv" } });
     expect(frame.content[0].text).toBe('Frame "tv" not found. Frames: desktop, mobile.');
+  });
+});
+
+// get_element with the real inspector needs Chromium; CI installs it, so only a local run skips.
+const hasBrowser = await chromium.launch().then(
+  (b) => b.close().then(() => true),
+  () => false,
+);
+
+describe.skipIf(!hasBrowser)("get_element in Chromium", () => {
+  test("gives the box, styles, matched rules, path and children", async () => {
+    const dir = designDir(ws, "shop", "home");
+    await Bun.write(
+      join(dir, "card.html"),
+      '<html><head><link rel="stylesheet" href="styles.css"><style>@media (min-width: 600px) { .card { padding: 24px; } }</style></head>' +
+        '<body style="margin:0"><main data-oid="page"><section class="card" data-oid="card" style="width:300px">' +
+        '<div><h2 data-oid="title">Hi</h2></div><p data-oid="body">Text</p></section></main></body></html>',
+    );
+    await Bun.write(join(dir, "styles.css"), "h1 { color: red; }\n.card { color: rgb(0, 0, 255); margin: 10px; }");
+    try {
+      const client = await connect(true);
+      const desktop = parsed(await client.callTool({ name: "get_element", arguments: { project: "shop", design: "home", oid: "card" } }));
+      const el = desktop.element;
+      expect(desktop.page).toBe("card.html");
+      expect(el.tag).toBe("section");
+      expect(el.attributes).toEqual({ class: "card", "data-oid": "card", style: "width:300px" });
+      expect(el.box).toEqual({ x: 10, y: 10, width: 348, height: el.box.height }); // 300 + 2 × 24 padding
+      expect(el.visible).toBe(true);
+      expect(el.styles.color).toBe("rgb(0, 0, 255)");
+      expect(el.styles["padding"]).toBe("24px");
+      expect(el.rules).toEqual([
+        { selector: ".card", declarations: "color: rgb(0, 0, 255); margin: 10px;" },
+        { selector: ".card", declarations: "padding: 24px;", within: ["@media (min-width: 600px)"] },
+      ]);
+      expect(el.path).toEqual([{ oid: "page", tag: "main" }]);
+      expect(el.children).toEqual([
+        { oid: "title", tag: "h2", text: "Hi" },
+        { oid: "body", tag: "p", text: "Text" },
+      ]);
+      expect(el.html.startsWith('<section class="card" data-oid="card"')).toBe(true);
+
+      // the mobile frame is narrower than the media query
+      const mobile = parsed(await client.callTool({ name: "get_element", arguments: { project: "shop", design: "home", oid: "card", frame: "mobile" } }));
+      expect(mobile.element.rules).toHaveLength(1);
+      expect(mobile.element.styles["padding"]).toBe("0px");
+    } finally {
+      await Bun.write(join(dir, "styles.css"), "h1 { color: red; }");
+      await Bun.file(join(dir, "card.html")).delete();
+    }
   });
 });
 
