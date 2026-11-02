@@ -164,6 +164,9 @@ a:hover { color: var(--text); }
 .chip-close:hover { background: var(--hover); }
 .el-mark { width: 7px; height: 7px; flex: none; border: 1.5px solid currentColor; }
 .badge { font-size: var(--text-xs); padding: 1px var(--space-1-5); border: 1px solid var(--line-2); border-radius: var(--radius-sm); color: var(--text-2); white-space: nowrap; }
+.badge-btn { background: none; cursor: pointer; font: inherit; font-size: var(--text-xs); }
+.badge-btn:hover { color: var(--text); border-color: var(--text-3); }
+.badge-btn.is-on { color: var(--accent-text); border-color: var(--accent); background: var(--accent-soft); }
 
 .seg { display: inline-flex; padding: var(--space-0-5); gap: var(--space-0-5); border-radius: var(--radius-md); background: var(--hover); }
 .seg-item {
@@ -467,6 +470,7 @@ a:hover { color: var(--text); }
 .nav-design[aria-current="page"] { background: var(--active); }
 .nav-design-icon { flex: none; width: 10px; height: 12px; border: 1.5px solid currentColor; border-radius: 2px; opacity: 0.7; }
 .nav-design-icon.is-deck { width: 14px; height: 9px; }
+.nav-design-icon.is-app { width: 7px; height: 12px; border-radius: 2px; }
 .nav-design-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-empty { padding: var(--space-1-5) var(--space-2) var(--space-1-5) var(--tree-indent); font-size: var(--text-sm); color: var(--text-3); }
 .nav-adds { display: flex; gap: var(--space-0-5); padding: var(--space-0-5) 0 var(--space-1-5) 24px; }

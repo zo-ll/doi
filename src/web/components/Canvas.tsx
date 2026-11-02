@@ -5,7 +5,7 @@ import type { Pin } from "../comments.ts";
 import { parseFrameMessage, trackMessage, type FrameMessage, type Layout, type Rect } from "../frame.ts";
 import { alignStyle, DEFAULT_SCALE, dropTarget, nudgeStyle, resizeStyle, sameSpot, type Axis, type Drop, type ElementStyle, type Handle, type Place, type SpacingScale } from "../edit.ts";
 import { arrangeRow, fitView, newFrameId, nextPosition, stepZoom, wheelFactor, zoomAt, ZOOM_MAX, ZOOM_MIN, type Point, type View } from "../viewport.ts";
-import { FRAME_LIMITS, PRESETS, type Frame as FrameSpec } from "../../workspace/frames.ts";
+import { FRAME_LIMITS, MAX_SCREENS, PRESETS, screenFrames, type ScreenFrame as FrameSpec } from "../../workspace/frames.ts";
 import { CHANGED_AFTER } from "../../workspace/edit-messages.ts";
 import type { Selection } from "./ChatPanel.tsx";
 
@@ -551,6 +551,9 @@ export function Canvas({
   overlay,
   liveVars = NO_VARS,
   onEditSaving,
+  screens = null,
+  onPage,
+  onAddScreen,
 }: {
   active: Active | null;
   /** The page of the design that the frames show. */
@@ -585,6 +588,12 @@ export function Canvas({
   liveVars?: Record<string, string>;
   /** A canvas edit goes to the server: the next design change keeps the selection. */
   onEditSaving?: () => void;
+  /** A mobile app: its pages, each in its own phone frame (no stored layout). Null for other designs. */
+  screens?: string[] | null;
+  /** A click in a screen selects in that screen's page. */
+  onPage?: (page: string) => void;
+  /** "+ Screen" in the toolbar of a mobile app. */
+  onAddScreen?: () => void;
 }) {
   const ref = useRef<HTMLElement>(null);
   const [frames, setFrames] = useState<FrameSpec[] | null>(null);
@@ -595,8 +604,10 @@ export function Canvas({
   const [menuOpen, setMenuOpen] = useState(false);
   const [tool, setTool] = useState<Tool>("select");
   const needsFit = useRef(true);
-  const state = useRef({ view, frames, active, tool, page });
-  state.current = { view, frames, active, tool, page };
+  const state = useRef({ view, frames, active, tool, page, app: screens !== null });
+  state.current = { view, frames, active, tool, page, app: screens !== null };
+  const onAddScreenRef = useRef(onAddScreen);
+  onAddScreenRef.current = onAddScreen;
   const [scale, setScale] = useState<SpacingScale>(DEFAULT_SCALE);
   const [editError, setEditError] = useState<string | null>(null);
   /** Changes when a failed edit must take its preview off the pages. */
@@ -685,12 +696,18 @@ export function Canvas({
   );
 
   // Load the frames of the design; a new design fits to the screen once they are there.
+  // A mobile app has no stored layout: one phone frame per page.
+  const screensKey = screens ? screens.join("\n") : null;
   useEffect(() => {
     if (!active) return;
     let live = true;
-    setFrames(null);
     setLayoutError(null);
     needsFit.current = true;
+    if (screensKey !== null) {
+      setFrames(screenFrames(screensKey ? screensKey.split("\n") : []));
+      return;
+    }
+    setFrames(null);
     getJSON<FrameSpec[]>(layoutUrl(active))
       .then((f) => live && setFrames(f))
       .catch((e) => {
@@ -701,7 +718,7 @@ export function Canvas({
     return () => {
       live = false;
     };
-  }, [active?.project, active?.design]);
+  }, [active?.project, active?.design, screensKey]);
 
   const size = () => {
     const r = ref.current?.getBoundingClientRect();
@@ -727,7 +744,7 @@ export function Canvas({
   const changeFrames = useCallback((next: FrameSpec[]) => {
     const a = state.current.active;
     setFrames(next);
-    if (!a) return;
+    if (!a || next.some((f) => f.page)) return; // the screens of an app are not a stored layout
     sendJSON("PUT", layoutUrl(a), { frames: next })
       .then(() => setLayoutError(null))
       .catch((e) => setLayoutError(`The frame layout was not saved: ${(e as Error).message}`));
@@ -779,7 +796,8 @@ export function Canvas({
           return true;
         }
         if (key.toLowerCase() === "f") {
-          setMenuOpen((o) => !o);
+          if (state.current.app) onAddScreenRef.current?.();
+          else setMenuOpen((o) => !o);
           return true;
         }
       }
@@ -942,10 +960,19 @@ export function Canvas({
     );
   }
 
-  const pagePath = page === "index.html" ? "" : page;
-  const src = preview
-    ? `${versionPageUrl(active.project, active.design, preview.sha)}${pagePath}`
-    : `${designUrl(active.project, active.design)}${pagePath}?v=${revision}${editReload ? `.${editReload}` : ""}`;
+  const pageSrc = (p: string) => {
+    const pagePath = p === "index.html" ? "" : p;
+    return preview
+      ? `${versionPageUrl(active.project, active.design, preview.sha)}${pagePath}`
+      : `${designUrl(active.project, active.design)}${pagePath}?v=${revision}${editReload ? `.${editReload}` : ""}`;
+  };
+  const src = pageSrc(page);
+  // A screen of an app: its page becomes the open page, so the node link and the edits use it.
+  const selectIn = (p: string, s: Selection) => {
+    if (p !== state.current.page) onPage?.(p);
+    state.current.page = p;
+    select(s);
+  };
   const panning = drag?.kind === "pan" || spaceDown;
   const showVariants = variants !== null && !!frames?.length;
   return (
@@ -977,14 +1004,14 @@ export function Canvas({
             <Frame
               key={f.id}
               frame={f}
-              src={src}
-              page={page}
+              src={f.page ? pageSrc(f.page) : src}
+              page={f.page ?? page}
               zoom={view.zoom}
               selection={selection}
               pins={pins}
-              canRemove={frames.length > 1}
+              canRemove={!f.page && frames.length > 1}
               readOnly={preview !== null}
-              onSelect={select}
+              onSelect={f.page ? (s) => selectIn(f.page!, s) : select}
               onClear={onClear}
               onPin={onPin}
               onRemove={removeFrame}
@@ -1050,18 +1077,25 @@ export function Canvas({
             </button>
           ))}
           <span className="sep" />
-          <button
-            className="tool-btn"
-            onClick={() => setMenuOpen((o) => !o)}
-            aria-expanded={menuOpen}
-            title="Add frame (F)"
-            disabled={!frames || frames.length >= FRAME_LIMITS.count || preview !== null}
-          >
-            + Frame
-            <span className="kbd">
-              {frames?.length ?? 0}/{FRAME_LIMITS.count}
-            </span>
-          </button>
+          {screens ? (
+            <button className="tool-btn" onClick={() => onAddScreen?.()} title="Add a screen (F)" disabled={preview !== null || screens.length >= MAX_SCREENS}>
+              + Screen
+              <span className="kbd">{screens.length}</span>
+            </button>
+          ) : (
+            <button
+              className="tool-btn"
+              onClick={() => setMenuOpen((o) => !o)}
+              aria-expanded={menuOpen}
+              title="Add frame (F)"
+              disabled={!frames || frames.length >= FRAME_LIMITS.count || preview !== null}
+            >
+              + Frame
+              <span className="kbd">
+                {frames?.length ?? 0}/{FRAME_LIMITS.count}
+              </span>
+            </button>
+          )}
           <button className="tool-btn" onClick={() => frames && changeFrames(arrangeRow(frames))} title="Arrange all in a row" disabled={!frames?.length || preview !== null}>
             Arrange
           </button>

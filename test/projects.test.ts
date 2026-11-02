@@ -4,11 +4,11 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DesignLocks, designKey } from "../src/server/locks.ts";
-import { deleteProject, patchDesign, patchProject, postDesign, postProject, type ProjectDeps } from "../src/server/projects.ts";
+import { deleteProject, patchDesign, patchProject, postDesign, postProject, postScreen, putDesignKind, type ProjectDeps } from "../src/server/projects.ts";
 import { appendChat, readChat } from "../src/workspace/chat.ts";
 import { listProjects, designDir } from "../src/workspace/paths.ts";
 import { slugify } from "../src/workspace/projects.ts";
-import { readLayout, slideLayout } from "../src/workspace/layout.ts";
+import { isApp, readLayout, slideLayout } from "../src/workspace/layout.ts";
 
 let deps: ProjectDeps;
 let commits: { paths: string[]; message: string }[];
@@ -33,7 +33,7 @@ describe("projects API", () => {
     const res = await postProject(deps, json("POST", { name: "My Shop!" }));
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ id: "my-shop", design: "home" });
-    expect(await listProjects(deps.workspace)).toEqual([{ id: "my-shop", name: "My Shop!", designs: ["home"], decks: [], designSystem: null, repo: null }]);
+    expect(await listProjects(deps.workspace)).toEqual([{ id: "my-shop", name: "My Shop!", designs: ["home"], decks: [], apps: [], designSystem: null, repo: null }]);
     expect(await Bun.file(join(designDir(deps.workspace, "my-shop", "home"), "index.html")).text()).toContain('data-oid="main"');
     expect(commits).toEqual([
       { paths: ["projects/my-shop/project.json", "projects/my-shop/designs/home"], message: "Create project My Shop!" },
@@ -86,6 +86,48 @@ describe("projects API", () => {
     expect((await readLayout(deps.workspace, "shop", "about")).map((f) => f.id)).toEqual(["desktop", "mobile"]);
     expect((await postDesign(deps, json("POST", { id: "x", kind: "poster" }), { project: "shop" })).status).toBe(400);
     expect(existsSync(designDir(deps.workspace, "shop", "x"))).toBe(false);
+  });
+
+  test("a mobile app is marked in project.json and starts with one screen", async () => {
+    await postProject(deps, json("POST", { name: "Shop" }));
+    const res = await postDesign(deps, json("POST", { id: "phone", kind: "app" }), { project: "shop" });
+    expect(res.status).toBe(201);
+    expect(await isApp(deps.workspace, "shop", "phone")).toBe(true);
+    expect(await Bun.file(join(designDir(deps.workspace, "shop", "phone"), "index.html")).text()).toContain('data-oid="home-screen"');
+    expect((await listProjects(deps.workspace))[0]).toMatchObject({ designs: ["home", "phone"], apps: ["phone"] });
+    expect(commits.at(-1)!.paths).toContain("projects/shop/project.json");
+  });
+
+  test("a design switches between a page and a mobile app; a rename keeps the mark", async () => {
+    await postProject(deps, json("POST", { name: "Shop" }));
+    const put = (app: unknown, design = "home") => putDesignKind(deps, json("PUT", { app }), { project: "shop", design });
+    expect((await put(true)).status).toBe(200);
+    expect((await listProjects(deps.workspace))[0]!.apps).toEqual(["home"]);
+    expect(commits.at(-1)!.message).toBe("Make home a mobile app");
+    expect((await put("yes")).status).toBe(400);
+    expect((await put(true, "missing")).status).toBe(404);
+    await patchDesign(deps, json("PATCH", { id: "app" }), { project: "shop", design: "home" });
+    expect((await listProjects(deps.workspace))[0]!.apps).toEqual(["app"]);
+    expect((await put(false, "app")).status).toBe(200);
+    expect((await listProjects(deps.workspace))[0]!.apps).toEqual([]);
+  });
+
+  test("a new screen copies the head of index.html and gets an empty main", async () => {
+    await postProject(deps, json("POST", { name: "Shop" }));
+    const dir = designDir(deps.workspace, "shop", "home");
+    await Bun.write(join(dir, "index.html"), '<!doctype html><html><head><link rel="stylesheet" href="styles.css"><link href="https://fonts.googleapis.com/css2?family=Inter" rel="stylesheet"></head><body><main data-oid="main">Home</main></body></html>');
+    const post = (name: unknown) => postScreen(deps, json("POST", { name }), { project: "shop", design: "home" });
+    const res = await post("files");
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ page: "files.html" });
+    const html = await Bun.file(join(dir, "files.html")).text();
+    expect(html).toContain('<link href="https://fonts.googleapis.com/css2?family=Inter" rel="stylesheet">');
+    expect(html).toContain('<main class="screen" data-oid="files-screen"></main>');
+    expect(commits.at(-1)!.message).toBe("Add screen files.html");
+    expect((await post("files")).status).toBe(409);
+    for (const bad of ["index", "Files", "../x", "", 3]) expect((await post(bad)).status).toBe(400);
+    deps.locks.tryLock(designKey("shop", "home"));
+    expect((await post("busy")).status).toBe(409);
   });
 
   test("renaming a design moves its folder and its chat", async () => {

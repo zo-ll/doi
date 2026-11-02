@@ -38,6 +38,26 @@ export function slideLayout(): Frame[] {
   return [{ id: "slide", ...slide, x: 0, y: 0 }];
 }
 
+/** A frame on the canvas. A screen of a mobile app has its own page; other frames show the open page. */
+export type ScreenFrame = Frame & { page?: string };
+
+/** The most screens a mobile app shows side by side. */
+export const MAX_SCREENS = 24;
+
+/** The frames of a mobile app: one 390 × 844 phone frame per page, in a row, in page order. Not stored. */
+export function screenFrames(pages: string[]): ScreenFrame[] {
+  const phone = PRESETS[1];
+  return pages.slice(0, MAX_SCREENS).map((page, i) => ({
+    id: `screen-${i}`,
+    label: page.replace(/\.html?$/i, ""),
+    width: phone.width,
+    height: phone.height,
+    x: i * (phone.width + FRAME_GAP),
+    y: 0,
+    page,
+  }));
+}
+
 const ID = /^[a-z0-9-]{1,40}$/;
 const isInt = (v: unknown, min: number, max: number): v is number =>
   typeof v === "number" && Number.isInteger(v) && v >= min && v <= max;

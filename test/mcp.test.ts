@@ -70,7 +70,7 @@ describe("MCP tools", () => {
 
   test("list_designs", async () => {
     const r = parsed(await (await connect()).callTool({ name: "list_designs", arguments: {} }));
-    expect(r).toEqual({ projects: [{ id: "shop", name: "The Shop", designs: ["home"], decks: [], designSystem: "brand", repo: null }] });
+    expect(r).toEqual({ projects: [{ id: "shop", name: "The Shop", designs: ["home"], decks: [], apps: [], designSystem: "brand", repo: null }] });
   });
 
   test("get_design gives files, pages, frames and requests", async () => {

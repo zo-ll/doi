@@ -2,11 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { sendJSON, type Active, type Load, type ProjectSummary } from "../api.ts";
 import { Confirm } from "./Confirm.tsx";
 
+type DesignKind = "page" | "app" | "slides";
+const KIND_LABEL: Record<DesignKind, string> = { page: "design", app: "mobile app", slides: "slide deck" };
+
 /** What the inline editor is open for, if anything. */
 type Editing =
   | { kind: "new-project" }
   | { kind: "rename-project"; project: string }
-  | { kind: "new-design"; project: string; slides: boolean }
+  | { kind: "new-design"; project: string; designKind: DesignKind }
   | { kind: "rename-design"; project: string; design: string };
 
 export interface WorkspaceState {
@@ -147,8 +150,8 @@ export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onCh
     close();
     onChanged();
   };
-  const createDesign = async (project: string, id: string, slides: boolean) => {
-    await sendJSON("POST", `/api/projects/${project}/designs`, { id, kind: slides ? "slides" : "page" });
+  const createDesign = async (project: string, id: string, kind: DesignKind) => {
+    await sendJSON("POST", `/api/projects/${project}/designs`, { id, kind });
     close();
     onChanged({ project, design: id });
     onClose();
@@ -293,6 +296,7 @@ export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onCh
                       }
                       const current = active?.project === p.id && active.design === d;
                       const deck = p.decks.includes(d);
+                      const app = p.apps.includes(d);
                       return (
                         <button
                           key={d}
@@ -306,28 +310,32 @@ export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onCh
                           onDoubleClick={() => setEditing({ kind: "rename-design", project: p.id, design: d })}
                           onKeyDown={(e) => e.key === "F2" && setEditing({ kind: "rename-design", project: p.id, design: d })}
                         >
-                          <span className={`nav-design-icon ${deck ? "is-deck" : ""}`} aria-hidden="true" />
+                          <span className={`nav-design-icon ${deck ? "is-deck" : app ? "is-app" : ""}`} aria-hidden="true" />
                           <span className="nav-design-name">{d}</span>
                           {deck && <span className="visually-hidden">(slide deck)</span>}
+                          {app && <span className="visually-hidden">(mobile app)</span>}
                         </button>
                       );
                     })}
                     {p.designs.length === 0 && !addingHere && <div className="nav-empty">No designs yet</div>}
                     {addingHere && (
                       <InlineInput
-                        key={String(editing.slides)}
+                        key={editing.designKind}
                         initial=""
-                        label={editing.slides ? `New slide deck name in ${p.name}` : `New design name in ${p.name}`}
+                        label={`New ${KIND_LABEL[editing.designKind]} name in ${p.name}`}
                         placeholder={NAME_HINT}
-                        onSubmit={(id) => createDesign(p.id, id, editing.slides)}
+                        onSubmit={(id) => createDesign(p.id, id, editing.designKind)}
                         onCancel={close}
                       />
                     )}
                     <div className="nav-adds">
-                      <button className="btn btn-ghost btn-sm" onClick={() => setEditing({ kind: "new-design", project: p.id, slides: false })}>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setEditing({ kind: "new-design", project: p.id, designKind: "page" })}>
                         + Design
                       </button>
-                      <button className="btn btn-ghost btn-sm" onClick={() => setEditing({ kind: "new-design", project: p.id, slides: true })}>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setEditing({ kind: "new-design", project: p.id, designKind: "app" })}>
+                        + Mobile app
+                      </button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setEditing({ kind: "new-design", project: p.id, designKind: "slides" })}>
                         + Slide deck
                       </button>
                     </div>

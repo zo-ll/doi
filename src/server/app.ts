@@ -27,7 +27,7 @@ import { getLayout, putLayout } from "./layout.ts";
 import { createVariantHandlers } from "./variants.ts";
 import { DesignLocks } from "./locks.ts";
 import { checkRequest, HOSTNAME, PAGE_HEADERS } from "./security.ts";
-import { deleteProject, patchDesign, patchProject, postDesign, postProject } from "./projects.ts";
+import { deleteProject, patchDesign, patchProject, postDesign, postProject, postScreen, putDesignKind } from "./projects.ts";
 import { createTurnHandler, getChat } from "./turns.ts";
 
 const METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);
@@ -247,6 +247,8 @@ export async function startServer(config: Config, options: { port?: number; deve
       },
       "/api/projects/:project/designs": { POST: (req) => postDesign(projectDeps, req, req.params) },
       "/api/projects/:project/designs/:design": { PATCH: (req) => patchDesign(projectDeps, req, req.params) },
+      "/api/projects/:project/designs/:design/kind": { PUT: (req) => putDesignKind(projectDeps, req, req.params) },
+      "/api/projects/:project/designs/:design/screens": { POST: (req) => postScreen(projectDeps, req, req.params) },
       "/api/projects/:project/uploads/:file": async (req) => {
         let path: string | null;
         try {

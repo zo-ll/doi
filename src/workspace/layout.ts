@@ -58,13 +58,45 @@ export function writeLayout(workspace: string, project: string, design: string, 
   return updateProjectMeta(workspace, project, (meta) => ({ ...meta, layouts: { ...layoutsOf(meta), [design]: frames } }));
 }
 
-/** Moves the layout of a renamed design. Nothing happens when it has none. */
+/** Moves the layout and the kind of a renamed design. Nothing happens when it has none. */
 export function renameLayout(workspace: string, project: string, from: string, to: string): Promise<void> {
   return updateProjectMeta(workspace, project, (meta) => {
     const layouts = layoutsOf(meta);
-    if (!(from in layouts)) return meta;
-    layouts[to] = layouts[from];
-    delete layouts[from];
-    return { ...meta, layouts: { ...layouts } };
+    const kinds = kindsOf(meta);
+    if (!(from in layouts) && !(from in kinds)) return meta;
+    if (from in layouts) {
+      layouts[to] = layouts[from];
+      delete layouts[from];
+    }
+    if (from in kinds) {
+      kinds[to] = kinds[from];
+      delete kinds[from];
+    }
+    return { ...meta, layouts: { ...layouts }, kinds: { ...kinds } };
+  });
+}
+
+/**
+ * The stored kind of each design in project.json `kinds`: only "app" (a mobile app: one phone
+ * frame per page) is stored. A deck is known from its content (data-slide); else a page.
+ */
+export function kindsOf(meta: Record<string, unknown>): Record<string, unknown> {
+  const k = meta.kinds;
+  return Object.assign(Object.create(null), typeof k === "object" && k !== null && !Array.isArray(k) ? k : {});
+}
+
+export async function isApp(workspace: string, project: string, design: string): Promise<boolean> {
+  assertName("design", design);
+  return kindsOf(await readMeta(workspace, project))[design] === "app";
+}
+
+/** Marks a design as a mobile app, or takes the mark away. */
+export function writeAppKind(workspace: string, project: string, design: string, app: boolean): Promise<void> {
+  assertName("design", design);
+  return updateProjectMeta(workspace, project, (meta) => {
+    const kinds = kindsOf(meta);
+    if (app) kinds[design] = "app";
+    else delete kinds[design];
+    return { ...meta, kinds: { ...kinds } };
   });
 }
