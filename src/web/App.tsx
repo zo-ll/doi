@@ -356,6 +356,7 @@ export function App() {
         pages={pages.state === "ready" ? pages.data : [page]}
         page={page}
         onPage={(p) => {
+          if (p === page) return; // the same page: keep the selection
           setPage(p);
           setSelection(null); // the node is on the old page; the link must not pair it with the new one
         }}
