@@ -206,6 +206,8 @@ An edit applies to all frames. A more specific rule in the design can still win 
 
 Each selected element has a link, as in Figma. The side panel shows it above Comments and History, with "Copy link". The address bar shows the same link. Open the link to open the design and the page with that element selected. Give the link to a coding agent: the MCP tool `get_element` reads the element from it.
 
+Under the link, the CSS block shows the CSS rules that match the element, each with its file (for example `styles.css`) and its `@media` rule, and the element's `style` attribute. "Copy CSS" copies them.
+
 ### Tweaks
 
 Tweaks (T) shows controls for the CSS variables of the design, for example colors and sizes. The canvas changes live. "Save as version" writes the values.

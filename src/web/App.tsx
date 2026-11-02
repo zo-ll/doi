@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  designUrl,
   getJSON,
   type Active,
   type AppConfig,
@@ -11,6 +12,7 @@ import {
 import { Canvas } from "./components/Canvas.tsx";
 import { ChatPanel, type AppliedComment, type Selection } from "./components/ChatPanel.tsx";
 import { CommentsPanel } from "./components/CommentsPanel.tsx";
+import { NodeCssBlock } from "./components/NodeCssBlock.tsx";
 import { Confirm } from "./components/Confirm.tsx";
 import { HistoryPanel } from "./components/HistoryPanel.tsx";
 import { DesignSystemDialog } from "./components/DesignSystemDialog.tsx";
@@ -646,6 +648,7 @@ export function App() {
                   </button>
                 </div>
                 <input className="node-link-url mono" readOnly value={nodeLink} aria-label="Node link" onFocus={(e) => e.currentTarget.select()} />
+                {active && <NodeCssBlock src={`${designUrl(active.project, active.design)}${page === "index.html" ? "" : page}?v=${revision}`} oid={selection.oid} onToast={setToast} />}
               </div>
             )}
             <div className="pane-body">

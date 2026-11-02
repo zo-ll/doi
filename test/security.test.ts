@@ -127,16 +127,24 @@ describe("frame rules in the code", () => {
     return out;
   };
 
+  // The one exception: the hidden CSS source of the side panel (NodeCssBlock) reads stylesheets,
+  // so it has the app's origin, and therefore no scripts at all. Never both in one sandbox.
+  const CSS_SOURCE = "src/web/components/NodeCssBlock.tsx";
+
   test("every iframe is sandboxed with allow-scripts only (no same-origin access)", async () => {
     let count = 0;
     for (const { path, text } of await sources()) {
       for (const m of text.matchAll(/<iframe\b[^>]*>/gs)) {
         count++;
-        expect({ path, sandbox: m[0].match(/sandbox="([^"]*)"/)?.[1] }).toEqual({ path, sandbox: "allow-scripts" });
+        const sandbox = m[0].match(/sandbox="([^"]*)"/)?.[1];
+        expect({ path, sandbox }).toEqual({ path, sandbox: path === CSS_SOURCE ? "allow-same-origin" : "allow-scripts" });
       }
     }
     expect(count).toBeGreaterThan(0);
-    for (const { text } of await sources()) expect(text).not.toContain("allow-same-origin");
+    for (const { path, text } of await sources()) {
+      if (path === CSS_SOURCE) expect(text.match(/allow-same-origin/g)?.length).toBe(1);
+      else expect(text).not.toContain("allow-same-origin");
+    }
   });
 
   test("every message listener checks the frame and parses the data", async () => {
