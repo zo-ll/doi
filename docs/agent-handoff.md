@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-11-02, a drive of the whole flow with `opencode-go:deepseek-v4.1-flash` and the UI fixes from it (branch `ui/seamless-flow`). Before: #72 closed (the user tested OpenCode Go with a real key), #130 (narrow windows) and #131 (Settings model list, Codex catalog) merged. The user needs no other providers for now. Tests: 465 pass, 1 skip. M1, M2, M3 and M4 have no open issues; the M1 and M4 gates are still open. `bun check`: no errors.
+Last update: 2026-11-02, a drive of the whole flow with `opencode-go:deepseek-v4.1-flash` and the UI fixes from it (branch `ui/seamless-flow`). Before: #72 closed (the user tested OpenCode Go with a real key), #130 (narrow windows) and #131 (Settings model list, Codex catalog) merged. The user needs no other providers for now. Tests: 472 pass, 1 skip. M1, M2, M3 and M4 have no open issues. The M1 gate is done (the user, 2026-11-02); the M4 gate is still open. `bun check`: no errors.
 
 ## 1. What doi is
 
@@ -110,7 +110,7 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 | `src/server/turns.ts` | `GET .../chat` and `POST .../turns`: one turn per design (409 while one runs), SSE events, abort on disconnect. `target` set → `models.edit`, else `models.generate` |
 | `src/workspace/chat.ts` | `projects/<project>/chat.jsonl`: one line per message, with `design`, `turn`, status, provider, model, usage, files, prompt version. `historyMessages()` keeps only completed turns |
 | `src/workspace/watch.ts` | `fs.watch` on `projects/`, 100 ms debounce per design, `hold`/`release` while a turn runs; `GET /api/events` streams `design-changed` |
-| `src/workspace/git.ts` | `ensureRepo()` on startup; `commitTurn()` after a completed turn that changed files: only that design folder and `chat.jsonl`, the user's own identity, one git command at a time |
+| `src/workspace/git.ts` | `ensureRepo()` on startup; `commitTurn()` after a completed turn that changed files: only that design folder and `chat.jsonl`, the user's own identity, one git command at a time. `identityEnv()`: `commit` and the import `merge` use only an explicit identity (a `GIT_AUTHOR_*`/`GIT_COMMITTER_*` variable, or `user.*`, `author.*`, `committer.*` in a git config, then `EMAIL` for an email). doi passes each part that no variable holds (also an empty variable) as `GIT_AUTHOR_*`/`GIT_COMMITTER_*`: the config value, else `FALLBACK_IDENTITY` (`doi <doi@localhost>`). It reads the config with `git config --null --get-regexp`. git never derives an identity from the passwd name and `login@host`, so no machine detail reaches the history or `.doi.zip` exports. Nothing is written to a git config |
 | `src/workspace/projects.ts`, `src/server/projects.ts` | Create and rename projects (display name in `project.json`) and designs (folder move + `chat.jsonl` rewrite). Each change is committed. A design rename takes the same lock as a turn (`src/server/locks.ts`) |
 | `src/workspace/uploads.ts`, `image-limits.ts`, `src/web/images.ts` | Images: the browser scales to 1568 px / 3.75 MB (`IMAGE_LIMITS`), the server checks type, count and size and saves them in `projects/<p>/uploads/`; `GET .../uploads/:file` serves them |
 | `src/web/chat.ts` | Chat panel logic without React: SSE reader, stream event → answer, stored entries → messages |
@@ -155,7 +155,7 @@ Not changed: DeepSeek v4.1 Flash has no vision, so image turns and the screensho
 
 Done and closed: #1 CI, #13 app shell, #74 credentials and status, #60 Claude Code backend, #73 Codex backend, #4 system prompt v0, #5 context assembler, #6 edit applier, #7 generation endpoint, #8 chat history, #10 live reload, #11 git history, #12 projects, #9 image input.
 
-M1 is complete. The user chose to start M2 before the M1 gate (one real design), so the gate is still open.
+M1 is complete. On 2026-11-02 the user said the M1 gate (one real design) is done and works.
 
 M2 is complete: #14 data-oid post-processing, #15 selection, #16 comments, #17 targeted edits, #18 canvas, #19 variants, #20 version history, #41 sandbox hardening.
 
@@ -165,11 +165,14 @@ M3 is complete: #42 design system format and loader, #43 import from a repo, #44
 
 #72 OpenCode Go: on 2026-10-20 the user ran it with a real key, and it works. #72 is closed.
 
+**2026-11-02: decisions.** The user did the M1 gate (one real design): it works. The user decided against a desktop app for now. The goal was an install for non-technical users, but subscriptions go only through the official CLIs (licence), so such a user must still install and log in to a CLI; a wrapper (Tauri was the user's pick) does not remove that step. The study, in case it comes back: Tauri v2 with the current binary as a sidecar fixes the installer, signing, start and updates; doi itself would still need a first-run provider screen, fixed folders (not `./workspace`), Chromium download from the app, a native save dialog for exports, the login-shell `PATH` on macOS, a tray icon (the server must keep running for `/mcp`), and a Windows target. A cheaper option: a web app manifest, so Chrome can install doi as an app. Do not start a desktop app unless the user asks.
+
+**Git identity.** On a computer where git was never set up, every commit failed ("Please tell me who you are"), so version history broke. Now doi commits as `doi <doi@localhost>` for each part that the user did not set explicitly (see `identityEnv()` in the code map). On 2026-11-02 the user chose this rule (option B): an identity that git derives from the passwd name and `login@host` does not count, because the history goes into shared `.doi.zip` exports. Checked live with no global git config: "Create project" committed as `doi <doi@localhost>` and no git config was written.
+
 Next, in this order:
 
 1. M5 (breadth): on 2026-10-20 the user said that no other providers are necessary for now. The adapters #57 Ollama, #56 OpenRouter and #55 Gemini wait. Do not start them unless the user asks. v1.2 (#67) and Later (#68, #75) wait.
 2. M4 (handoff): #46, #47, #48, #49, #53 and #54 are done. On 2026-10-14 the user removed the harness layer: doi does not start coding agents. #50, #51 and #52 are closed as not planned. The handoff is the prompt plus the MCP server. The top bar "Hand off" button opens the Export dialog at the agent prompt. Open: the M4 gate (one design through a coding agent into a real repo of the user). Every export and the handoff bundle (#49) must copy or inline the `/ds/<name>/` files that pages link: reuse `exportFolder()`/`exportPage()` from `src/export/html.ts`.
-3. Still open for the user: the M1 gate (one real design).
 
 After M1: M2 (precision), M3 (design systems), M4 (handoff), M5 (breadth). #75 (Sign in with ChatGPT) waits for a client ID from OpenAI.
 
