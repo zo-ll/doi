@@ -14,9 +14,10 @@ function serial<T>(job: () => Promise<T>): Promise<T> {
   return run;
 }
 
-/** Runs git in the workspace. A failure throws with git's own message. */
-async function git(workspace: string, args: string[]): Promise<string> {
-  const result = await $`git ${args}`.cwd(workspace).quiet().nothrow();
+/** Runs git in the workspace. A failure throws with git's own message. `env` adds variables. */
+async function git(workspace: string, args: string[], env?: Record<string, string>): Promise<string> {
+  const cmd = $`git ${args}`.cwd(workspace).quiet().nothrow();
+  const result = await (env ? cmd.env({ ...process.env, ...env }) : cmd);
   if (result.exitCode !== 0) {
     throw new Error(`git ${args[0]} failed: ${result.stderr.toString().trim() || `exit code ${result.exitCode}`}`);
   }
@@ -39,6 +40,30 @@ export async function ensureRepo(workspace: string): Promise<void> {
   await serial(() => git(workspace, ["init", "--quiet"]));
 }
 
+/** The name and email of commits when the user has no git identity (a computer where git was never set up). */
+export const FALLBACK_IDENTITY = { name: "doi", email: "doi@localhost" } as const;
+
+/** True when git can make a commit with these extra variables (`git var` fails as `git commit` would). */
+async function hasIdentity(workspace: string, env: Record<string, string>): Promise<boolean> {
+  const cmd = (v: string) => $`git var ${v}`.cwd(workspace).env({ ...process.env, ...env }).quiet().nothrow();
+  return (await cmd("GIT_AUTHOR_IDENT")).exitCode === 0 && (await cmd("GIT_COMMITTER_IDENT")).exitCode === 0;
+}
+
+/**
+ * The variables a commit needs. The user's own identity always wins: when git can commit as it
+ * is, nothing is added. Else doi fills each part that git's config does not have, with
+ * FALLBACK_IDENTITY, never with git's guess from the login and host name (the history goes into
+ * exports). Only for this command: nothing is written to any git config, so a later setup wins.
+ */
+export async function identityEnv(workspace: string): Promise<Record<string, string>> {
+  if (await hasIdentity(workspace, {})) return {};
+  const config = async (key: string) => (await $`git config ${key}`.cwd(workspace).env({ ...process.env }).quiet().nothrow()).stdout.toString().trim();
+  const env: Record<string, string> = {};
+  if (!(await config("user.name"))) Object.assign(env, { GIT_AUTHOR_NAME: FALLBACK_IDENTITY.name, GIT_COMMITTER_NAME: FALLBACK_IDENTITY.name });
+  if (!(await config("user.email"))) Object.assign(env, { GIT_AUTHOR_EMAIL: FALLBACK_IDENTITY.email, GIT_COMMITTER_EMAIL: FALLBACK_IDENTITY.email });
+  return env;
+}
+
 /** First line of the prompt, trimmed, at most 72 characters. */
 export function commitMessage(prompt: string): string {
   const line = prompt.trim().split("\n")[0]!.trim() || "Design change";
@@ -59,7 +84,7 @@ export function commitPaths(workspace: string, paths: string[], message: string)
     if (!present.length) return null;
     await git(workspace, ["add", "-A", "--", ...present]);
     if (!(await git(workspace, ["diff", "--cached", "--name-only", "--", ...present])).trim()) return null;
-    await git(workspace, ["commit", "--quiet", "-m", commitMessage(message), "--", ...present]);
+    await git(workspace, ["commit", "--quiet", "-m", commitMessage(message), "--", ...present], await identityEnv(workspace));
     return (await git(workspace, ["rev-parse", "HEAD"])).trim();
   });
 }
@@ -342,7 +367,7 @@ export async function importHistory(
         await git(workspace, ["reset", "--quiet", ref]);
         await git(workspace, ["checkout", "--quiet", "--", "."]);
       } else {
-        await git(workspace, ["merge", "--quiet", "--allow-unrelated-histories", "--no-edit", "-m", message, ref]);
+        await git(workspace, ["merge", "--quiet", "--allow-unrelated-histories", "--no-edit", "-m", message, ref], await identityEnv(workspace));
       }
       const original = originalIds(stream);
       const ids = new Map<string, string>();

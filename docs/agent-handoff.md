@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-11-02, a drive of the whole flow with `opencode-go:deepseek-v4.1-flash` and the UI fixes from it (branch `ui/seamless-flow`). Before: #72 closed (the user tested OpenCode Go with a real key), #130 (narrow windows) and #131 (Settings model list, Codex catalog) merged. The user needs no other providers for now. Tests: 465 pass, 1 skip. M1, M2, M3 and M4 have no open issues; the M1 and M4 gates are still open. `bun check`: no errors.
+Last update: 2026-11-02, a drive of the whole flow with `opencode-go:deepseek-v4.1-flash` and the UI fixes from it (branch `ui/seamless-flow`). Before: #72 closed (the user tested OpenCode Go with a real key), #130 (narrow windows) and #131 (Settings model list, Codex catalog) merged. The user needs no other providers for now. Tests: 468 pass, 1 skip. M1, M2, M3 and M4 have no open issues; the M1 and M4 gates are still open. `bun check`: no errors.
 
 ## 1. What doi is
 
@@ -110,7 +110,7 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 | `src/server/turns.ts` | `GET .../chat` and `POST .../turns`: one turn per design (409 while one runs), SSE events, abort on disconnect. `target` set → `models.edit`, else `models.generate` |
 | `src/workspace/chat.ts` | `projects/<project>/chat.jsonl`: one line per message, with `design`, `turn`, status, provider, model, usage, files, prompt version. `historyMessages()` keeps only completed turns |
 | `src/workspace/watch.ts` | `fs.watch` on `projects/`, 100 ms debounce per design, `hold`/`release` while a turn runs; `GET /api/events` streams `design-changed` |
-| `src/workspace/git.ts` | `ensureRepo()` on startup; `commitTurn()` after a completed turn that changed files: only that design folder and `chat.jsonl`, the user's own identity, one git command at a time |
+| `src/workspace/git.ts` | `ensureRepo()` on startup; `commitTurn()` after a completed turn that changed files: only that design folder and `chat.jsonl`, the user's own identity, one git command at a time. `identityEnv()`: when `git var GIT_AUTHOR_IDENT`/`GIT_COMMITTER_IDENT` fails (git never set up), `commit` and the import `merge` get `GIT_AUTHOR_*`/`GIT_COMMITTER_*` with `FALLBACK_IDENTITY` (`doi <doi@localhost>`) for each part that git's config lacks; never git's guess from the login and host name; nothing is written to a git config |
 | `src/workspace/projects.ts`, `src/server/projects.ts` | Create and rename projects (display name in `project.json`) and designs (folder move + `chat.jsonl` rewrite). Each change is committed. A design rename takes the same lock as a turn (`src/server/locks.ts`) |
 | `src/workspace/uploads.ts`, `image-limits.ts`, `src/web/images.ts` | Images: the browser scales to 1568 px / 3.75 MB (`IMAGE_LIMITS`), the server checks type, count and size and saves them in `projects/<p>/uploads/`; `GET .../uploads/:file` serves them |
 | `src/web/chat.ts` | Chat panel logic without React: SSE reader, stream event → answer, stored entries → messages |
@@ -164,6 +164,10 @@ M3 is complete: #42 design system format and loader, #43 import from a repo, #44
 **Subscriptions only.** The user has no Anthropic or OpenAI API keys and will not get them. doi runs on the CLI backends: `claude-code:<model>` (Claude subscription through `claude -p`) and `codex:<model>` (ChatGPT plan through `codex exec`). Do not ask for API keys. #2 (Anthropic adapter) and #3 (OpenAI adapter) were closed on 2026-10-13 as built and unit-tested, but not tested live. Test real runs with `claude-code:claude-haiku-5-5`. Since 2026-10-13 the default models in `src/config.ts` and `config.example.toml` are CLI backends (`claude-code:claude-opus-5-5`, `claude-code:claude-sonnet-5-5`, `claude-code:claude-haiku-5-5`), so doi works without a `config.toml`. The extract model needs vision for the screenshot import.
 
 #72 OpenCode Go: on 2026-10-20 the user ran it with a real key, and it works. #72 is closed.
+
+**2026-11-02: decisions.** The user did the M1 gate (one real design): it works. The user decided against a desktop app for now. The goal was an install for non-technical users, but subscriptions go only through the official CLIs (licence), so such a user must still install and log in to a CLI; a wrapper (Tauri was the user's pick) does not remove that step. The study, in case it comes back: Tauri v2 with the current binary as a sidecar fixes the installer, signing, start and updates; doi itself would still need a first-run provider screen, fixed folders (not `./workspace`), Chromium download from the app, a native save dialog for exports, the login-shell `PATH` on macOS, a tray icon (the server must keep running for `/mcp`), and a Windows target. A cheaper option: a web app manifest, so Chrome can install doi as an app. Do not start a desktop app unless the user asks.
+
+**Git identity.** On a computer where git was never set up, every commit failed ("Please tell me who you are"), so version history broke. Now doi commits as `doi <doi@localhost>` for the missing parts (see `identityEnv()` in the code map). Checked live with no global git config: "Create project" committed as `doi <doi@localhost>` and no git config was written.
 
 Next, in this order:
 
