@@ -51,9 +51,9 @@ async function hasIdentity(workspace: string, env: Record<string, string>): Prom
 
 /**
  * The variables a commit needs. The user's own identity always wins: when git can commit as it
- * is, nothing is added. Else doi fills each part that git's config does not have, with
- * FALLBACK_IDENTITY, never with git's guess from the login and host name (the history goes into
- * exports). Only for this command: nothing is written to any git config, so a later setup wins.
+ * is, nothing is added, also when git itself derives the identity from the passwd name and
+ * login@host. Else doi fills each part that git's config does not have with FALLBACK_IDENTITY;
+ * doi adds no guess of its own. Only for this command: nothing is written to any git config.
  */
 export async function identityEnv(workspace: string): Promise<Record<string, string>> {
   if (await hasIdentity(workspace, {})) return {};
@@ -73,7 +73,8 @@ export function commitMessage(prompt: string): string {
 /**
  * Commits only `paths`, so files the user staged elsewhere stay out of the commit. A path that
  * is gone counts when git tracks it (a rename or a delete). The commit uses the user's own git
- * identity. Returns the commit id, or null when nothing changed.
+ * identity, else `identityEnv()` fills the missing parts. Returns the commit id, or null when
+ * nothing changed.
  */
 export function commitPaths(workspace: string, paths: string[], message: string): Promise<string | null> {
   return serial(async () => {
