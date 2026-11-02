@@ -25,6 +25,7 @@ import { ProjectsNav, type WorkspaceState } from "./components/ProjectsNav.tsx";
 import { MOD, TopBar, type DesignSystemChip } from "./components/TopBar.tsx";
 import { useHistory } from "./history.ts";
 import { pinsOf, useComments } from "./comments.ts";
+import { nodeQuery, nodeUrl, parseNodeQuery } from "./node-url.ts";
 import { taskStatuses } from "./providers.ts";
 import { useTheme } from "./theme.ts";
 import { useVariants } from "./variants.ts";
@@ -154,6 +155,8 @@ export function App() {
 
   /** Projects deleted in this session: the old list can still name them until it loads again. */
   const deleted = useRef(new Set<string>());
+  /** The node URL the app was opened with; used once, on the first project list. */
+  const fromUrl = useRef(parseNodeQuery(location.search));
   // When the project list arrives, open the last design again, or else the first one.
   useEffect(() => {
     if (projects.state !== "ready") return;
@@ -163,6 +166,14 @@ export function App() {
     const list = projects.data.filter((p) => !deleted.current.has(p.id));
     const last = read(LAST_DESIGN, isActive);
     const exists = (a: Active) => list.some((p) => p.id === a.project && p.designs.includes(a.design));
+    const link = fromUrl.current;
+    fromUrl.current = null;
+    if (link && exists(link)) {
+      open({ project: link.project, design: link.design });
+      setPage(link.page);
+      if (link.node) setSelection({ oid: link.node });
+      return;
+    }
     if (last && exists(last)) return open(last);
     const first = list.find((p) => p.designs.length > 0);
     if (first) open({ project: first.id, design: first.designs[0]! });
@@ -210,6 +221,27 @@ export function App() {
   const openComments = commentList.filter((c) => c.status === "open").length;
 
   const [pages] = useLoad<string[]>(active ? `/api/projects/${active.project}/designs/${active.design}/pages?r=${revision}` : null);
+  // A page that a node URL named but the design does not have: show the first page.
+  useEffect(() => {
+    if (pages.state === "ready" && pages.data.length && !pages.data.includes(page)) setPage(pages.data[0]!);
+  }, [pages, page]);
+
+  // The address bar follows the open design, page and selection, as a Figma link does.
+  const nodeRef = active ? { project: active.project, design: active.design, page, node: selection?.oid ?? null } : null;
+  const nodeLink = nodeRef?.node ? nodeUrl(location.origin, nodeRef) : null;
+  const addressQuery = nodeRef ? nodeQuery(nodeRef) : "";
+  useEffect(() => {
+    if (fromUrl.current) return; // the URL the app opened with is not used yet
+    const next = `${location.pathname}${addressQuery}`;
+    if (next !== `${location.pathname}${location.search}`) window.history.replaceState(null, "", next);
+  }, [addressQuery]);
+  const copyNodeLink = () => {
+    if (!nodeLink) return;
+    navigator.clipboard.writeText(nodeLink).then(
+      () => setToast("Node link copied"),
+      () => setToast("Copy failed. Select the link and copy it."),
+    );
+  };
   const activeProject = active && projects.state === "ready" ? (projects.data.find((p) => p.id === active.project) ?? null) : null;
   const projectName = active ? (activeProject?.name ?? active.project) : null;
   const dsName = activeProject?.designSystem ?? null;
@@ -323,7 +355,11 @@ export function App() {
         isDeck={!!(active && activeProject?.decks.includes(active.design))}
         pages={pages.state === "ready" ? pages.data : [page]}
         page={page}
-        onPage={setPage}
+        onPage={(p) => {
+          if (p === page) return; // the same page: keep the selection
+          setPage(p);
+          setSelection(null); // the node is on the old page; the link must not pair it with the new one
+        }}
         version={versionCount}
         busy={running}
         navOpen={navOpen}
@@ -601,6 +637,17 @@ export function App() {
                 {MOD}]
               </button>
             </div>
+            {nodeLink && selection && (
+              <div className="node-link" aria-label="Selected node">
+                <div className="node-link-head">
+                  <span className="mono truncate" title={selection.oid}>{selection.oid}</span>
+                  <button className="btn btn-ghost btn-sm" onClick={copyNodeLink} title="Copy the link to this node">
+                    Copy link
+                  </button>
+                </div>
+                <input className="node-link-url mono" readOnly value={nodeLink} aria-label="Node link" onFocus={(e) => e.currentTarget.select()} />
+              </div>
+            )}
             <div className="pane-body">
               {sideTab === "history" && (
                 <HistoryPanel
