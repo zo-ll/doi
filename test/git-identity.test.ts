@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { commitPaths, ensureRepo, exportHistory, FALLBACK_IDENTITY, identityEnv, importHistory } from "../src/workspace/git.ts";
 
-// A computer where git was never set up: no global or system config, no identity variables.
+// A computer where no git config holds an identity: useConfigOnly stops git from building one from the passwd name and login@host.
 const KEYS = ["HOME", "XDG_CONFIG_HOME", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM", "EMAIL", "GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"];
 const saved: Record<string, string | undefined> = {};
 const GLOBAL = "[user]\n\tuseConfigOnly = true\n";
