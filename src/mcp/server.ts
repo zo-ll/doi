@@ -3,9 +3,10 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { exportPage } from "../export/html.ts";
-import { renderPngs } from "../export/render.ts";
+import { inspectRender, renderPngs } from "../export/render.ts";
 import { readDesignFiles } from "../generation/context.ts";
 import { designOids } from "../generation/oids.ts";
+import { readElement, type ElementInfo } from "./element.ts";
 import { readChat } from "../workspace/chat.ts";
 import { readComments } from "../workspace/comments.ts";
 import { activeDesignSystem, designSystemDir } from "../workspace/design-systems.ts";
@@ -26,6 +27,19 @@ export interface McpDeps {
   workspace: string;
   /** Renders PNGs; tests pass their own. */
   render?: typeof renderPngs;
+  /** Reads one element from a rendered page; tests pass their own. */
+  inspect?: (html: string, frame: { width: number; height: number }, oid: string) => Promise<ElementInfo | null>;
+}
+
+const OID = /^[A-Za-z0-9_-]{1,100}$/;
+
+/** The real inspector: Chromium renders the page, then readElement() runs in it. */
+const inspectInChromium: NonNullable<McpDeps["inspect"]> = (html, frame, oid) => inspectRender(html, frame, (page) => page.evaluate(readElement, oid));
+
+/** A missing Chromium gets the install hint; other errors pass through. */
+function renderError(e: unknown): ToolError {
+  const text = e instanceof Error ? e.message : String(e);
+  return new ToolError(/Executable doesn't exist|Chromium for Playwright is not installed/i.test(text) ? "doi has no Chromium. Run `doi install-browser` (from the source: `bun run install-browser`)." : text);
 }
 
 class ToolError extends Error {}
@@ -172,8 +186,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
         try {
           [png] = (await (deps.render ?? renderPngs)(result.html, [chosen], { scale: 1, fullPage: true })) as [Buffer];
         } catch (e) {
-          const text = e instanceof Error ? e.message : String(e);
-          throw new ToolError(/Executable doesn't exist|browser/i.test(text) ? "doi has no Chromium. Run `doi install-browser` (from the source: `bun run install-browser`)." : text);
+          throw renderError(e);
         }
         return {
           content: [
@@ -181,6 +194,51 @@ export function createMcpServer(deps: McpDeps): McpServer {
             { type: "text", text: `${page ?? "index.html"} in the frame ${chosen.label}, ${chosen.width} × ${chosen.height}.` },
           ],
         };
+      }),
+  );
+
+  server.registerTool(
+    "get_element",
+    {
+      description:
+        "Gets one element of a design by its data-oid, as the browser renders it in one frame: tag, attributes, text, HTML, " +
+        "box (CSS px from the page's top left), computed styles, the CSS rules that match it, its ancestors and its nearest children with a data-oid. " +
+        "Use it for an element that a comment or a request names.",
+      inputSchema: {
+        project: projectArg,
+        design: designArg,
+        oid: z.string().describe("The element's data-oid, for example from get_comments."),
+        page: z.string().optional().describe("The page. Default: the page that has the element."),
+        frame: z.string().optional().describe("The frame id from get_design. Default: the first frame."),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    ({ project, design, oid, page, frame }) =>
+      tool(async () => {
+        if (!OID.test(oid)) throw new ToolError("A data-oid has only letters, digits, - and _.");
+        const dir = await checkDesign(workspace, project, design);
+        const pages = (await readDesignFiles(dir)).filter((f) => f.content !== null && /\.html?$/i.test(f.path));
+        // The HTML parser, not a text search: a data-oid in a comment, a script or text does not count.
+        let chosenPage = page;
+        for (const f of page ? [] : pages) {
+          if ((await designOids([f])).has(oid)) {
+            chosenPage = f.path;
+            break;
+          }
+        }
+        if (!chosenPage) throw new ToolError(`No page of "${project}/${design}" has data-oid "${oid}". Call get_design or get_comments.`);
+        const frames = await readLayout(workspace, project, design);
+        const chosen = frame ? frames.find((f) => f.id === frame) : frames[0];
+        if (!chosen) throw new ToolError(`Frame "${frame}" not found. Frames: ${frames.map((f) => f.id).join(", ")}.`);
+        const result = await exportPage(workspace, project, design, { stripOids: false, page: chosenPage });
+        let info: ElementInfo | null;
+        try {
+          info = await (deps.inspect ?? inspectInChromium)(result.html, chosen, oid);
+        } catch (e) {
+          throw renderError(e);
+        }
+        if (!info) throw new ToolError(`${chosenPage} has no element with data-oid "${oid}".`);
+        return json({ page: chosenPage, frame: { id: chosen.id, label: chosen.label, width: chosen.width, height: chosen.height }, element: info });
       }),
   );
 

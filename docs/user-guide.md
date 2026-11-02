@@ -292,6 +292,7 @@ The agent reads the design from doi while it works. Keep doi running until the a
 | `get_design` | The files of a design, its pages, frames, design system name and the last requests |
 | `get_design_system` | The tokens, components and rules of the design system of a project |
 | `get_comments` | The open comments of a design (with `all`: the done comments too) |
+| `get_element` | One element by its `data-oid`, as the browser renders it in one frame: HTML, box, computed styles, matching CSS rules, ancestors and children |
 | `export_png` | An image of one page in one frame |
 
 ### Give the task to the agent

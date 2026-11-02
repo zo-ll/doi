@@ -223,7 +223,7 @@ export function App() {
           swatches: ds.state === "ready" ? ds.data.tokens.filter((t) => t.group === "color").slice(0, 3).map((t) => t.resolved) : [],
         };
 
-  const tasks = config.state === "ready" ? taskStatuses(config.data.models, providers.state === "ready" ? providers.data : null) : [];
+  const tasks = config.state === "ready" ? taskStatuses(config.data.models, providers.state === "ready" ? providers.data : null, config.data.vision) : [];
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
