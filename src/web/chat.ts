@@ -5,6 +5,9 @@ export type Task = "generate" | "edit" | `variant ${number}`;
 
 export type AnswerStatus = "running" | "done" | "error" | "stopped";
 
+/** The line for a stored turn without an answer (the server stopped during it, or is still writing it). */
+export const UNFINISHED = "This turn did not finish.";
+
 export type ChatMessage =
   | {
       id: number;
@@ -32,6 +35,8 @@ export type ChatMessage =
       usage: Usage | null;
       retries: number;
       error?: string;
+      /** Why a stopped turn stopped: "user" (Stop, Esc), "connection" (a reload, a closed tab); none: unknown. */
+      stop?: "user" | "connection";
       /** The commit of the turn; commitError when it failed (the turn itself succeeded). */
       commit?: string;
       commitError?: string;
@@ -138,7 +143,7 @@ export function fromEntries(entries: ChatEntryView[], nextId: () => number, imag
         ...(e.images?.length ? { images: e.images.map(imageUrl) } : {}),
         ...(e.comments?.length ? { comments: e.comments.map(({ oid, text }) => ({ oid, text })) } : {}),
       });
-      if (!answered.has(e.turn)) out.push({ id: nextId(), kind: "info", text: "This turn did not finish." });
+      if (!answered.has(e.turn)) out.push({ id: nextId(), kind: "info", text: UNFINISHED });
     } else {
       out.push({
         id: nextId(),
@@ -153,6 +158,7 @@ export function fromEntries(entries: ChatEntryView[], nextId: () => number, imag
         usage: e.usage,
         retries: 0,
         ...(e.error ? { error: e.error } : {}),
+        ...(e.stop ? { stop: e.stop } : {}),
         ...(e.commentsDone?.length ? { commentsDone: e.commentsDone.length } : {}),
       });
     }
@@ -237,4 +243,15 @@ export async function* readEvents<T = TurnStreamEvent>(body: ReadableStream<Uint
 
 export function formatTokens(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n);
+}
+
+/** The line under a stopped answer: only a stop by the user says "by you"; an old entry names no cause. */
+export function stoppedText(a: Pick<Answer, "stop" | "files">): string {
+  const why =
+    a.stop === "user"
+      ? "Stopped by you."
+      : a.stop === "connection"
+        ? "Stopped: the connection to doi closed before the end, for example by a reload or a closed tab."
+        : "Stopped before the end.";
+  return a.files.length === 0 ? `${why} No files changed.` : why;
 }

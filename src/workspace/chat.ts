@@ -45,6 +45,11 @@ export type ChatEntry =
       /** Files the turn changed. */
       files: string[];
       error?: string;
+      /**
+       * Why a stopped turn stopped: "user" (Stop, Esc) or "connection" (a reload, a closed tab).
+       * Entries from before 2026-11-02 have none: the cause is unknown.
+       */
+      stop?: "user" | "connection";
       /** Ids of the comments this turn marked done. */
       commentsDone?: string[];
       /** The variant the user picked, when the answer came from a variants run. */

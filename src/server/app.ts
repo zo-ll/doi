@@ -303,7 +303,10 @@ export async function startServer(config: Config, options: { port?: number; deve
         PATCH: (req) => patchComment(commentDeps, req, req.params),
         DELETE: (req) => deleteCommentRoute(commentDeps, req.params),
       },
-      "/api/projects/:project/designs/:design/turns": { POST: (req, srv) => runTurnRequest(req, req.params, srv) },
+      "/api/projects/:project/designs/:design/turns": {
+        POST: (req, srv) => runTurnRequest(req, req.params, srv),
+        DELETE: (req) => runTurnRequest.stop(req.params),
+      },
       // Stateless: no server-sent stream (GET) and no session to end (DELETE), so only POST.
       [MCP_PATH]: {
         POST: (req) => handleMcp({ workspace: config.workspace }, req),

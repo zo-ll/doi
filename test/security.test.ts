@@ -84,6 +84,11 @@ describe("the server", () => {
     expect((await post({ "content-type": "application/json", origin: "https://evil.example" })).status).toBe(403);
     expect((await post({ "content-type": "text/plain" })).status).toBe(415);
     expect((await post({ "content-type": "application/json", origin: base })).status).toBe(201);
+    // The stop route of a turn has the same guard: another site or a design page cannot stop a turn.
+    const stopTurn = (origin: string) => fetch(`${base}/api/projects/shop/designs/home/turns`, { method: "DELETE", headers: { origin } });
+    expect((await stopTurn("https://evil.example")).status).toBe(403);
+    expect((await stopTurn("null")).status).toBe(403);
+    expect((await stopTurn(base)).status).toBe(204);
 
     const page = await fetch(`${base}/design/shop/home/`);
     expect(page.status).toBe(200);

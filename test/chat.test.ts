@@ -3,7 +3,7 @@ import { appendFile, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { appendChat, chatFile, historyMessages, readChat, type ChatEntry } from "../src/workspace/chat.ts";
-import { applyEvent, clock, fromEntries, newAnswer, readEvents, shown } from "../src/web/chat.ts";
+import { applyEvent, clock, fromEntries, newAnswer, readEvents, shown, stoppedText } from "../src/web/chat.ts";
 
 const at = "2026-10-12T00:00:00.000Z";
 const usage = { inputTokens: 100, outputTokens: 20, cachedTokens: 80 };
@@ -144,4 +144,10 @@ describe("chat panel logic", () => {
     for await (const e of readEvents(stream)) out.push(e);
     expect(out).toEqual([{ type: "text", delta: "héllo" }, { type: "done" }]);
   });
+});
+
+test("only a stop by the user says by you", () => {
+  expect(stoppedText({ stop: "user", files: [] })).toBe("Stopped by you. No files changed.");
+  expect(stoppedText({ stop: "connection", files: ["index.html"] })).toBe("Stopped: the connection to doi closed before the end, for example by a reload or a closed tab.");
+  expect(stoppedText({ files: ["index.html"] })).toBe("Stopped before the end."); // an entry from before the stop field
 });
