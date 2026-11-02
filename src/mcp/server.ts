@@ -39,7 +39,7 @@ const inspectInChromium: NonNullable<McpDeps["inspect"]> = (html, frame, oid) =>
 /** A missing Chromium gets the install hint; other errors pass through. */
 function renderError(e: unknown): ToolError {
   const text = e instanceof Error ? e.message : String(e);
-  return new ToolError(/Executable doesn't exist|browser/i.test(text) ? "doi has no Chromium. Run `doi install-browser` (from the source: `bun run install-browser`)." : text);
+  return new ToolError(/Executable doesn't exist|Chromium for Playwright is not installed/i.test(text) ? "doi has no Chromium. Run `doi install-browser` (from the source: `bun run install-browser`)." : text);
 }
 
 class ToolError extends Error {}
@@ -218,8 +218,14 @@ export function createMcpServer(deps: McpDeps): McpServer {
         if (!OID.test(oid)) throw new ToolError("A data-oid has only letters, digits, - and _.");
         const dir = await checkDesign(workspace, project, design);
         const pages = (await readDesignFiles(dir)).filter((f) => f.content !== null && /\.html?$/i.test(f.path));
-        const has = new RegExp(`\\sdata-oid\\s*=\\s*(?:"${oid}"|'${oid}'|${oid}(?=[\\s/>]))`);
-        const chosenPage = page ?? pages.find((f) => has.test(f.content!))?.path;
+        // The HTML parser, not a text search: a data-oid in a comment, a script or text does not count.
+        let chosenPage = page;
+        for (const f of page ? [] : pages) {
+          if ((await designOids([f])).has(oid)) {
+            chosenPage = f.path;
+            break;
+          }
+        }
         if (!chosenPage) throw new ToolError(`No page of "${project}/${design}" has data-oid "${oid}". Call get_design or get_comments.`);
         const frames = await readLayout(workspace, project, design);
         const chosen = frame ? frames.find((f) => f.id === frame) : frames[0];

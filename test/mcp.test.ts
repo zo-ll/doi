@@ -44,7 +44,7 @@ const fakeRender = async (html: string, frames: { width: number; height: number 
 const inspections: { html: string; width: number; oid: string }[] = [];
 const fakeInspect = async (html: string, frame: { width: number }, oid: string) => {
   inspections.push({ html, width: frame.width, oid });
-  return html.includes(`data-oid="${oid}"`) ? ({ oid, tag: "x" } as ElementInfo) : null;
+  return html.toLowerCase().includes(`data-oid="${oid}"`) ? ({ oid, tag: "x" } as ElementInfo) : null;
 };
 
 async function connect(useChromium = false): Promise<Client> {
@@ -125,6 +125,34 @@ describe("MCP tools", () => {
     expect(bad.content[0].text).toBe("A data-oid has only letters, digits, - and _.");
   });
 
+  test("get_element finds the page with the element, not a page that only names it", async () => {
+    const dir = designDir(ws, "shop", "home");
+    // "a-notes" comes before "about" and "index" in the file order; its oid is only in a comment and a script
+    await Bun.write(join(dir, "a-notes.html"), '<html><body><!-- data-oid="about" --><script>document.querySelector(\'[data-oid="about"]\')</script><p data-oid="n">x</p></body></html>');
+    await Bun.write(join(dir, "b-upper.html"), '<html><body><p DATA-OID="upper">Up</p></body></html>');
+    try {
+      const client = await connect();
+      expect(parsed(await client.callTool({ name: "get_element", arguments: { project: "shop", design: "home", oid: "about" } })).page).toBe("about.html");
+      expect(parsed(await client.callTool({ name: "get_element", arguments: { project: "shop", design: "home", oid: "upper" } })).page).toBe("b-upper.html");
+    } finally {
+      await Bun.file(join(dir, "a-notes.html")).delete();
+      await Bun.file(join(dir, "b-upper.html")).delete();
+    }
+  });
+
+  test("get_element gives the install hint only for a missing Chromium", async () => {
+    const call = async (message: string) => {
+      const [a, b] = InMemoryTransport.createLinkedPair();
+      await createMcpServer({ workspace: ws, render: fakeRender, inspect: async () => { throw new Error(message); } }).connect(a);
+      const client = new Client({ name: "test", version: "1" });
+      await client.connect(b);
+      const r: any = await client.callTool({ name: "get_element", arguments: { project: "shop", design: "home", oid: "hero" } });
+      return r.content[0].text as string;
+    };
+    expect(await call("Chromium for Playwright is not installed. Run: doi install-browser")).toStartWith("doi has no Chromium.");
+    expect(await call("Target page, context or browser has been closed")).toBe("Target page, context or browser has been closed");
+  });
+
   test("bad names and missing designs are tool errors", async () => {
     const client = await connect();
     const missing: any = await client.callTool({ name: "get_design", arguments: { project: "shop", design: "nope" } });
@@ -142,6 +170,9 @@ const hasBrowser = await chromium.launch().then(
   (b) => b.close().then(() => true),
   () => false,
 );
+test.if(!!process.env.CI)("CI has Chromium for the get_element tests", () => {
+  expect(hasBrowser).toBe(true);
+});
 
 describe.skipIf(!hasBrowser)("get_element in Chromium", () => {
   test("gives the box, styles, matched rules, path and children", async () => {
@@ -174,6 +205,7 @@ describe.skipIf(!hasBrowser)("get_element in Chromium", () => {
         { oid: "body", tag: "p", text: "Text" },
       ]);
       expect(el.html.startsWith('<section class="card" data-oid="card"')).toBe(true);
+      expect(el.truncated).toEqual([]);
 
       // the mobile frame is narrower than the media query
       const mobile = parsed(await client.callTool({ name: "get_element", arguments: { project: "shop", design: "home", oid: "card", frame: "mobile" } }));
@@ -182,6 +214,31 @@ describe.skipIf(!hasBrowser)("get_element in Chromium", () => {
     } finally {
       await Bun.write(join(dir, "styles.css"), "h1 { color: red; }");
       await Bun.file(join(dir, "card.html")).delete();
+    }
+  });
+
+  test("long values are cut and listed; @container rules are given; many children are cut", async () => {
+    const dir = designDir(ws, "shop", "home");
+    const long = "x".repeat(21_000); // longer than the HTML limit too
+    const kids = Array.from({ length: 120 }, (_, i) => `<i data-oid="k${i}">${i}</i>`).join("");
+    await Bun.write(
+      join(dir, "big.html"),
+      `<html><head><style>.box { background-image: url("data:image/png;base64,${long}"); }
+        .wrap { container-type: inline-size; width: 400px; }
+        .box { color: black; } @container (min-width: 300px) { .box { color: red; } }</style></head>
+       <body><div class="wrap"><div class="box" data-oid="box" title="${long}">${kids}</div></div></body></html>`,
+    );
+    try {
+      const client = await connect(true);
+      const el = parsed(await client.callTool({ name: "get_element", arguments: { project: "shop", design: "home", oid: "box" } })).element;
+      expect(el.attributes.title).toHaveLength(500);
+      expect(el.rules[0].declarations).toHaveLength(4000);
+      expect(el.rules.at(-1)).toEqual({ selector: ".box", declarations: "color: red;", within: ["@container (min-width: 300px)"] });
+      expect(el.styles.color).toBe("rgb(255, 0, 0)");
+      expect(el.children).toHaveLength(100);
+      expect(el.truncated.sort()).toEqual(["attributes.title", "children", "html", "rules[0].declarations"]);
+    } finally {
+      await Bun.file(join(dir, "big.html")).delete();
     }
   });
 });
