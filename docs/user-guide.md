@@ -178,7 +178,7 @@ You can attach images to a message (Attach), for example a sketch or a screensho
 
 The canvas has three tools:
 
-- Select (V): click to select, as in Figma. The first click selects the outermost element under the pointer. Each click inside the selection selects one level deeper. A click elsewhere selects at the same level as the selection (for example a sibling). Ctrl/⌘-click selects the deepest element at once. Shift-click selects the parent. The hover outline shows what a click selects.
+- Select (V): click to select, as in Figma. The first click selects the outermost element under the pointer. Each click inside the selection selects one level deeper. A click elsewhere selects at the level where the click and the selection meet (for example a sibling). Ctrl/⌘-click selects the deepest element at once. Shift-click selects the parent. The hover outline shows what a click selects.
 - Comment (C): click an element to add a comment to it. The comment goes to the deepest element under the pointer.
 - Hand (H): move the canvas.
 

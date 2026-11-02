@@ -4,7 +4,7 @@ import { providerName, statusOf, TASKS, type Task } from "../providers.ts";
 import type { ThemeChoice } from "../theme.ts";
 import type { WorkspaceState } from "./ProjectsNav.tsx";
 import { ProviderAuth } from "./ProviderAuth.tsx";
-import { MOD } from "./TopBar.tsx";
+import { MOD, MOD_CLICK } from "./TopBar.tsx";
 
 type Section = "models" | "appearance" | "workspace" | "shortcuts";
 const SECTIONS: { id: Section; label: string }[] = [
@@ -30,7 +30,7 @@ const SHORTCUTS: [string, string][] = [
   ["Zoom in / out / 100% / fit", "+  −  0  ⇧1"],
   ["Send / stop", `${MOD}↵  Esc`],
   ["Select one level deeper", "click again"],
-  ["Select the deepest element", `${MOD}-click`],
+  ["Select the deepest element", `${MOD_CLICK}-click`],
   ["Select the parent element", "⇧-click"],
 ];
 

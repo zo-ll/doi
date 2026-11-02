@@ -6,6 +6,8 @@ const TONE_DOT = { ok: "dot-ok", warn: "dot-warn", err: "dot-err", unknown: "" }
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 /** The modifier key as the user's keyboard shows it. */
 export const MOD = isMac ? "⌘" : "Ctrl+";
+/** The modifier of a click: "⌘-click", "Ctrl-click". */
+export const MOD_CLICK = isMac ? "⌘" : "Ctrl";
 
 export interface DesignSystemChip {
   name: string;

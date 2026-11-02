@@ -35,6 +35,7 @@ describe.skipIf(!hasBrowser)("bridge: a click picks one level deeper", () => {
 
   /** A fresh page; the app's role (selection → doi:track) is played here. */
   async function open(deepest = false) {
+    await page?.close();
     page = await browser.newPage();
     await page.setContent(PAGE);
     await page.evaluate((deep) => {
@@ -47,17 +48,28 @@ describe.skipIf(!hasBrowser)("bridge: a click picks one level deeper", () => {
           w.picks.push(d.oid);
           postMessage({ type: "doi:track", oid: d.oid, pins: [], deepest: deep }, "*");
         }
-        if (d?.type === "doi:rects") w.hover = d.hover?.oid ?? null;
+        if (d?.type === "doi:rects" && d.hover) w.hover = d.hover.oid;
       });
     }, deepest);
     await page.addScriptTag({ content: bridge });
     await page.evaluate((deep) => postMessage({ type: "doi:track", oid: null, pins: [], deepest: deep }, "*"), deepest);
     await page.waitForTimeout(30);
   }
+  /** Clicks, waits for the bridge's doi:select, and returns the one oid it sent. */
   const click = async (selector: string, modifiers: ("Shift" | "ControlOrMeta")[] = []) => {
+    await page.evaluate(() => ((window as any).picks = []));
     await page.click(selector, { modifiers });
-    await page.waitForTimeout(30);
-    return page.evaluate(() => (window as any).picks.at(-1));
+    await page.waitForFunction(() => (window as any).picks.length > 0);
+    const picks = await page.evaluate(() => (window as any).picks);
+    expect(picks).toHaveLength(1);
+    return picks[0];
+  };
+  /** The hover oid of the next doi:rects after `act`. */
+  const hoverAfter = async (act: () => Promise<unknown>) => {
+    await page.evaluate(() => ((window as any).hover = undefined));
+    await act();
+    await page.waitForFunction(() => (window as any).hover !== undefined);
+    return page.evaluate(() => (window as any).hover);
   };
 
   test("each click on the same spot goes one level deeper, then stays", async () => {
@@ -88,12 +100,13 @@ describe.skipIf(!hasBrowser)("bridge: a click picks one level deeper", () => {
     expect(await click("span")).toBe("cta");
   });
 
-  test("the hover outline shows what a click would pick", async () => {
+  test("the hover outline shows what a click would pick, also after the selection changes", async () => {
     await open();
-    await click("span"); // main
+    expect(await hoverAfter(() => page.hover("span"))).toBe("main"); // nothing selected
+    // the pointer stays on the span; only the selection changes
+    expect(await hoverAfter(() => click("span"))).toBe("hero"); // main is selected
+    expect(await hoverAfter(() => page.evaluate(() => postMessage({ type: "doi:track", oid: "hero", pins: [], deepest: false }, "*")))).toBe("actions");
     await page.mouse.move(0, 0);
-    await page.hover("[data-oid=lede]");
-    await page.waitForTimeout(50);
-    expect(await page.evaluate(() => (window as any).hover)).toBe("hero");
+    expect(await hoverAfter(() => page.hover("[data-oid=lede]"))).toBe("lede"); // inside the selection (hero): one level deeper
   });
 });
