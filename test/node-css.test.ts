@@ -78,3 +78,22 @@ test.skipIf(!hasBrowser)("readNodeCss gives the matching rules with their at-rul
     await browser.close();
   }
 });
+
+test("each item of a nested selector list is scoped to its parent", () => {
+  // A fake document (readNodeCss is duck-typed): it records the selectors that it tests.
+  const tested: string[] = [];
+  const el = { getAttribute: (n: string) => (n === "data-oid" ? "x" : null), matches: (s: string) => (tested.push(s), false) };
+  const rule = (selectorText: string, cssRules: unknown[] = []) => ({ selectorText, style: { length: 1, cssText: "color: red;" }, cssRules });
+  const doc = {
+    querySelectorAll: () => [el],
+    styleSheets: [{ href: null, cssRules: [rule(".card", [rule(".a, .b"), rule(":is(.c, .d) .e"), rule("> .f"), rule("&:hover, .g")])] }],
+  };
+  readNodeCss(doc as unknown as Document, "x");
+  expect(tested).toEqual([
+    ".card",
+    ":is(.card) .a, :is(.card) .b",
+    ":is(.card) :is(.c, .d) .e", // a comma inside :is() is not a list comma
+    ":is(.card) > .f",
+    ":is(.card):hover, :is(.card) .g",
+  ]);
+});
