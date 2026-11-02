@@ -14,7 +14,7 @@ export interface ElementInfo {
   /** CSS pixels from the top left of the page, at the frame's width. */
   box: { x: number; y: number; width: number; height: number };
   visible: boolean;
-  /** A short list of computed values that matter for a build. */
+  /** A short list of computed values that matter for a build, each at most MAX_STYLE characters. */
   styles: Record<string, string>;
   /**
    * The style rules that match the element, in stylesheet order, at most MAX_RULES; the grouping
@@ -38,6 +38,7 @@ export function readElement(oid: string): ElementInfo | null {
   const MAX_TEXT = 500;
   const MAX_HTML = 20_000;
   const MAX_ATTRIBUTE = 500;
+  const MAX_STYLE = 500;
   const MAX_DECLARATIONS = 4_000;
   const MAX_RULES = 60;
   const MAX_CHILDREN = 100;
@@ -66,7 +67,7 @@ export function readElement(oid: string): ElementInfo | null {
   const styles: Record<string, string> = {};
   for (const k of STYLE_KEYS) {
     const v = cs.getPropertyValue(k);
-    if (v) styles[k] = v;
+    if (v) styles[k] = short(v, MAX_STYLE, `styles.${k}`); // a background image can be an inlined data: URL
   }
 
   const rules: ElementInfo["rules"] = [];
@@ -126,7 +127,7 @@ export function readElement(oid: string): ElementInfo | null {
         return;
       }
       const id = c.getAttribute("data-oid");
-      if (id) children.push({ oid: id, tag: c.tagName.toLowerCase(), text: short(textOf(c), 80) });
+      if (id) children.push({ oid: id, tag: c.tagName.toLowerCase(), text: short(textOf(c), 80, `children[${children.length}].text`) });
       else visit(c);
     }
   };
@@ -137,7 +138,7 @@ export function readElement(oid: string): ElementInfo | null {
     oid,
     tag: el.tagName.toLowerCase(),
     attributes,
-    text: short(textOf(el), MAX_TEXT),
+    text: short(textOf(el), MAX_TEXT, "text"),
     html: short(html, MAX_HTML, "html"),
     box: { x: Math.round(r.left + scrollX), y: Math.round(r.top + scrollY), width: Math.round(r.width), height: Math.round(r.height) },
     visible: r.width > 0 && r.height > 0 && cs.display !== "none" && cs.visibility !== "hidden",

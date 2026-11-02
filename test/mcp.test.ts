@@ -226,7 +226,7 @@ describe.skipIf(!hasBrowser)("get_element in Chromium", () => {
       `<html><head><style>.box { background-image: url("data:image/png;base64,${long}"); }
         .wrap { container-type: inline-size; width: 400px; }
         .box { color: black; } @container (min-width: 300px) { .box { color: red; } }</style></head>
-       <body><div class="wrap"><div class="box" data-oid="box" title="${long}">${kids}</div></div></body></html>`,
+       <body><div class="wrap"><div class="box" data-oid="box" title="${long}"><span>${"t".repeat(600)}</span>${kids}</div></div></body></html>`,
     );
     try {
       const client = await connect(true);
@@ -236,7 +236,8 @@ describe.skipIf(!hasBrowser)("get_element in Chromium", () => {
       expect(el.rules.at(-1)).toEqual({ selector: ".box", declarations: "color: red;", within: ["@container (min-width: 300px)"] });
       expect(el.styles.color).toBe("rgb(255, 0, 0)");
       expect(el.children).toHaveLength(100);
-      expect(el.truncated.sort()).toEqual(["attributes.title", "children", "html", "rules[0].declarations"]);
+      expect(el.styles["background-image"]).toHaveLength(500);
+      expect(el.truncated.sort()).toEqual(["attributes.title", "children", "html", "rules[0].declarations", "styles.background-image", "text"]);
     } finally {
       await Bun.file(join(dir, "big.html")).delete();
     }
