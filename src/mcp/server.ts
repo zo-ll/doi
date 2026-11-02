@@ -203,7 +203,8 @@ export function createMcpServer(deps: McpDeps): McpServer {
       description:
         "Gets one element of a design by its data-oid, as the browser renders it in one frame: tag, attributes, text, HTML, " +
         "box (CSS px from the page's top left), computed styles, the CSS rules that match it, its ancestors and its nearest children with a data-oid. " +
-        "Use it for an element that a comment or a request names.",
+        "Use it for an element that a comment or a request names. A doi node link (http://127.0.0.1:<port>/?project=…&design=…&page=…&node=…, " +
+        "copied from doi's side panel) gives these arguments: node is the oid; no page means index.html; page may be URL-encoded (doi decodes it).",
       inputSchema: {
         project: projectArg,
         design: designArg,
@@ -219,6 +220,12 @@ export function createMcpServer(deps: McpDeps): McpServer {
         const dir = await checkDesign(workspace, project, design);
         const pages = (await readDesignFiles(dir)).filter((f) => f.content !== null && /\.html?$/i.test(f.path));
         // The HTML parser, not a text search: a data-oid in a comment, a script or text does not count.
+        // A page copied from a node link can still be URL-encoded (docs%2Fnested.html).
+        if (page && /%[0-9A-Fa-f]{2}/.test(page)) {
+          try {
+            page = decodeURIComponent(page);
+          } catch {}
+        }
         let chosenPage = page;
         for (const f of page ? [] : pages) {
           if ((await designOids([f])).has(oid)) {

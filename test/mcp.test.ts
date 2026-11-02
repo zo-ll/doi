@@ -119,6 +119,8 @@ describe("MCP tools", () => {
     const none: any = await client.callTool({ name: "get_element", arguments: { project: "shop", design: "home", oid: "gone" } });
     expect(none.isError).toBe(true);
     expect(none.content[0].text).toBe('No page of "shop/home" has data-oid "gone". Call get_design or get_comments.');
+    // a page copied from a node link is URL-encoded
+    expect(parsed(await client.callTool({ name: "get_element", arguments: { project: "shop", design: "home", oid: "about", page: "about%2Ehtml" } })).page).toBe("about.html");
     const wrongPage: any = await client.callTool({ name: "get_element", arguments: { project: "shop", design: "home", oid: "hero", page: "about.html" } });
     expect(wrongPage.content[0].text).toBe('about.html has no element with data-oid "hero".');
     const bad: any = await client.callTool({ name: "get_element", arguments: { project: "shop", design: "home", oid: "a\"b" } });
