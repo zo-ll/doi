@@ -14,8 +14,8 @@ export interface NodeRef {
 
 const NAME = /^[a-z0-9][a-z0-9-]*$/; // the same rule as assertName() on the server
 const OID = /^[A-Za-z0-9_-]{1,100}$/;
-/** A page file of the design: a relative path to an .html file, without "..". */
-const PAGE = /^(?!.*(?:^|\/)\.\.?(?:\/|$))[A-Za-z0-9._/-]{1,200}\.html?$/;
+/** A page file of the design: a relative path to an .html file, without "." or ".." parts, a leading "/" or "//". */
+const PAGE = /^(?!\/)(?!.*\/\/)(?!.*(?:^|\/)\.\.?(?:\/|$))[A-Za-z0-9._/-]{1,200}\.html?$/;
 
 /** The query of a node URL; the default page and a missing node are left out. */
 export function nodeQuery(ref: NodeRef): string {

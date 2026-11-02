@@ -355,7 +355,10 @@ export function App() {
         isDeck={!!(active && activeProject?.decks.includes(active.design))}
         pages={pages.state === "ready" ? pages.data : [page]}
         page={page}
-        onPage={setPage}
+        onPage={(p) => {
+          setPage(p);
+          setSelection(null); // the node is on the old page; the link must not pair it with the new one
+        }}
         version={versionCount}
         busy={running}
         navOpen={navOpen}

@@ -19,4 +19,7 @@ test("bad parts of a node URL are left out; a bad design gives null", () => {
   expect(parseNodeQuery("?project=a&design=b&page=docs/./x.html")?.page).toBe("index.html");
   expect(parseNodeQuery("?project=a&design=b&page=docs/x.htm")?.page).toBe("docs/x.htm");
   expect(parseNodeQuery("?project=a&design=b&page=x.js")?.page).toBe("index.html");
+  expect(parseNodeQuery("?project=a&design=b&page=%2Fabout.html")?.page).toBe("index.html");
+  expect(parseNodeQuery("?project=a&design=b&page=docs%2F%2Fx.html")?.page).toBe("index.html");
+  expect(parseNodeQuery("?project=a&design=b&page=docs%2Fx.html")?.page).toBe("docs/x.html");
 });
