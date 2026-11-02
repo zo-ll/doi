@@ -44,8 +44,8 @@ test.skipIf(!hasBrowser)("readNodeCss gives the matching rules with their at-rul
     const page = await browser.newPage();
     await page.setContent(
       '<style>a { color: red; } [data-oid=x] .no { color: blue; } @media (min-width: 99999px) { .b { margin: 1px; } } @supports (display: grid) { a.b { gap: 2px; } }' +
-        ".card { & .inner { color: green; } .plain { padding: 1px; } }</style>" +
-        '<a class="b" data-oid="x" style="width: 3px">x</a><div class="card"><span class="inner plain" data-oid="in">i</span></div>',
+        ".card { & .inner { color: green; } .plain { padding: 1px; } } .panel { color: green; @media (min-width: 1px) { color: blue; } }</style>" +
+        '<a class="b" data-oid="x" style="width: 3px">x</a><div class="card"><span class="inner plain" data-oid="in">i</span></div><div class="panel" data-oid="panel">p</div>',
     );
     const read = (oid: string) => page.evaluate(`(${readNodeCss.toString()})(document, ${JSON.stringify(oid)})`);
     expect(await read("x")).toEqual({
@@ -63,6 +63,14 @@ test.skipIf(!hasBrowser)("readNodeCss gives the matching rules with their at-rul
       rules: [
         { selector: "& .inner", declarations: "color: green;", within: [".card"], source: "<style>" },
         { selector: "& .plain", declarations: "padding: 1px;", within: [".card"], source: "<style>" }, // Chromium adds the &
+      ],
+    });
+    // declarations inside a nested @media belong to the rule around them
+    expect(await read("panel")).toEqual({
+      inline: "",
+      rules: [
+        { selector: ".panel", declarations: "color: green;", within: [], source: "<style>" },
+        { selector: "&", declarations: "color: blue;", within: [".panel", "@media (min-width: 1px)"], source: "<style>" },
       ],
     });
     expect(await read("nope")).toBeNull();

@@ -120,6 +120,30 @@ describe("the server", () => {
   });
 });
 
+/** Source text without line and block comments; strings (quotes, backticks) stay as they are. */
+function withoutComments(text: string): string {
+  let out = "";
+  let quote: string | null = null;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!;
+    if (quote) {
+      out += c;
+      if (c === "\\") out += text[++i] ?? "";
+      else if (c === quote) quote = null;
+    } else if (c === '"' || c === "'" || c === "`") {
+      quote = c;
+      out += c;
+    } else if (c === "/" && text[i + 1] === "*") {
+      const end = text.indexOf("*/", i + 2);
+      i = end < 0 ? text.length : end + 1;
+    } else if (c === "/" && text[i + 1] === "/") {
+      const end = text.indexOf("\n", i);
+      i = end < 0 ? text.length : end - 1;
+    } else out += c;
+  }
+  return out;
+}
+
 describe("frame rules in the code", () => {
   const sources = async () => {
     const out: { path: string; text: string }[] = [];
@@ -144,7 +168,7 @@ describe("frame rules in the code", () => {
     for (const { path, text } of await sources()) {
       if (path === CSS_SOURCE) {
         // The code without comments: one same-origin sandbox, no scripts, no sandbox change from JavaScript.
-        const code = text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+        const code = withoutComments(text);
         expect(code.match(/allow-same-origin/g)?.length).toBe(1);
         expect(code).not.toContain("allow-scripts");
         expect(code).not.toMatch(/\.sandbox\b|setAttribute\(\s*["']sandbox/);
