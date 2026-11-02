@@ -5,18 +5,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { commitPaths, ensureRepo, exportHistory, FALLBACK_IDENTITY, identityEnv, importHistory } from "../src/workspace/git.ts";
 
-// A computer where no git config holds an identity: useConfigOnly stops git from building one from the passwd name and login@host.
+// A computer where no git config and no variable holds an identity. git may still derive one from
+// the passwd name and login@host; doi must not use it.
 const KEYS = ["HOME", "XDG_CONFIG_HOME", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM", "EMAIL", "GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"];
 const saved: Record<string, string | undefined> = {};
-const GLOBAL = "[user]\n\tuseConfigOnly = true\n";
+const GLOBAL = "[core]\n\tquotePath = false\n";
 let globalConfig = "";
 
 beforeAll(async () => {
   for (const k of KEYS) saved[k] = process.env[k];
   const home = await mkdtemp(join(tmpdir(), "doi-nohome-"));
   globalConfig = join(home, "global.gitconfig");
-  // useConfigOnly: git must not build an identity from the passwd name and login@host, which
-  // some machines have (a GECOS full name). Then "git was never set up" holds on every host.
   await writeFile(globalConfig, GLOBAL);
   Object.assign(process.env, { HOME: home, XDG_CONFIG_HOME: join(home, ".config"), GIT_CONFIG_GLOBAL: globalConfig, GIT_CONFIG_NOSYSTEM: "1" });
   for (const k of KEYS.slice(4)) delete process.env[k];
@@ -37,9 +36,8 @@ async function workspace(): Promise<string> {
 const git = (dir: string, cmd: string[]) => $`git ${cmd}`.cwd(dir).env({ ...process.env }).quiet().nothrow();
 
 describe("git identity", () => {
-  test("without any git identity, a commit works under doi's name and writes no git config", async () => {
+  test("without an explicit git identity, a commit works under doi's name and writes no git config", async () => {
     const dir = await workspace();
-    expect((await git(dir, ["var", "GIT_COMMITTER_IDENT"])).exitCode).not.toBe(0); // the setup has no identity
     const sha = await commitPaths(dir, [join(dir, "a.txt")], "First");
     expect(sha).toMatch(/^[0-9a-f]{40}$/);
     const who = `${FALLBACK_IDENTITY.name} <${FALLBACK_IDENTITY.email}>`;
@@ -50,7 +48,7 @@ describe("git identity", () => {
   });
 
   test("an identity only in the global config wins", async () => {
-    await writeFile(globalConfig, `${GLOBAL}\tname = Grace\n\temail = grace@example.com\n`);
+    await writeFile(globalConfig, `${GLOBAL}[user]\n\tname = Grace\n\temail = grace@example.com\n`);
     try {
       const dir = await workspace();
       expect(await identityEnv(dir)).toEqual({});
@@ -61,7 +59,7 @@ describe("git identity", () => {
     }
   });
 
-  test("without any git identity, an import merges its history under doi's name", async () => {
+  test("without an explicit git identity, an import merges its history under doi's name", async () => {
     const from = await workspace();
     await commitPaths(from, [join(from, "a.txt")], "Old work");
     const stream = await exportHistory(from, ["a.txt"]);
@@ -74,7 +72,7 @@ describe("git identity", () => {
     expect((await git(into, ["log", "-1", "--format=%s|%an"])).stdout.toString().trim()).toBe(`Import project|${FALLBACK_IDENTITY.name}`);
   });
 
-  test("the user's own identity wins; when git refuses a partial one, only the missing part is doi's", async () => {
+  test("the user's own identity wins; with a partial one, only the missing part is doi's", async () => {
     const dir = await workspace();
     await git(dir, ["config", "user.name", "Ada"]);
     await git(dir, ["config", "user.email", "ada@example.com"]);
@@ -83,9 +81,33 @@ describe("git identity", () => {
     expect((await git(dir, ["log", "-1", "--format=%an <%ae>"])).stdout.toString().trim()).toBe("Ada <ada@example.com>");
 
     await git(dir, ["config", "--unset", "user.email"]);
-    // useConfigOnly (global): git does not guess the email, so a commit would fail
-    const env = await identityEnv(dir);
-    expect(env.GIT_AUTHOR_NAME).toBeUndefined();
-    expect(env.GIT_AUTHOR_EMAIL).toBe(FALLBACK_IDENTITY.email);
+    await writeFile(join(dir, "a.txt"), "b\n");
+    await commitPaths(dir, [join(dir, "a.txt")], "Partial");
+    // git would derive the email from login@host; doi gives its own instead
+    expect((await git(dir, ["log", "-1", "--format=%an <%ae>|%cn <%ce>"])).stdout.toString().trim()).toBe(
+      `Ada <${FALLBACK_IDENTITY.email}>|Ada <${FALLBACK_IDENTITY.email}>`,
+    );
+  });
+
+  test("author.*, committer.*, the GIT_* variables and EMAIL count as explicit", async () => {
+    const dir = await workspace();
+    await git(dir, ["config", "author.name", "Ann"]);
+    await git(dir, ["config", "committer.email", "c@example.com"]);
+    expect(await identityEnv(dir)).toEqual({
+      GIT_AUTHOR_EMAIL: FALLBACK_IDENTITY.email,
+      GIT_COMMITTER_NAME: FALLBACK_IDENTITY.name,
+    });
+    process.env.GIT_COMMITTER_NAME = "Cy";
+    process.env.EMAIL = "e@example.com";
+    try {
+      expect(await identityEnv(dir)).toEqual({ GIT_AUTHOR_EMAIL: "e@example.com" });
+      await commitPaths(dir, [join(dir, "a.txt")], "Explicit");
+      expect((await git(dir, ["log", "-1", "--format=%an <%ae>|%cn <%ce>"])).stdout.toString().trim()).toBe(
+        "Ann <e@example.com>|Cy <c@example.com>",
+      );
+    } finally {
+      delete process.env.GIT_COMMITTER_NAME;
+      delete process.env.EMAIL;
+    }
   });
 });

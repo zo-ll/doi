@@ -43,24 +43,32 @@ export async function ensureRepo(workspace: string): Promise<void> {
 /** The name and email of commits when the user has no git identity (a computer where git was never set up). */
 export const FALLBACK_IDENTITY = { name: "doi", email: "doi@localhost" } as const;
 
-/** True when git can make a commit with these extra variables (`git var` fails as `git commit` would). */
-async function hasIdentity(workspace: string, env: Record<string, string>): Promise<boolean> {
-  const cmd = (v: string) => $`git var ${v}`.cwd(workspace).env({ ...process.env, ...env }).quiet().nothrow();
-  return (await cmd("GIT_AUTHOR_IDENT")).exitCode === 0 && (await cmd("GIT_COMMITTER_IDENT")).exitCode === 0;
-}
+const IDENTITY_KEYS = /^(user|author|committer)\.(name|email)$/;
 
 /**
- * The variables a commit needs. The user's own identity always wins: when git can commit as it
- * is, nothing is added, also when git itself derives the identity from the passwd name and
- * login@host. Else doi fills each part that git's config does not have with FALLBACK_IDENTITY;
- * doi adds no guess of its own. Only for this command: nothing is written to any git config.
+ * The variables a commit needs. Only an identity that the user set explicitly counts: a
+ * `GIT_AUTHOR_*`/`GIT_COMMITTER_*` variable, or `user.*`, `author.*` or `committer.*` in a git
+ * config; then `EMAIL` for an email. Each other part is FALLBACK_IDENTITY, so git never derives one
+ * from the passwd name and login@host, and no machine detail reaches the history or `.doi.zip`
+ * exports. Only for this command: nothing is written to any git config.
  */
 export async function identityEnv(workspace: string): Promise<Record<string, string>> {
-  if (await hasIdentity(workspace, {})) return {};
-  const config = async (key: string) => (await $`git config ${key}`.cwd(workspace).env({ ...process.env }).quiet().nothrow()).stdout.toString().trim();
+  const out = await $`git config --get-regexp ${IDENTITY_KEYS.source}`.cwd(workspace).env({ ...process.env }).quiet().nothrow();
+  const config = new Set<string>();
+  for (const line of out.stdout.toString().split("\n")) {
+    const at = line.indexOf(" ");
+    if (at > 0 && line.slice(at + 1).trim()) config.add(line.slice(0, at));
+  }
   const env: Record<string, string> = {};
-  if (!(await config("user.name"))) Object.assign(env, { GIT_AUTHOR_NAME: FALLBACK_IDENTITY.name, GIT_COMMITTER_NAME: FALLBACK_IDENTITY.name });
-  if (!(await config("user.email"))) Object.assign(env, { GIT_AUTHOR_EMAIL: FALLBACK_IDENTITY.email, GIT_COMMITTER_EMAIL: FALLBACK_IDENTITY.email });
+  for (const role of ["author", "committer"] as const) {
+    for (const part of ["name", "email"] as const) {
+      const key = `GIT_${role.toUpperCase()}_${part.toUpperCase()}`;
+      if (process.env[key]?.trim() || config.has(`${role}.${part}`) || config.has(`user.${part}`)) continue;
+      // doi passes EMAIL itself: git 2.43 drops it when only committer.email is configured.
+      const email = part === "email" ? process.env.EMAIL?.trim() : undefined;
+      env[key] = email || FALLBACK_IDENTITY[part];
+    }
+  }
   return env;
 }
 
