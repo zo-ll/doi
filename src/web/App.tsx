@@ -230,12 +230,15 @@ export function App() {
       // Chrome sends a keydown without a key when the user picks a datalist or autofill entry.
       if (typeof e.key !== "string") return;
       const mod = e.metaKey || e.ctrlKey;
-      if (e.key === "Escape" && !(e.target instanceof HTMLTextAreaElement)) {
+      if (e.key === "Escape") {
+        // With nothing selected, Esc closes the Tweaks panel, from the composer too. Not when the
+        // composer used it to stop a turn (preventDefault), and not over a dialog or the drawer.
         const hadSelection = selectionRef.current !== null;
-        setSelection(null);
-        if (!document.querySelector('[aria-modal="true"]')) closePreview.current();
-        // With nothing selected, Esc closes the Tweaks panel (a dialog or the drawer closes itself first).
-        if (!hadSelection && !document.querySelector('[aria-modal="true"], .nav-drawer')) setTweaksOpen(false);
+        if (!hadSelection && !e.defaultPrevented && !document.querySelector('[aria-modal="true"], .nav-drawer')) setTweaksOpen(false);
+        if (!(e.target instanceof HTMLTextAreaElement)) {
+          setSelection(null);
+          if (!document.querySelector('[aria-modal="true"]')) closePreview.current();
+        }
       }
       const key = e.key.toLowerCase();
       if (!mod && !e.altKey && key === "t" && !typing(e) && activeRef.current && !document.querySelector('[aria-modal="true"]')) {

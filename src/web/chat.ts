@@ -162,6 +162,12 @@ export function fromEntries(entries: ChatEntryView[], nextId: () => number, imag
 
 const addFile = (files: string[], file: string) => (files.includes(file) ? files : [...files, file]);
 
+/** Seconds as m:ss. */
+export const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+
+/** Hidden files (comments) are doi's own data, not part of the design: the file list leaves them out. */
+export const shown = (file: string) => !file.split("/").some((part) => part.startsWith("."));
+
 /** Applies one stream event to the answer. */
 export function applyEvent(a: Answer, e: TurnStreamEvent): Answer {
   switch (e.type) {

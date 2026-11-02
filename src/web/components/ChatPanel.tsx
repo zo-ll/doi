@@ -5,10 +5,12 @@ import { IMAGE_LIMITS } from "../../workspace/image-limits.ts";
 import {
   applyEvent,
   applyVariantEvent,
+  clock,
   formatTokens,
   fromEntries,
   newAnswer,
   readEvents,
+  shown,
   type Answer,
   type ChatMessage,
   type Task,
@@ -454,9 +456,12 @@ export function ChatPanel({
           }}
           onDrop={(e) => {
             if (disabled) return;
-            e.preventDefault();
             setDragging(false);
-            void addImages([...e.dataTransfer.files]);
+            const files = [...e.dataTransfer.files];
+            // Only images belong here; the window takes a .zip (import) and blocks other files.
+            if (!files.some((f) => f.type.startsWith("image/"))) return;
+            e.preventDefault();
+            void addImages(files);
           }}
         >
           {hasChips && (
@@ -659,12 +664,6 @@ function VariantsLine({ message: m }: { message: VariantsMessage }) {
     </div>
   );
 }
-
-/** Seconds as m:ss. */
-export const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-
-/** Hidden files (comments) are doi's own data, not part of the design: the file list leaves them out. */
-const shown = (file: string) => !file.split("/").some((part) => part.startsWith("."));
 
 /** The seconds since `since` (an ISO time), counted while `on`. */
 function useElapsed(since: string | undefined, on: boolean): number {

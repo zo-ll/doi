@@ -152,6 +152,16 @@
     { passive: false },
   );
 
+  // A file dropped on a frame must not replace the page (the browser opens it). The page's own
+  // drop zones run first; this frame cannot hand the file to the app, so a .zip does not import here.
+  const blockFileDrop = (event) => {
+    if (event.defaultPrevented || !event.dataTransfer || !event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    if (event.type === "dragover") event.dataTransfer.dropEffect = "none";
+  };
+  addEventListener("dragover", blockFileDrop);
+  addEventListener("drop", blockFileDrop);
+
   // A canvas edit before it is saved: inline styles on the element, with the old ones kept.
   const STYLE_PROPS = new Set(["width", "height", "margin-top", "margin-right", "margin-bottom", "margin-left", "align-self", "justify-self"]);
   let previewed = null; // { el, old: { prop: [value, priority] } }
