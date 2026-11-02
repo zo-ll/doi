@@ -1,3 +1,4 @@
+import { isApp } from "../workspace/layout.ts";
 import { parseModelChoice, type Config, type ModelRef, type ProviderId } from "../config.ts";
 import { ApplyError, runTurn, type TurnEvent } from "../generation/apply.ts";
 import { assembleContext, capabilitiesFor, ContextTooLargeError, readDesignFiles } from "../generation/context.ts";
@@ -254,6 +255,7 @@ export function createTurnHandler(deps: TurnDeps) {
             systemPrompt: SYSTEM_PROMPT.text,
             designSystem: ds ? formatDesignSystem(ds) : null,
             repo: repo?.text ?? null,
+            app: await isApp(workspace, params.project, params.design),
             files: before,
             history,
             turn,

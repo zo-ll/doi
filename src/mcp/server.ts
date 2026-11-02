@@ -10,7 +10,7 @@ import { readElement, type ElementInfo } from "./element.ts";
 import { readChat } from "../workspace/chat.ts";
 import { readComments } from "../workspace/comments.ts";
 import { activeDesignSystem, designSystemDir } from "../workspace/design-systems.ts";
-import { readLayout } from "../workspace/layout.ts";
+import { designFrames, isApp } from "../workspace/layout.ts";
 import { assertName, designDir, listProjects } from "../workspace/paths.ts";
 
 /**
@@ -113,8 +113,10 @@ export function createMcpServer(deps: McpDeps): McpServer {
           design,
           folder: dir,
           pages: files.map((f) => f.path).filter((p) => /\.html?$/i.test(p)),
-          frames: (await readLayout(workspace, project, design)).map(({ id, label, width, height }) => ({ id, label, width, height })),
+          frames: (await designFrames(workspace, project, design)).map(({ id, label, width, height }) => ({ id, label, width, height })),
           designSystem: ds?.name ?? null,
+          // A mobile app: each page is one phone screen (the "phone" frame).
+          ...((await isApp(workspace, project, design)) ? { kind: "app" } : {}),
           requests,
           files: out,
           ...(left.length ? { omitted: left } : {}),
@@ -178,7 +180,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
     ({ project, design, page, frame }) =>
       tool(async () => {
         await checkDesign(workspace, project, design);
-        const frames = await readLayout(workspace, project, design);
+        const frames = await designFrames(workspace, project, design);
         const chosen = frame ? frames.find((f) => f.id === frame) : frames[0];
         if (!chosen) throw new ToolError(`Frame "${frame}" not found. Frames: ${frames.map((f) => f.id).join(", ")}.`);
         const result = await exportPage(workspace, project, design, { stripOids: false, ...(page ? { page } : {}) });
@@ -234,7 +236,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
           }
         }
         if (!chosenPage) throw new ToolError(`No page of "${project}/${design}" has data-oid "${oid}". Call get_design or get_comments.`);
-        const frames = await readLayout(workspace, project, design);
+        const frames = await designFrames(workspace, project, design);
         const chosen = frame ? frames.find((f) => f.id === frame) : frames[0];
         if (!chosen) throw new ToolError(`Frame "${frame}" not found. Frames: ${frames.map((f) => f.id).join(", ")}.`);
         const result = await exportPage(workspace, project, design, { stripOids: false, page: chosenPage });

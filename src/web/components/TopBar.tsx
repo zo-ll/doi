@@ -19,6 +19,10 @@ export function TopBar(props: {
   projectName: string | null;
   design: string | null;
   isDeck: boolean;
+  /** The design is a mobile app: one phone frame per page. */
+  isApp?: boolean;
+  /** Switches the design between a page and a mobile app; absent for a deck. */
+  onToggleApp?: () => void;
   pages: string[];
   page: string;
   onPage: (page: string) => void;
@@ -79,6 +83,16 @@ export function TopBar(props: {
             {design ?? "No design"}
           </button>
           {props.isDeck && <span className="badge">Slide deck</span>}
+          {design && props.onToggleApp && (
+            <button
+              className={`badge badge-btn${props.isApp ? " is-on" : ""}`}
+              aria-pressed={!!props.isApp}
+              onClick={props.onToggleApp}
+              title={props.isApp ? "Mobile app: one phone frame per screen. Click to show the design as a web page." : "Show this design as a mobile app: one phone frame per screen"}
+            >
+              Mobile app
+            </button>
+          )}
           {design && (
             <>
               <span className="crumb-sep">/</span>

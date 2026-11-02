@@ -30,6 +30,8 @@ export interface ProjectSummary {
   designs: string[];
   /** The designs that are slide decks: their index.html marks slides with data-slide (#48). */
   decks: string[];
+  /** The designs that are mobile apps (project.json `kinds`): one phone frame per page. */
+  apps: string[];
   /** The selected design system, or null. */
   designSystem: string | null;
   /** The linked GitHub repo (#112): the app the designs are for. */
@@ -77,6 +79,11 @@ async function subdirs(dir: string): Promise<string[]> {
 
 const SLIDE = /\bdata-slide(?![\w-])/;
 
+/** Pages in display order: index.html first, then by path. */
+export function sortPages(pages: string[]): string[] {
+  return [...pages].sort((a, b) => Number(b === "index.html") - Number(a === "index.html") || a.localeCompare(b));
+}
+
 /** The HTML pages of a design, index.html first, then by path. Hidden files and folders do not count. */
 export async function designPages(workspace: string, project: string, design: string): Promise<string[]> {
   const dir = designDir(workspace, project, design);
@@ -85,7 +92,7 @@ export async function designPages(workspace: string, project: string, design: st
     .filter((e) => e.isFile() && /\.html?$/i.test(e.name))
     .map((e) => relative(dir, join(e.parentPath, e.name)).split(sep).join("/"))
     .filter((p) => !p.split("/").some((part) => part.startsWith(".")));
-  return pages.sort((a, b) => Number(b === "index.html") - Number(a === "index.html") || a.localeCompare(b));
+  return sortPages(pages);
 }
 
 /** Lists projects and their designs. A design is a folder with an index.html. */
@@ -96,12 +103,14 @@ export async function listProjects(workspace: string): Promise<ProjectSummary[]>
     let name = id;
     let designSystem: string | null = null;
     let repo: LinkedRepo | null = null;
+    let kinds: Record<string, unknown> = {};
     try {
       if (await meta.exists()) {
         const data = await meta.json();
         name = String(data.name ?? id);
         if (typeof data.designSystem === "string" && NAME.test(data.designSystem)) designSystem = data.designSystem;
         repo = linkedRepo(data);
+        if (typeof data.kinds === "object" && data.kinds !== null && !Array.isArray(data.kinds)) kinds = data.kinds;
       }
     } catch {
       // A hand-edited project.json with bad JSON must not hide the other projects.
@@ -114,7 +123,8 @@ export async function listProjects(workspace: string): Promise<ProjectSummary[]>
       designs.push(design);
       if (SLIDE.test(await index.text())) decks.push(design);
     }
-    projects.push({ id, name, designs, decks, designSystem, repo });
+    const apps = designs.filter((d) => Object.hasOwn(kinds, d) && kinds[d] === "app");
+    projects.push({ id, name, designs, decks, apps, designSystem, repo });
   }
   return projects;
 }

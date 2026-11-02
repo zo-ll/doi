@@ -25,6 +25,8 @@ export interface ContextInput {
   designSystem?: string | null;
   /** The linked repo of the project as text (#112). */
   repo?: string | null;
+  /** The design is a mobile app: one phone screen per page (project.json `kinds`). */
+  app?: boolean;
   files: DesignFile[];
   /** Earlier messages of this design, oldest first. */
   history: Message[];
@@ -81,6 +83,17 @@ export function turnMessage(turn: Turn): Message {
   return { role: "user", content };
 }
 
+/** The system part for a mobile app design: the canvas shows each page as one phone screen. */
+export const APP_PROMPT = `# This design is a mobile app
+
+The canvas shows each page of this design as one phone screen, 390 by 844 px, side by side.
+
+- Make each screen of the app a separate page. index.html is the first screen. Name the other pages after their screen, for example files.html or settings.html.
+- When the user asks for more screens, add new pages with the write tool. Do not put several screens in one page.
+- Keep the shared styles in styles.css and link it from every page. Use the same tokens, navigation and action bar on each screen.
+- Where the app goes from one screen to another, use a plain link, for example <a href="files.html">.
+- Design for a phone only: 390 px wide, touch targets of at least 44 px, no desktop layout.`;
+
 /**
  * Builds the request in the order of the design doc, so the prompt cache can reuse the start:
  * system prompt, design system, current files, then the trimmed history and the new message.
@@ -94,6 +107,7 @@ export function assembleContext(input: ContextInput): AssembledContext {
   }
 
   const system = [input.systemPrompt];
+  if (input.app) system.push(APP_PROMPT);
   if (input.designSystem?.trim()) system.push(input.designSystem);
   if (input.repo?.trim()) system.push(input.repo);
   system.push(formatFiles(input.files));

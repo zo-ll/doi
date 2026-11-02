@@ -2,7 +2,7 @@ import { mkdir, rename } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { chatFile, renameInChat } from "./chat.ts";
-import { renameLayout, slideLayout, updateProjectMeta, writeLayout } from "./layout.ts";
+import { renameLayout, slideLayout, updateProjectMeta, writeAppKind, writeLayout } from "./layout.ts";
 import { renameVariants } from "./variants.ts";
 import { assertName, designDir } from "./paths.ts";
 import { projectDir, projectFile } from "./project-file.ts";
@@ -47,6 +47,12 @@ const STARTER_HTML = `<!doctype html>
 `;
 const STARTER_CSS = "body { margin: 0; font-family: system-ui, sans-serif; }\n";
 
+/** A mobile app starts with one screen; each later screen is its own page. */
+const APP_HTML = STARTER_HTML.replace('<main data-oid="main"></main>', '<main class="screen" data-oid="home-screen"></main>');
+const APP_CSS = `body { margin: 0; font-family: system-ui, sans-serif; }
+.screen { min-height: 100vh; box-sizing: border-box; }
+`;
+
 /** A deck starts with one empty slide, so the model sees the slide markup in the files. */
 const DECK_HTML = `<!doctype html>
 <html lang="en">
@@ -73,8 +79,8 @@ body { margin: 0; font-family: system-ui, sans-serif; }
 }
 `;
 
-/** A design is a page (screens, one-pagers) or a slide deck. */
-export const DESIGN_KINDS = ["page", "slides"] as const;
+/** A design is a page (one-pagers, web screens), a mobile app (one page per screen) or a slide deck. */
+export const DESIGN_KINDS = ["page", "app", "slides"] as const;
 export type DesignKind = (typeof DESIGN_KINDS)[number];
 
 /** "My Shop!" → "my-shop". The result can still be empty; checkName rejects that. */
@@ -102,6 +108,41 @@ export async function renameProject(workspace: string, project: unknown, title: 
   return { paths: [projectFile(workspace, id)] };
 }
 
+/** Turns a design into a mobile app (one phone frame per page) or back into a page. */
+export async function setAppKind(workspace: string, project: unknown, design: unknown, app: unknown): Promise<{ paths: string[] }> {
+  const p = checkName("project", project);
+  const d = checkName("design", design);
+  if (typeof app !== "boolean") throw new WorkspaceError(400, "app must be true or false.");
+  const index = Bun.file(join(designDir(workspace, p, d), "index.html"));
+  if (!(await index.exists())) throw new WorkspaceError(404, `No design "${d}" in "${p}".`);
+  if (app && /\bdata-slide(?![\w-])/.test(await index.text())) throw new WorkspaceError(400, "A slide deck cannot be a mobile app.");
+  await writeAppKind(workspace, p, d, app);
+  return { paths: [projectFile(workspace, p)] };
+}
+
+const SCREEN = /^[a-z0-9][a-z0-9-]{0,39}$/;
+
+/**
+ * Adds a screen to a design: `<name>.html` with the head of index.html (its stylesheets and
+ * fonts) and an empty main, so the model and the canvas see a new page at once.
+ */
+export async function createScreen(workspace: string, project: unknown, design: unknown, name: unknown): Promise<{ page: string; paths: string[] }> {
+  const p = checkName("project", project);
+  const d = checkName("design", design);
+  if (typeof name !== "string" || !SCREEN.test(name) || name === "index") {
+    throw new WorkspaceError(400, 'A screen name has 1 to 40 characters: a-z, 0-9 and "-" (not "index").');
+  }
+  const dir = designDir(workspace, p, d);
+  const index = Bun.file(join(dir, "index.html"));
+  if (!(await index.exists())) throw new WorkspaceError(404, `No design "${d}" in "${p}".`);
+  const page = `${name}.html`;
+  const file = join(dir, page);
+  if (existsSync(file)) throw new WorkspaceError(409, `The design already has a page "${page}".`);
+  const head = (await index.text()).match(/<head\b[^>]*>[\s\S]*?<\/head>/i)?.[0] ?? '<head>\n  <meta charset="utf-8">\n  <link rel="stylesheet" href="styles.css">\n</head>';
+  await Bun.write(file, `<!doctype html>\n<html lang="en">\n${head}\n<body>\n  <main class="screen" data-oid="${name}-screen"></main>\n</body>\n</html>\n`);
+  return { page, paths: [file] };
+}
+
 /** Creates an empty design in a project. A deck gets one empty slide and the Slide frame. */
 export async function createDesign(workspace: string, project: unknown, design: unknown, kind: unknown = "page"): Promise<{ paths: string[] }> {
   const p = checkName("project", project);
@@ -112,8 +153,13 @@ export async function createDesign(workspace: string, project: unknown, design: 
   if (existsSync(dir)) throw new WorkspaceError(409, `A design "${d}" already exists in "${p}".`);
   await mkdir(join(dir, "assets"), { recursive: true });
   const deck = kind === "slides";
-  await Bun.write(join(dir, "index.html"), deck ? DECK_HTML : STARTER_HTML);
-  await Bun.write(join(dir, "styles.css"), deck ? DECK_CSS : STARTER_CSS);
+  const app = kind === "app";
+  await Bun.write(join(dir, "index.html"), deck ? DECK_HTML : app ? APP_HTML : STARTER_HTML);
+  await Bun.write(join(dir, "styles.css"), deck ? DECK_CSS : app ? APP_CSS : STARTER_CSS);
+  if (app) {
+    await writeAppKind(workspace, p, d, true);
+    return { paths: [dir, projectFile(workspace, p)] };
+  }
   if (!deck) return { paths: [dir] };
   await writeLayout(workspace, p, d, slideLayout());
   return { paths: [dir, projectFile(workspace, p)] };

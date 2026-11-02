@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   designUrl,
   getJSON,
+  sendJSON,
   type Active,
   type AppConfig,
   type DesignSystemView,
@@ -27,6 +28,7 @@ import { ProjectsNav, type WorkspaceState } from "./components/ProjectsNav.tsx";
 import { MOD, TopBar, type DesignSystemChip } from "./components/TopBar.tsx";
 import { useHistory } from "./history.ts";
 import { pinsOf, useComments } from "./comments.ts";
+import { MAX_SCREENS } from "../workspace/frames.ts";
 import { nodeQuery, nodeUrl, parseNodeQuery } from "./node-url.ts";
 import { taskStatuses } from "./providers.ts";
 import { useTheme } from "./theme.ts";
@@ -210,6 +212,9 @@ export function App() {
   const comments = useComments(active, revision);
   const variants = useVariants(active);
   const history = useHistory(active, revision);
+  // A history preview of a mobile app shows the pages of that version.
+  const previewSha = history.preview?.sha ?? null;
+  const [previewPages] = useLoad<string[]>(active && previewSha ? `/api/projects/${active.project}/designs/${active.design}/pages?sha=${previewSha}` : null);
   // Bumped after a pick: the chat loads again and shows the picked answer.
   const [chatEpoch, setChatEpoch] = useState(0);
   const commentList = comments.comments.state === "ready" ? comments.comments.data : [];
@@ -223,9 +228,16 @@ export function App() {
   const openComments = commentList.filter((c) => c.status === "open").length;
 
   const [pages] = useLoad<string[]>(active ? `/api/projects/${active.project}/designs/${active.design}/pages?r=${revision}` : null);
-  // A page that a node URL named but the design does not have: show the first page.
+  // A page that a node URL named but the design does not have: show the first page. A screen
+  // that "+ Screen" just made is not in the list until it loads again.
+  const newScreen = useRef<string | null>(null);
   useEffect(() => {
-    if (pages.state === "ready" && pages.data.length && !pages.data.includes(page)) setPage(pages.data[0]!);
+    if (pages.state !== "ready" || !pages.data.length) return;
+    if (pages.data.includes(page)) {
+      if (newScreen.current === page) newScreen.current = null;
+      return;
+    }
+    if (newScreen.current !== page) setPage(pages.data[0]!);
   }, [pages, page]);
 
   // The address bar follows the open design, page and selection, as a Figma link does.
@@ -245,6 +257,41 @@ export function App() {
     );
   };
   const activeProject = active && projects.state === "ready" ? (projects.data.find((p) => p.id === active.project) ?? null) : null;
+  const isApp = !!(active && activeProject?.apps.includes(active.design));
+  const toggleApp = useCallback(() => {
+    const a = activeRef.current;
+    if (!a) return;
+    sendJSON("PUT", `/api/projects/${a.project}/designs/${a.design}/kind`, { app: !isApp }).then(
+      () => {
+        retryProjects();
+        setSelection(null);
+        setToast(isApp ? "The design shows as a web page again." : "Mobile app: each page is one phone screen. Ask the chat for more screens, or use + Screen.");
+      },
+      (e: Error) => setToast(e.message),
+    );
+  }, [isApp, retryProjects]);
+  /** "+ Screen": a new empty page named screen-<n>, opened at once. */
+  const addScreen = useCallback(() => {
+    const a = activeRef.current;
+    if (!a) return;
+    const have = new Set(pages.state === "ready" ? pages.data : []);
+    if (have.size >= MAX_SCREENS) {
+      setToast(`An app shows at most ${MAX_SCREENS} screens.`);
+      return;
+    }
+    let n = 2;
+    while (have.has(`screen-${n}.html`)) n++;
+    sendJSON<{ page: string }>("POST", `/api/projects/${a.project}/designs/${a.design}/screens`, { name: `screen-${n}` }).then(
+      (r) => {
+        newScreen.current = r.page;
+        setRevision((v) => v + 1);
+        setPage(r.page);
+        setSelection(null);
+        setToast(`Added ${r.page}. Describe this screen in the chat.`);
+      },
+      (e: Error) => setToast(e.message),
+    );
+  }, [pages]);
   const projectName = active ? (activeProject?.name ?? active.project) : null;
   const dsName = activeProject?.designSystem ?? null;
   const [ds] = useLoad<DesignSystemView>(dsName ? `/api/design-systems/${dsName}` : null);
@@ -355,6 +402,8 @@ export function App() {
         projectName={projectName}
         design={active?.design ?? null}
         isDeck={!!(active && activeProject?.decks.includes(active.design))}
+        isApp={isApp}
+        onToggleApp={active && !activeProject?.decks.includes(active.design) ? toggleApp : undefined}
         pages={pages.state === "ready" ? pages.data : [page]}
         page={page}
         onPage={(p) => {
@@ -552,6 +601,9 @@ export function App() {
           selection={selection}
           pins={pins}
           onSelect={setSelection}
+          screens={isApp ? (history.preview ? (previewPages.state === "ready" ? previewPages.data : []) : pages.state === "ready" ? pages.data : []) : null}
+          onPage={setPage}
+          onAddScreen={addScreen}
           onClear={clearSelection}
           preview={history.preview}
           previewBusy={history.busy}
