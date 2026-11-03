@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getJSON, sendJSON, type AppConfig, type Load, type ProviderStatus } from "../api.ts";
-import { providerName, statusOf, TASKS, type Task } from "../providers.ts";
+import { MODEL_ID, providerName, statusOf, TASKS, type Task } from "../providers.ts";
 import type { ThemeChoice } from "../theme.ts";
 import type { WorkspaceState } from "./ProjectsNav.tsx";
 import { ProviderAuth } from "./ProviderAuth.tsx";
@@ -14,8 +14,6 @@ const SECTIONS: { id: Section; label: string }[] = [
   { id: "shortcuts", label: "Shortcuts" },
 ];
 const TONE_DOT = { ok: "dot-ok", warn: "dot-warn", err: "dot-err", unknown: "" } as const;
-/** A model name that goes to a CLI as an argument must not look like a flag. */
-const MODEL = /^[A-Za-z0-9._@/][A-Za-z0-9._:@/-]{0,99}$/;
 
 const SHORTCUTS: [string, string][] = [
   ["Projects", `${MOD}P`],
@@ -71,7 +69,7 @@ function useModelLists(ids: string[], providers: ProviderStatus[]): Record<strin
 }
 
 /** Settings (⌘,): the model per task (#61), the theme, the workspace and the shortcuts. */
-export function SettingsDialog({ config, providers, workspace, themeChoice, onTheme, onRecheck, onSaved, onClose, onExportWorkspace, onImport }: {
+export function SettingsDialog({ config, providers, workspace, themeChoice, onTheme, onRecheck, onSaved, onFirstUse, onClose, onExportWorkspace, onImport }: {
   config: AppConfig;
   providers: Load<ProviderStatus[]>;
   workspace: Load<WorkspaceState>;
@@ -81,6 +79,8 @@ export function SettingsDialog({ config, providers, workspace, themeChoice, onTh
   onRecheck: () => void;
   /** The model choice was saved; the app loads the config again. */
   onSaved: () => void;
+  /** Closes Settings and opens the first-use flow again. */
+  onFirstUse: () => void;
   onClose: () => void;
   onExportWorkspace: () => void;
   onImport: () => void;
@@ -103,7 +103,7 @@ export function SettingsDialog({ config, providers, workspace, themeChoice, onTh
   const ready = list.filter((p) => p.ready && p.implemented);
   const status = (id: string) => statusOf(list.find((p) => p.id === id));
   const changed = TASKS.some((t) => draft[t.id].provider !== config.models[t.id].provider || draft[t.id].model !== config.models[t.id].model);
-  const valid = TASKS.every((t) => MODEL.test(draft[t.id].model.trim()));
+  const valid = TASKS.every((t) => MODEL_ID.test(draft[t.id].model.trim()));
   const lists = useModelLists(TASKS.map((t) => draft[t.id].provider), list);
   // The provider's models first, then names the user has used with that provider.
   const suggestions = (provider: string) => {
@@ -240,7 +240,7 @@ export function SettingsDialog({ config, providers, workspace, themeChoice, onTh
                             className="select mono task-model"
                             value={models.includes(d.model) ? d.model : ""}
                             aria-label={`${t.label} model`}
-                            aria-invalid={!MODEL.test(d.model.trim())}
+                            aria-invalid={!MODEL_ID.test(d.model.trim())}
                             onChange={(e) => (e.target.value === TYPE_ID ? typeId(t.id, true) : setTask(t.id, { model: e.target.value }))}
                           >
                             {!models.includes(d.model) && (
@@ -264,7 +264,7 @@ export function SettingsDialog({ config, providers, workspace, themeChoice, onTh
                               title={lists[d.provider]?.state === "error" ? `The models cannot load: ${(lists[d.provider] as { message: string }).message}` : undefined}
                               value={d.model}
                               aria-label={`${t.label} model`}
-                              aria-invalid={!MODEL.test(d.model.trim())}
+                              aria-invalid={!MODEL_ID.test(d.model.trim())}
                               spellCheck={false}
                               onChange={(e) => setTask(t.id, { model: e.target.value })}
                             />
@@ -297,6 +297,17 @@ export function SettingsDialog({ config, providers, workspace, themeChoice, onTh
                 <p className="settings-note">
                   Menus list only providers that are ready. The model list shows the models of the provider; you can also type an id. {config.configPath ? <>doi writes the choice to <span className="mono">{config.configPath}</span>, only its [models] lines.</> : "doi runs without a config file, so the choice lasts until it stops."}
                 </p>
+
+                <h4>First use</h4>
+                <p className="settings-note">
+                  The setup flow asks for a provider and one model, then opens the editor. Open it again to change that first choice or to compare it with your current one. It does not change a model until you continue.
+                </p>
+                <div className="settings-actions">
+                  <span className="spacer" />
+                  <button className="btn btn-secondary" onClick={onFirstUse}>
+                    Open the setup flow
+                  </button>
+                </div>
                 {error && (
                   <div className="banner banner-err" role="alert">
                     <span className="dot dot-err" />

@@ -20,6 +20,7 @@ import { DesignSystemDialog } from "./components/DesignSystemDialog.tsx";
 import { ExportDialog } from "./components/ExportDialog.tsx";
 import { HandoffDialog } from "./components/HandoffDialog.tsx";
 import { SettingsDialog } from "./components/SettingsDialog.tsx";
+import { FirstUse } from "./components/FirstUse.tsx";
 import { UsageDialog } from "./components/UsageDialog.tsx";
 import { TweaksPanel } from "./components/TweaksPanel.tsx";
 import { RepoDialog } from "./components/RepoDialog.tsx";
@@ -31,6 +32,7 @@ import { pinsOf, useComments } from "./comments.ts";
 import { MAX_SCREENS } from "../workspace/frames.ts";
 import { nodeQuery, nodeUrl, parseNodeQuery } from "./node-url.ts";
 import { taskStatuses } from "./providers.ts";
+import { browserStorage, isDeepLink, readSetup, setupInUrl, showFirstUse, withoutSetup, writeSetup } from "./first-use.ts";
 import { useTheme } from "./theme.ts";
 import { useVariants } from "./variants.ts";
 
@@ -125,6 +127,12 @@ export function App() {
   }, [toast]);
   /** A full screen over the app: settings or usage. */
   const [screen, setScreen] = useState<null | "settings" | "usage">(null);
+  /** The first-use flow: pending until the workspace and the project list can decide it. */
+  const [firstUse, setFirstUse] = useState<"pending" | "show" | "hide">("pending");
+  const firstUseRef = useRef(firstUse);
+  firstUseRef.current = firstUse;
+  /** Bumped when "Start designing" opens the editor, so the composer takes the focus. */
+  const [composerFocus, setComposerFocus] = useState(0);
   const [page, setPage] = useState("index.html");
   // Bumped when the files of the open design change; the canvas reloads its frames.
   const [revision, setRevision] = useState(0);
@@ -159,8 +167,27 @@ export function App() {
 
   /** Projects deleted in this session: the old list can still name them until it loads again. */
   const deleted = useRef(new Set<string>());
+  /** `?setup=1` asks for the flow even in a finished workspace. */
+  const requested = useRef(setupInUrl(location.search));
   /** The node URL the app was opened with; used once, on the first project list. */
   const fromUrl = useRef(parseNodeQuery(location.search));
+  /** The same link, kept for the first-use decision: a valid target wins over the flow. */
+  const initialLink = useRef(fromUrl.current);
+
+  // Show the flow once per workspace. A valid design link opens its target without interruption.
+  // The decision is made once, so moving inside the editor cannot bring the flow back.
+  useEffect(() => {
+    if (firstUse !== "pending") return;
+    if (projects.state === "loading" && workspace.state === "loading") return;
+    if (projects.state === "error" || workspace.state === "error") {
+      setFirstUse("show");
+      return;
+    }
+    if (projects.state !== "ready" || workspace.state !== "ready") return;
+    const completed = !!readSetup(browserStorage(), workspace.data.path);
+    const deepLink = isDeepLink(initialLink.current, projects.data);
+    setFirstUse(showFirstUse({ requested: requested.current, deepLink, completed }) ? "show" : "hide");
+  }, [firstUse, projects, workspace]);
   // When the project list arrives, open the last design again, or else the first one.
   useEffect(() => {
     if (projects.state !== "ready") return;
@@ -246,9 +273,11 @@ export function App() {
   const addressQuery = nodeRef ? nodeQuery(nodeRef) : "";
   useEffect(() => {
     if (fromUrl.current) return; // the URL the app opened with is not used yet
+    // While the flow shows, the address bar keeps `?setup=1`; the flow removes it when it ends.
+    if (firstUse !== "hide") return;
     const next = `${location.pathname}${addressQuery}`;
     if (next !== `${location.pathname}${location.search}`) window.history.replaceState(null, "", next);
-  }, [addressQuery]);
+  }, [addressQuery, firstUse]);
   const copyNodeLink = () => {
     if (!nodeLink) return;
     navigator.clipboard.writeText(nodeLink).then(
@@ -310,6 +339,8 @@ export function App() {
     const onKey = (e: KeyboardEvent) => {
       // Chrome sends a keydown without a key when the user picks a datalist or autofill entry.
       if (typeof e.key !== "string") return;
+      // The first-use flow covers the editor: no hidden canvas or editor shortcut may fire.
+      if (firstUseRef.current !== "hide") return;
       const mod = e.metaKey || e.ctrlKey;
       if (e.key === "Escape") {
         // With nothing selected, Esc closes the Tweaks panel, from the composer too. Not when the
@@ -358,12 +389,12 @@ export function App() {
   useEffect(() => {
     const isFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes("Files");
     const onOver = (e: DragEvent) => {
-      if (!isFiles(e) || e.defaultPrevented) return;
+      if (firstUseRef.current !== "hide" || !isFiles(e) || e.defaultPrevented) return;
       e.preventDefault();
       e.dataTransfer!.dropEffect = [...e.dataTransfer!.items].some((i) => /zip/.test(i.type)) ? "copy" : "none";
     };
     const onDrop = (e: DragEvent) => {
-      if (!isFiles(e) || e.defaultPrevented) return;
+      if (firstUseRef.current !== "hide" || !isFiles(e) || e.defaultPrevented) return;
       e.preventDefault();
       const zip = [...e.dataTransfer!.files].find((f) => /\.zip$/i.test(f.name) || /zip/.test(f.type));
       if (!zip || document.querySelector('[aria-modal="true"]')) return;
@@ -395,6 +426,52 @@ export function App() {
     [panels.side, togglePanel],
   );
   showSideRef.current = showSide;
+
+  /** Closes the flow. The record is workspace-scoped; storage that is off still closes it here. */
+  const finishFirstUse = useCallback(
+    (mode: "saved" | "skip") => {
+      if (workspace.state === "ready") writeSetup(browserStorage(), workspace.data.path, { done: true, mode, at: new Date().toISOString() });
+      requested.current = false;
+      setFirstUse("hide");
+      setComposerFocus((n) => n + 1);
+      if (mode === "saved") retryConfig();
+      // The address bar follows the editor again; `?setup=1` does not stay after the flow.
+      const search = withoutSetup(location.search);
+      if (search !== location.search) window.history.replaceState(null, "", `${location.pathname}${search}`);
+    },
+    [workspace, retryConfig],
+  );
+  const openFirstUse = useCallback(() => {
+    setScreen(null);
+    requested.current = true;
+    setFirstUse("show");
+  }, []);
+
+  if (firstUse === "pending") {
+    return (
+      <div className="first-use-splash" role="status" aria-busy="true">
+        Loading doi…
+      </div>
+    );
+  }
+
+  if (firstUse === "show") {
+    return (
+      <FirstUse
+        config={config}
+        providers={providers}
+        workspace={workspace}
+        onRecheckProviders={retryProviders}
+        onRecheckConfig={retryConfig}
+        onRecheckWorkspace={retryWorkspace}
+        onSaved={retryConfig}
+        onStart={() => finishFirstUse("saved")}
+        onExplore={() => finishFirstUse("skip")}
+        theme={theme}
+        onTheme={toggleTheme}
+      />
+    );
+  }
 
   return (
     <div className="app">
@@ -530,6 +607,7 @@ export function App() {
           onTheme={chooseTheme}
           onRecheck={retryProviders}
           onSaved={retryConfig}
+          onFirstUse={openFirstUse}
           onClose={() => setScreen(null)}
           onExportWorkspace={() => {
             setScreen(null);
@@ -564,6 +642,7 @@ export function App() {
               onCollapse={() => togglePanel("chat")}
               repo={activeProject?.repo?.name ?? null}
               onOpenSettings={() => setScreen("settings")}
+              focusSignal={composerFocus}
             />
           </aside>
         )}

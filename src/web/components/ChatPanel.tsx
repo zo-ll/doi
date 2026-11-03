@@ -76,6 +76,7 @@ export function ChatPanel({
   onCollapse,
   onOpenSettings,
   repo = null,
+  focusSignal = 0,
 }: {
   /** The open design; null disables the composer. */
   target: Active | null;
@@ -100,6 +101,8 @@ export function ChatPanel({
   onOpenSettings: () => void;
   /** The project's linked repo: the samples start from the app's code. */
   repo?: string | null;
+  /** Bumped to put the focus in the composer after the first-use flow closes. */
+  focusSignal?: number;
 }) {
   const disabled = target === null;
   const [draft, setDraft] = useState("");
@@ -118,6 +121,11 @@ export function ChatPanel({
   const nextId = useRef(1);
   const abortRef = useRef<AbortController | null>(null);
   const sentRef = useRef(new Map<number, Sent>());
+
+  // "Start designing" and "Explore without a model" open the editor and put the cursor here.
+  useEffect(() => {
+    if (focusSignal > 0) inputRef.current?.focus();
+  }, [focusSignal]);
 
   // Auto-grow the composer up to its CSS max-height.
   useEffect(() => {

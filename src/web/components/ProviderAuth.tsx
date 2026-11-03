@@ -1,13 +1,9 @@
-import { useEffect, useState } from "react";
-import { sendJSON, type ProviderStatus } from "../api.ts";
+import { useState } from "react";
+import type { ProviderStatus } from "../api.ts";
+import { useProviderAuth } from "../auth.ts";
 import { defaultMethod, METHOD_LABEL, methodsOf, statusOf, vendorOf, VENDORS, type AuthMethod } from "../providers.ts";
 
 const TONE_DOT = { ok: "dot-ok", warn: "dot-warn", err: "dot-err", unknown: "" } as const;
-/** While a login runs, doi asks for the status this often, and stops after LOGIN_WAIT_MS. */
-const POLL_MS = 3_000;
-const LOGIN_WAIT_MS = 5 * 60_000;
-
-type Login = { state: "idle" } | { state: "starting" } | { state: "waiting"; url: string | null; since: number };
 
 /** Settings: select a provider, then connect it with OAuth (official CLI) or an API key. */
 export function ProviderAuth({ providers, initial, onRecheck }: {
@@ -19,86 +15,22 @@ export function ProviderAuth({ providers, initial, onRecheck }: {
   const [vendorId, setVendorId] = useState(() => vendorOf(initial).id);
   const vendor = VENDORS.find((v) => v.id === vendorId)!;
   const [method, setMethod] = useState<AuthMethod>(() => defaultMethod(vendor, providers));
-  const [key, setKey] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [note, setNote] = useState<string | null>(null);
-  const [login, setLogin] = useState<Login>({ state: "idle" });
 
   const providerId = vendor.methods[method]!;
   const p = providers.find((x) => x.id === providerId);
   const s = statusOf(p);
-
-  // While the user logs in in the browser, check the status until the CLI reports a login.
-  useEffect(() => {
-    if (login.state !== "waiting") return;
-    if (p?.ready) {
-      setLogin({ state: "idle" });
-      setNote("Logged in.");
-      return;
-    }
-    if (Date.now() - login.since > LOGIN_WAIT_MS) {
-      setLogin({ state: "idle" });
-      setError("No login after 5 minutes. Try again.");
-      return;
-    }
-    const t = setTimeout(onRecheck, POLL_MS);
-    return () => clearTimeout(t);
-    // `providers` changes after each check, so the next check follows.
-  }, [login, p?.ready, providers, onRecheck]);
+  const auth = useProviderAuth(providerId, !!p?.ready, onRecheck);
+  const { key, setKey, busy, error, note, login } = auth;
 
   const pickVendor = (id: string) => {
     const v = VENDORS.find((x) => x.id === id)!;
     setVendorId(id);
     setMethod(defaultMethod(v, providers));
-    reset();
+    auth.reset();
   };
   const pickMethod = (m: AuthMethod) => {
     setMethod(m);
-    reset();
-  };
-  const reset = () => {
-    setKey("");
-    setError(null);
-    setNote(null);
-    setLogin({ state: "idle" });
-  };
-
-  const run = async (what: () => Promise<string | null>) => {
-    setBusy(true);
-    setError(null);
-    setNote(null);
-    try {
-      setNote(await what());
-      onRecheck();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-  const saveKey = () =>
-    run(async () => {
-      const { where } = await sendJSON<{ where: "keychain" | "file" }>("PUT", `/api/providers/${providerId}/key`, { key });
-      setKey("");
-      return where === "keychain" ? "Saved in the system keychain." : "No system keychain here. Saved in the doi credentials file (only you can read it).";
-    });
-  const removeKey = () =>
-    run(async () => {
-      await sendJSON("DELETE", `/api/providers/${providerId}/key`);
-      return "Key removed.";
-    });
-  const startLogin = async () => {
-    setLogin({ state: "starting" });
-    setError(null);
-    setNote(null);
-    try {
-      const { url } = await sendJSON<{ url: string | null }>("POST", `/api/providers/${providerId}/login`);
-      setLogin({ state: "waiting", url, since: Date.now() });
-    } catch (e) {
-      setLogin({ state: "idle" });
-      setError((e as Error).message);
-    }
+    auth.reset();
   };
 
   const stored = p?.keyFrom === "keychain" || p?.keyFrom === "file";
@@ -155,7 +87,7 @@ export function ProviderAuth({ providers, initial, onRecheck }: {
             <div className="settings-actions">
               <span className="spacer" />
               {!p.ready && !/not found/i.test(p.detail) && (
-                <button className="btn btn-primary" disabled={login.state !== "idle"} onClick={() => void startLogin()}>
+                <button className="btn btn-primary" disabled={login.state !== "idle"} onClick={() => void auth.startLogin()}>
                   {login.state === "idle" ? "Log in" : "Waiting for the login…"}
                 </button>
               )}
@@ -176,7 +108,7 @@ export function ProviderAuth({ providers, initial, onRecheck }: {
               className="key-form"
               onSubmit={(e) => {
                 e.preventDefault();
-                if (key.trim()) void saveKey();
+                if (key.trim()) void auth.saveKey();
               }}
             >
               <input
@@ -193,7 +125,7 @@ export function ProviderAuth({ providers, initial, onRecheck }: {
                 Save
               </button>
               {stored && (
-                <button className="btn btn-ghost" type="button" disabled={busy} onClick={() => void removeKey()}>
+                <button className="btn btn-ghost" type="button" disabled={busy} onClick={() => void auth.removeKey()}>
                   Remove
                 </button>
               )}

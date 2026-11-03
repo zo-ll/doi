@@ -11,15 +11,16 @@ doi runs on your computer only. The server listens on `127.0.0.1`. Your designs,
 1. [Install](#install)
 2. [Configure](#configure)
 3. [Providers and models](#providers-and-models)
-4. [Make a design](#make-a-design)
-5. [Edit on the canvas](#edit-on-the-canvas)
-6. [Comments, variants and history](#comments-variants-and-history)
-7. [Design systems](#design-systems)
-8. [Export](#export)
-9. [Hand off to a coding agent (MCP)](#hand-off-to-a-coding-agent-mcp)
-10. [The workspace](#the-workspace)
-11. [Shortcuts](#shortcuts)
-12. [Troubleshooting](#troubleshooting)
+4. [First use](#first-use)
+5. [Make a design](#make-a-design)
+6. [Edit on the canvas](#edit-on-the-canvas)
+7. [Comments, variants and history](#comments-variants-and-history)
+8. [Design systems](#design-systems)
+9. [Export](#export)
+10. [Hand off to a coding agent (MCP)](#hand-off-to-a-coding-agent-mcp)
+11. [The workspace](#the-workspace)
+12. [Shortcuts](#shortcuts)
+13. [Troubleshooting](#troubleshooting)
 
 ## Install
 
@@ -166,6 +167,20 @@ The ids `google`, `openrouter` and `ollama` are reserved for adapters that are n
 ### Usage and cost
 
 Usage (top bar) shows the tokens of each answer. For an API model with an entry in `[prices]`, it also shows an estimated cost. A subscription shows tokens only.
+
+## First use
+
+doi shows a setup flow before the editor, one time for each workspace folder. The flow has three steps: Connect, Choose a model and Ready.
+
+1. **Connect.** Select Anthropic, OpenAI or OpenCode Go. A subscription goes through the official CLI. For an API key, doi stores the key on this computer. Select "Use an API key instead" to change the method. Continue is on only when the selected method is ready.
+2. **Choose a model.** doi lists the models of the provider. Select one, or select "Type a model id…" and type an id. "List" goes back to the list. A model id has letters, digits and `. _ @ / : -` only.
+3. **Ready.** The screen shows the provider, the model and the workspace folder. Select "Start designing" to open the editor. Select "Explore without a model" to open the editor and keep your settings.
+
+doi writes the choice to the `[models]` lines of `config.toml` only when you select Continue on the model step. The choice applies to `generate`, `edit` and `extract`. For a different model for each task, use Settings.
+
+To see the flow again, open Settings (Ctrl/⌘ + ,) and select "Open the setup flow". To compare, open `http://127.0.0.1:4317/?setup=1`: doi shows the flow on each load of that URL. A link to a design (`?project=…&design=…`) opens that design and does not show the flow.
+
+The completion is kept in this browser, for this workspace folder. A browser that blocks site data shows the flow again after a reload. The flow changes no design, project or comment.
 
 ## Make a design
 

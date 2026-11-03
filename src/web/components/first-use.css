@@ -1,0 +1,1064 @@
+/* First-use flow (Connect, Choose a model, Ready). Every rule is scoped to .first-use, so the
+   editor's tokens and styles do not change. Values come from the reference design. */
+
+.first-use {
+  --fu-paper: #f6f5f0;
+  --fu-surface: #fdfcf8;
+  --fu-ink: #292d29;
+  --fu-muted: #686d65;
+  --fu-line: #dddfd5;
+  --fu-accent: #315c46;
+  --fu-accent-soft: #edf1e9;
+  --fu-on-accent: #ffffff;
+  --fu-danger: #9b3d2c;
+  --fu-danger-soft: #f7ece8;
+  --fu-danger-line: #e3c8bf;
+  --fu-danger-ink: #6f2c1f;
+  --fu-field: #fdfcf8;
+  --fu-shadow: 0 4px 20px #292d2903;
+  --fu-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --fu-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --fu-text-small: 14px;
+  --fu-text-base: 16px;
+  --fu-text-card: 20px;
+  --fu-text-title: 49px;
+  --fu-space-1: 4px;
+  --fu-space-2: 8px;
+  --fu-space-3: 12px;
+  --fu-space-4: 16px;
+  --fu-space-6: 24px;
+  --fu-space-8: 32px;
+  --fu-space-12: 48px;
+  --fu-space-16: 64px;
+  --fu-radius: 6px;
+  --fu-layout-width: 1080px;
+  --fu-card-width: 532px;
+
+  min-height: 100%;
+  color: var(--fu-ink);
+  background: var(--fu-paper);
+  font: var(--fu-text-base) / 1.5 var(--fu-sans);
+  -webkit-font-smoothing: antialiased;
+  color-scheme: light;
+}
+
+/* Dark follows the one app-wide choice: `data-theme` on <html> wins, else the system. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .first-use {
+    --fu-paper: #141413;
+    --fu-surface: #1e1e1b;
+    --fu-ink: #eceae4;
+    --fu-muted: #a8a49b;
+    --fu-line: #3a3833;
+    --fu-accent: #8fbfa3;
+    --fu-accent-soft: #1c2a21;
+    --fu-on-accent: #0d1710;
+    --fu-danger: #e79b8b;
+    --fu-danger-soft: #2a1c18;
+    --fu-danger-line: #5a3a32;
+    --fu-danger-ink: #f2b9ac;
+    --fu-field: #171716;
+    --fu-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] .first-use {
+  --fu-paper: #141413;
+  --fu-surface: #1e1e1b;
+  --fu-ink: #eceae4;
+  --fu-muted: #a8a49b;
+  --fu-line: #3a3833;
+  --fu-accent: #8fbfa3;
+  --fu-accent-soft: #1c2a21;
+  --fu-on-accent: #0d1710;
+  --fu-danger: #e79b8b;
+  --fu-danger-soft: #2a1c18;
+  --fu-danger-line: #5a3a32;
+  --fu-danger-ink: #f2b9ac;
+  --fu-field: #171716;
+  --fu-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+
+  color-scheme: dark;
+}
+
+.first-use *,
+.first-use *::before,
+.first-use *::after {
+  box-sizing: border-box;
+}
+
+.first-use h1,
+.first-use h2,
+.first-use h3,
+.first-use p,
+.first-use dl,
+.first-use dd,
+.first-use dt {
+  margin: 0;
+}
+
+.first-use button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.first-use button:disabled {
+  cursor: not-allowed;
+}
+
+.first-use input,
+.first-use select {
+  font: inherit;
+  color: inherit;
+}
+
+.first-use ::placeholder {
+  color: var(--fu-muted);
+  opacity: 1;
+}
+
+.first-use select option {
+  color: var(--fu-ink);
+  background: var(--fu-field);
+}
+
+.first-use :focus-visible {
+  outline: 2px solid var(--fu-accent);
+  outline-offset: 4px;
+}
+
+.first-use .fu-mono {
+  font-family: var(--fu-mono);
+}
+
+.first-use .fu-small {
+  font-size: 12px;
+}
+
+.first-use .fu-link {
+  color: var(--fu-accent);
+  text-align: left;
+}
+
+.first-use .fu-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.first-use .fu-header {
+  height: 96px;
+  padding: 0 var(--fu-space-12);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.first-use .fu-wordmark {
+  font-size: 39px;
+  font-weight: 650;
+  letter-spacing: -3px;
+  line-height: 1;
+}
+
+.first-use .fu-wordmark-dot {
+  color: var(--fu-accent);
+}
+
+.first-use .fu-workspace-status {
+  display: flex;
+  gap: var(--fu-space-3);
+  align-items: center;
+  font: 12px / 1.5 var(--fu-mono);
+  color: var(--fu-muted);
+}
+
+.first-use .fu-status-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--fu-accent);
+  border-radius: 50%;
+}
+
+.first-use .fu-status-divider {
+  color: var(--fu-line);
+  margin: 0 var(--fu-space-1);
+}
+
+.first-use .fu-header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--fu-space-4);
+}
+
+.first-use .fu-theme {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+}
+
+.first-use .fu-theme:hover {
+  background: var(--fu-accent-soft);
+}
+
+.first-use .fu-theme .theme-icon {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid var(--fu-muted);
+  background: linear-gradient(90deg, var(--fu-muted) 50%, transparent 50%);
+}
+
+.first-use .fu-theme:hover .theme-icon {
+  border-color: var(--fu-accent);
+  background: linear-gradient(90deg, var(--fu-accent) 50%, transparent 50%);
+}
+
+.first-use .fu-main {
+  max-width: var(--fu-layout-width);
+  margin: var(--fu-space-8) auto 0;
+  padding: 0 var(--fu-space-6);
+}
+
+.first-use .fu-steps-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--fu-line);
+  padding-bottom: var(--fu-space-6);
+  margin-bottom: var(--fu-space-12);
+}
+
+.first-use .fu-steps {
+  display: flex;
+  align-items: center;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  gap: var(--fu-space-8);
+}
+
+.first-use .fu-step {
+  display: flex;
+  gap: var(--fu-space-2);
+  align-items: center;
+  color: var(--fu-muted);
+  font-size: var(--fu-text-small);
+  line-height: 1.5;
+}
+
+.first-use .fu-step:disabled {
+  cursor: default;
+}
+
+.first-use .fu-step:not(:disabled):hover {
+  color: var(--fu-accent);
+}
+
+.first-use .fu-step-number {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--fu-line);
+  border-radius: 50%;
+  font: 12px / 1 var(--fu-mono);
+}
+
+.first-use .fu-step.is-active {
+  color: var(--fu-accent);
+  font-weight: 600;
+}
+
+.first-use .fu-step.is-active .fu-step-number {
+  color: var(--fu-on-accent);
+  background: var(--fu-accent);
+  border-color: var(--fu-accent);
+}
+
+.first-use .fu-step.is-complete .fu-step-number {
+  color: var(--fu-accent);
+  border-color: var(--fu-accent);
+}
+
+.first-use .fu-setup-caption,
+.first-use .fu-eyebrow {
+  font-family: var(--fu-mono);
+}
+
+.first-use .fu-setup-caption {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--fu-muted);
+}
+
+.first-use .fu-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, var(--fu-card-width));
+  gap: var(--fu-space-16);
+  align-items: start;
+}
+
+.first-use .fu-guidance {
+  padding-top: var(--fu-space-6);
+}
+
+.first-use .fu-eyebrow {
+  color: var(--fu-muted);
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  margin-bottom: var(--fu-space-6);
+}
+
+.first-use .fu-guidance h1 {
+  font-size: var(--fu-text-title);
+  font-weight: 450;
+  line-height: 1.1;
+  letter-spacing: -2px;
+  margin-bottom: var(--fu-space-6);
+}
+
+.first-use .fu-lead {
+  color: var(--fu-muted);
+  line-height: 1.65;
+}
+
+.first-use .fu-guidance-note {
+  display: flex;
+  gap: var(--fu-space-4);
+  margin-top: var(--fu-space-16);
+  max-width: 340px;
+}
+
+.first-use .fu-note-mark {
+  color: var(--fu-accent);
+  font: 20px / 1.25 var(--fu-mono);
+}
+
+.first-use .fu-guidance-note h2 {
+  font-size: var(--fu-text-small);
+  font-weight: 550;
+  line-height: 1.25;
+  letter-spacing: 0;
+  margin-bottom: var(--fu-space-2);
+}
+
+.first-use .fu-guidance-note p {
+  font-size: var(--fu-text-small);
+  color: var(--fu-muted);
+  line-height: 1.6;
+}
+
+.first-use .fu-card {
+  background: var(--fu-surface);
+  border: 1px solid var(--fu-line);
+  border-radius: var(--fu-radius);
+  box-shadow: var(--fu-shadow);
+  padding: var(--fu-space-6) var(--fu-space-8);
+}
+
+.first-use .fu-card-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--fu-space-4);
+}
+
+.first-use .fu-card h2 {
+  font-size: var(--fu-text-card);
+  line-height: 1.25;
+  font-weight: 550;
+  letter-spacing: -0.4px;
+}
+
+.first-use .fu-card-heading .fu-mono {
+  color: var(--fu-muted);
+}
+
+.first-use .fu-card-intro {
+  font-size: var(--fu-text-small);
+  color: var(--fu-muted);
+  margin-top: var(--fu-space-2);
+}
+
+.first-use .fu-provider-options {
+  margin-top: var(--fu-space-6);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--fu-space-2);
+}
+
+.first-use .fu-provider-radio {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.first-use .fu-provider-choice {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--fu-space-3) var(--fu-space-1);
+  border: 1px solid var(--fu-line);
+  border-radius: var(--fu-radius);
+  padding: var(--fu-space-3);
+  cursor: pointer;
+  font-size: var(--fu-text-small);
+  white-space: nowrap;
+}
+
+.first-use .fu-provider-choice:hover {
+  border-color: var(--fu-accent);
+}
+
+.first-use .fu-provider-icon {
+  grid-column: 1;
+  font: 25px / 1 var(--fu-mono);
+  height: 26px;
+}
+
+.first-use .fu-radio-mark {
+  grid-column: 2;
+  grid-row: 1;
+  width: 12px;
+  height: 12px;
+  align-self: center;
+  border: 1px solid var(--fu-line);
+  border-radius: 50%;
+}
+
+.first-use .fu-provider-choice.is-checked {
+  border-color: var(--fu-accent);
+  background: var(--fu-accent-soft);
+  color: var(--fu-accent);
+}
+
+.first-use .fu-provider-choice.is-checked .fu-radio-mark {
+  border: 4px solid var(--fu-accent);
+  background: var(--fu-field);
+}
+
+.first-use .fu-provider-radio:focus-visible + .fu-provider-icon {
+  outline: 2px solid var(--fu-accent);
+  outline-offset: 3px;
+}
+
+/* The input is not a sibling of the label text, so the focus ring goes on the choice itself. */
+.first-use .fu-provider-choice:has(.fu-provider-radio:focus-visible) {
+  outline: 2px solid var(--fu-accent);
+  outline-offset: 3px;
+}
+
+.first-use .fu-connection {
+  margin-top: var(--fu-space-6);
+}
+
+.first-use .fu-field-label {
+  display: block;
+  font-size: var(--fu-text-small);
+  font-weight: 550;
+  margin-bottom: var(--fu-space-2);
+}
+
+.first-use .fu-method-current {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--fu-space-3);
+  border: 1px solid var(--fu-line);
+  border-radius: var(--fu-radius);
+  font-size: var(--fu-text-small);
+  gap: var(--fu-space-2);
+}
+
+.first-use .fu-method-tag {
+  color: var(--fu-muted);
+  font: 11px / 1.5 var(--fu-mono);
+}
+
+.first-use .fu-login-state {
+  display: flex;
+  align-items: center;
+  gap: var(--fu-space-3);
+  padding: var(--fu-space-4) 0 var(--fu-space-2);
+}
+
+.first-use .fu-check-icon,
+.first-use .fu-ready-check {
+  display: grid;
+  place-items: center;
+  color: var(--fu-accent);
+  background: var(--fu-accent-soft);
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.first-use .fu-check-icon.is-warn {
+  color: var(--fu-danger);
+  background: var(--fu-danger-soft);
+}
+
+.first-use .fu-login-state h3 {
+  font-size: var(--fu-text-small);
+  font-weight: 550;
+}
+
+.first-use .fu-login-state p {
+  font-size: 12px;
+  color: var(--fu-muted);
+}
+
+.first-use .fu-check-again {
+  font-size: 12px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.first-use .fu-cli-note,
+.first-use .fu-note {
+  color: var(--fu-muted);
+  font-size: 12px;
+  max-width: 52ch;
+  margin: var(--fu-space-1) 0 var(--fu-space-4);
+}
+
+.first-use .fu-note {
+  max-width: none;
+  margin-top: var(--fu-space-2);
+}
+
+.first-use .fu-inline-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--fu-space-3);
+}
+
+.first-use .fu-alternative {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--fu-line);
+  padding-top: var(--fu-space-3);
+  width: 100%;
+  color: var(--fu-muted);
+  font-size: var(--fu-text-small);
+  text-align: left;
+}
+
+/* The disclosure marker of the reference: a 7 x 10 triangle before the label. */
+.first-use .fu-triangle {
+  flex: none;
+  width: 0;
+  height: 0;
+  margin-top: -1px;
+  border-left: 7px solid currentColor;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+}
+
+.first-use .fu-alternative:hover {
+  color: var(--fu-accent);
+}
+
+.first-use .fu-key-form {
+  margin-top: var(--fu-space-3);
+}
+
+.first-use .fu-key-row {
+  display: flex;
+  align-items: center;
+  gap: var(--fu-space-2);
+}
+
+.first-use .fu-input,
+.first-use .fu-select {
+  width: 100%;
+  color: var(--fu-ink);
+  background: var(--fu-field);
+  border: 1px solid var(--fu-line);
+  border-radius: var(--fu-radius);
+  padding: var(--fu-space-3);
+}
+
+.first-use .fu-input[aria-invalid="true"],
+.first-use .fu-select[aria-invalid="true"] {
+  border-color: var(--fu-danger);
+}
+
+.first-use .fu-select {
+  font-family: var(--fu-mono);
+  font-size: var(--fu-text-base);
+  min-height: 48px;
+}
+
+.first-use .fu-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--fu-space-6);
+  min-height: 44px;
+  padding: var(--fu-space-3) var(--fu-space-4);
+  border-radius: var(--fu-radius);
+  font-size: var(--fu-text-small);
+  font-weight: 550;
+  white-space: nowrap;
+}
+
+.first-use .fu-button.primary {
+  color: var(--fu-on-accent);
+  background: var(--fu-accent);
+}
+
+.first-use .fu-button.primary:hover:not(:disabled) {
+  filter: brightness(1.13);
+}
+
+.first-use .fu-button.primary:disabled {
+  opacity: 0.45;
+}
+
+.first-use .fu-button.secondary {
+  border: 1px solid var(--fu-line);
+  background: var(--fu-field);
+}
+
+.first-use .fu-button.secondary:hover:not(:disabled) {
+  border-color: var(--fu-accent);
+  color: var(--fu-accent);
+}
+
+.first-use .fu-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--fu-space-4);
+  border-top: 1px solid var(--fu-line);
+  margin-top: var(--fu-space-6);
+  padding-top: var(--fu-space-6);
+}
+
+.first-use .fu-action-note {
+  font-size: 12px;
+  color: var(--fu-muted);
+}
+
+.first-use .fu-action-note.is-blocked {
+  color: var(--fu-danger);
+  max-width: 32ch;
+}
+
+.first-use .fu-explore {
+  display: block;
+  width: fit-content;
+  margin: var(--fu-space-4) auto 0;
+  color: var(--fu-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.first-use .fu-explore:hover,
+.first-use .fu-back-link:hover {
+  color: var(--fu-accent);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.first-use .fu-footer {
+  display: flex;
+  justify-content: space-between;
+  border-top: 1px solid var(--fu-line);
+  margin-top: var(--fu-space-6);
+  padding: var(--fu-space-4) 0 var(--fu-space-4);
+  color: var(--fu-muted);
+  font-size: 12px;
+}
+
+.first-use .fu-footer .fu-mono {
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+.first-use .fu-loading {
+  margin-top: var(--fu-space-6);
+  color: var(--fu-muted);
+  font-size: var(--fu-text-small);
+}
+
+.first-use .fu-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--fu-space-3);
+  margin-top: var(--fu-space-4);
+  padding: var(--fu-space-3);
+  border: 1px solid var(--fu-danger-line);
+  border-radius: var(--fu-radius);
+  background: var(--fu-danger-soft);
+  color: var(--fu-danger-ink);
+  font-size: var(--fu-text-small);
+  line-height: 1.5;
+}
+
+.first-use .fu-banner .fu-link {
+  flex: none;
+}
+
+.first-use .fu-field-error {
+  color: var(--fu-danger);
+  font-size: 12px;
+  margin-top: var(--fu-space-2);
+}
+
+/* Model step */
+.first-use .fu-provider-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--fu-space-3);
+  margin-top: var(--fu-space-6);
+  padding: var(--fu-space-4);
+  background: var(--fu-accent-soft);
+  border: 1px solid var(--fu-line);
+  border-radius: var(--fu-radius);
+}
+
+.first-use .fu-summary-icon {
+  font-size: 31px;
+  line-height: 1;
+}
+
+.first-use .fu-provider-summary h3 {
+  font-size: var(--fu-text-base);
+  font-weight: 550;
+}
+
+.first-use .fu-provider-summary p {
+  font-size: 12px;
+  color: var(--fu-muted);
+}
+
+.first-use .fu-connected-badge {
+  color: var(--fu-accent);
+  margin-left: auto;
+  font-size: 11px;
+}
+
+.first-use .fu-model-field {
+  margin-top: var(--fu-space-8);
+}
+
+.first-use .fu-model-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.first-use .fu-field-help {
+  color: var(--fu-muted);
+  font-size: var(--fu-text-small);
+  margin-top: var(--fu-space-3);
+}
+
+.first-use .fu-model-description {
+  display: flex;
+  gap: var(--fu-space-3);
+  margin-top: var(--fu-space-8);
+  padding: var(--fu-space-4);
+  border: 1px solid var(--fu-line);
+  border-radius: var(--fu-radius);
+}
+
+.first-use .fu-model-description p {
+  color: var(--fu-muted);
+  font-size: var(--fu-text-small);
+}
+
+.first-use .fu-back-link {
+  color: var(--fu-muted);
+  font-size: var(--fu-text-small);
+}
+
+/* Ready step */
+.first-use .fu-ready-summary {
+  margin: var(--fu-space-6) 0 0;
+}
+
+.first-use .fu-ready-summary > div {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  padding: var(--fu-space-6) 0;
+  border-bottom: 1px solid var(--fu-line);
+  gap: var(--fu-space-3);
+}
+
+.first-use .fu-ready-summary dt {
+  color: var(--fu-muted);
+  font-size: var(--fu-text-small);
+}
+
+.first-use .fu-ready-summary dd {
+  font-size: var(--fu-text-base);
+  overflow-wrap: anywhere;
+}
+
+.first-use .fu-ready-summary dd span {
+  display: block;
+  color: var(--fu-muted);
+  font: 12px / 1.5 var(--fu-sans);
+  margin-top: var(--fu-space-1);
+}
+
+.first-use .fu-ready-summary dd .fu-mono {
+  font-family: var(--fu-mono);
+}
+
+.first-use .fu-ready-summary dd .fu-path {
+  font: 11px / 1.5 var(--fu-mono);
+  margin-top: var(--fu-space-1);
+}
+
+.first-use .fu-settings-note {
+  font-size: var(--fu-text-small);
+  color: var(--fu-muted);
+  margin-top: var(--fu-space-6);
+}
+
+@media (min-width: 960px) and (max-height: 760px) {
+  .first-use .fu-header {
+    height: 48px;
+  }
+
+  .first-use .fu-main {
+    margin-top: var(--fu-space-2);
+  }
+
+  .first-use .fu-steps-nav {
+    margin-bottom: var(--fu-space-4);
+    padding-bottom: var(--fu-space-2);
+  }
+
+  .first-use .fu-guidance {
+    padding-top: var(--fu-space-3);
+  }
+
+  .first-use .fu-eyebrow,
+  .first-use .fu-guidance h1 {
+    margin-bottom: var(--fu-space-4);
+  }
+
+  .first-use .fu-guidance-note {
+    margin-top: var(--fu-space-6);
+  }
+
+  .first-use .fu-card {
+    padding: var(--fu-space-3) var(--fu-space-4);
+    line-height: 1.35;
+  }
+
+  .first-use .fu-card-intro {
+    margin-top: var(--fu-space-1);
+  }
+
+  .first-use .fu-provider-options,
+  .first-use .fu-connection,
+  .first-use .fu-actions,
+  .first-use .fu-model-field,
+  .first-use .fu-model-description,
+  .first-use .fu-provider-summary,
+  .first-use .fu-settings-note {
+    margin-top: var(--fu-space-2);
+  }
+
+  .first-use .fu-provider-choice {
+    display: flex;
+    align-items: center;
+    gap: var(--fu-space-2);
+  }
+
+  .first-use .fu-provider-icon {
+    font-size: var(--fu-text-card);
+    height: auto;
+  }
+
+  .first-use .fu-radio-mark {
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
+  .first-use .fu-provider-choice,
+  .first-use .fu-method-current {
+    padding-top: var(--fu-space-1);
+    padding-bottom: var(--fu-space-1);
+  }
+
+  .first-use .fu-login-state {
+    padding-top: var(--fu-space-2);
+    padding-bottom: var(--fu-space-1);
+  }
+
+  .first-use .fu-cli-note,
+  .first-use .fu-note {
+    margin-bottom: var(--fu-space-1);
+  }
+
+  .first-use .fu-alternative,
+  .first-use .fu-actions {
+    padding-top: var(--fu-space-2);
+  }
+
+  .first-use .fu-button {
+    padding-top: var(--fu-space-2);
+    padding-bottom: var(--fu-space-2);
+  }
+
+  .first-use .fu-explore {
+    margin-top: var(--fu-space-1);
+  }
+
+  .first-use .fu-provider-summary,
+  .first-use .fu-model-description {
+    padding-top: var(--fu-space-2);
+    padding-bottom: var(--fu-space-2);
+  }
+
+  .first-use .fu-field-help,
+  .first-use .fu-ready-summary {
+    margin-top: var(--fu-space-2);
+  }
+
+  .first-use .fu-ready-summary > div {
+    padding: var(--fu-space-2) 0;
+  }
+
+  .first-use .fu-footer {
+    margin-top: var(--fu-space-3);
+    padding-top: var(--fu-space-2);
+    padding-bottom: var(--fu-space-2);
+  }
+}
+
+@media (max-width: 1050px) {
+  .first-use {
+    --fu-text-title: 39px;
+  }
+
+  .first-use .fu-layout {
+    gap: var(--fu-space-8);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 480px);
+  }
+
+  .first-use .fu-setup-caption {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .first-use .fu-header {
+    padding: 0 var(--fu-space-6);
+    height: 80px;
+  }
+
+  .first-use .fu-workspace-status {
+    font-size: 10px;
+    gap: var(--fu-space-2);
+  }
+
+  .first-use .fu-status-divider {
+    margin: 0;
+  }
+
+  .first-use .fu-main {
+    margin-top: var(--fu-space-6);
+  }
+
+  .first-use .fu-steps {
+    gap: var(--fu-space-4);
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .first-use .fu-step {
+    font-size: 12px;
+  }
+
+  .first-use .fu-steps-nav {
+    margin-bottom: var(--fu-space-8);
+  }
+
+  .first-use .fu-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .first-use .fu-guidance {
+    padding-top: 0;
+  }
+
+  .first-use .fu-guidance-note {
+    margin-top: var(--fu-space-6);
+    max-width: 100%;
+  }
+
+  .first-use .fu-card {
+    padding: var(--fu-space-6);
+  }
+
+  .first-use .fu-provider-choice {
+    font-size: 12px;
+    padding: var(--fu-space-2);
+  }
+
+  .first-use .fu-action-note {
+    max-width: 120px;
+  }
+
+  .first-use .fu-provider-summary {
+    flex-wrap: wrap;
+  }
+}
+
+/* The app can be narrower than 960 px: the flow scrolls instead of overlapping. */
+@media (max-width: 959px) {
+  .first-use .fu-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .first-use .fu-card {
+    max-width: 100%;
+  }
+
+  .first-use .fu-key-row {
+    flex-wrap: wrap;
+  }
+}
+
+.first-use-splash {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  color: #686d65;
+  background: #f6f5f0;
+  font: 14px / 1.5 "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .first-use-splash {
+    color: #a8a49b;
+    background: #141413;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] .first-use-splash {
+  color: #a8a49b;
+  background: #141413;
+  color-scheme: dark;
+}

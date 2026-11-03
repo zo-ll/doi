@@ -38,6 +38,14 @@ export const TASKS: { id: Task; label: string; hint: string }[] = [
 
 const SOURCE: Record<ProviderStatus["source"], string> = { cli: "CLI · subscription", api_key: "API key", local: "local server" };
 
+/** A model id that goes to a CLI as an argument must not look like a flag. */
+export const MODEL_ID = /^[A-Za-z0-9._@/][A-Za-z0-9._:@/-]{0,99}$/;
+
+/** True when the model id is safe to send to a provider and a CLI. */
+export function validModelId(id: string): boolean {
+  return MODEL_ID.test(id.trim());
+}
+
 /** A short name for a model id: "claude-opus-5-5" → "Opus 5.5". Other ids stay as they are. */
 export function shortModel(id: string): string {
   const m = /^claude-([a-z]+)-(\d+)-(\d+)$/.exec(id);

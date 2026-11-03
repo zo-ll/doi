@@ -60,3 +60,13 @@ test("loginUrl takes only https URLs", () => {
   expect(loginUrl("http://localhost:1455/callback")).toBeNull();
   expect(loginUrl("javascript:alert(1)")).toBeNull();
 });
+
+test("loginTick waits, notices a login and stops after five minutes", async () => {
+  const { loginTick, LOGIN_WAIT_MS, LOGIN_POLL_MS } = await import("../src/web/login.ts");
+  const waiting = { state: "waiting" as const, url: null, since: 1_000 };
+  expect(loginTick(waiting, false, 1_000 + LOGIN_POLL_MS)).toEqual({ keep: true });
+  expect(loginTick(waiting, true, 1_000 + LOGIN_POLL_MS)).toEqual({ keep: false, note: "Logged in." });
+  expect(loginTick(waiting, false, 1_000 + LOGIN_WAIT_MS + 1)).toEqual({ keep: false, error: "No login after 5 minutes. Try again." });
+  // Another state never waits, so a stale timer cannot keep polling.
+  expect(loginTick({ state: "idle" }, true, 0)).toEqual({ keep: false });
+});
