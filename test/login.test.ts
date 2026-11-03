@@ -49,6 +49,39 @@ describe("startLogin", () => {
     expect(cli.spawned).toHaveLength(0);
   });
 
+  test("a spawn failure returns an error without CLI output", async () => {
+    const cli = fakeCli([], 0);
+    const result = await startLogin("codex", {
+      ...cli.deps,
+      spawn: () => { throw new Error("private process details"); },
+    });
+    expect(result).toEqual({ ok: false, error: "Could not start the login CLI." });
+  });
+
+  test("a spawn dependency cannot mutate the next login command", async () => {
+    const cli = fakeCli([], 0);
+    expect(await startLogin("codex", {
+      ...cli.deps,
+      spawn: (cmd) => {
+        const proc = cli.deps.spawn(cmd);
+        cmd[0] = "changed";
+        return proc;
+      },
+    })).toEqual({ ok: true, url: null });
+    expect(await startLogin("codex", cli.deps)).toEqual({ ok: true, url: null });
+    expect(cli.spawned[1]).toEqual(["codex", "login"]);
+  });
+
+  test("a rejected exit clears the login so the next attempt can start", async () => {
+    const cli = fakeCli([], 0);
+    expect(await startLogin("codex", {
+      ...cli.deps,
+      spawn: (cmd) => ({ ...cli.deps.spawn(cmd), exited: Promise.reject(new Error("private process details")) }),
+    })).toEqual({ ok: false, error: "The login CLI failed." });
+    expect(await startLogin("codex", cli.deps)).toEqual({ ok: true, url: null });
+    expect(cli.spawned).toHaveLength(2);
+  });
+
   test("no URL in time answers without one", async () => {
     const cli = fakeCli(["Opening the browser…"], null);
     expect(await startLogin("claude-code", { ...cli.deps, maxMs: 300 })).toEqual({ ok: true, url: null });
