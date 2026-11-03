@@ -108,7 +108,7 @@ const providerConfigSchema = z.object({
 
 const configSchema = z.object({
   workspace: z.string().nullish(),
-  port: z.union([z.number(), z.string()]).transform(Number).pipe(z.number().int().min(0).max(65535)).nullish(),
+  port: z.union([z.number(), z.string()]).transform(Number).pipe(z.number({ error: "Use a port number from 0 to 65535." }).int().min(0).max(65535)).nullish(),
   providers: z.partialRecord(z.enum(PROVIDERS), providerConfigSchema).nullish(),
   models: z.object({ generate: z.string().optional(), edit: z.string().optional(), extract: z.string().optional() }).nullish(),
   editor_url: z.string().nullish(),

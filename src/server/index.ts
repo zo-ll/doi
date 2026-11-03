@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
-import { loadConfig } from "../config.ts";
+import { z } from "zod";
+import { loadConfig, type Config } from "../config.ts";
 import { installBrowser, isDownloadChild, runDownloadChild } from "../export/browser.ts";
 import { version } from "../../package.json";
 import { startServer } from "./app.ts";
@@ -22,7 +23,16 @@ if (isDownloadChild()) {
   } else if (cli.command === "install-browser") {
     await installBrowser();
   } else if (cli.command === "start") {
-    const config = await loadConfig(cli.config);
+    let config: Config;
+    try {
+      config = await loadConfig(cli.config);
+    } catch (error) {
+      const details = error instanceof z.ZodError
+        ? error.issues.map((issue) => `${issue.path.join(".") || "config"}: ${issue.message}`).join("; ")
+        : error instanceof Error ? error.message : String(error);
+      console.error(`Cannot load config "${resolve(cli.config)}": ${details}`);
+      process.exit(2);
+    }
     if (cli.workspace) config.workspace = resolve(cli.workspace);
     if (cli.port) config.port = cli.port;
     const { server } = await startServer(config);
