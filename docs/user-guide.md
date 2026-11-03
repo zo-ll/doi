@@ -174,6 +174,8 @@ Usage (top bar) shows the tokens of each answer. For an API model with an entry 
 3. The model writes the pages. The canvas shows each page in its frames, for example Desktop and Mobile.
 4. Send more messages to change the design. Each completed turn is a new version.
 
+To rename a design, use its Rename control in the projects drawer. F2 also starts a rename when the design has focus.
+
 You can attach images to a message (Attach), for example a sketch or a screenshot.
 
 The canvas has three tools:
