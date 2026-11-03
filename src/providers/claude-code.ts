@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { z } from "zod";
 import type { Config } from "../config.ts";
 import { bunSpawn, insideCwd, lines, textOf, type Proc, type Spawn } from "./cli.ts";
 import type { ContentPart, GenerateEvent, GenerateRequest, Message, Provider } from "./types.ts";
@@ -59,27 +60,50 @@ export function userInput(messages: Message[]): string {
   return JSON.stringify({ type: "user", message: { role: "user", content } }) + "\n";
 }
 
-/** Maps one stream-json event to GenerateEvents. Throws on a result error. */
-export function mapEvent(e: any, cwd: string): GenerateEvent[] {
-  if (e.type === "stream_event" && e.event?.type === "content_block_delta" && e.event.delta?.type === "text_delta") {
-    return e.event.delta.text ? [{ type: "text", delta: e.event.delta.text }] : [];
+const objectSchema = z.record(z.string(), z.unknown());
+const tokenCount = z.number().int().nonnegative().nullish();
+const usageSchema = z.object({
+  input_tokens: tokenCount,
+  output_tokens: tokenCount,
+  cache_read_input_tokens: tokenCount,
+  cache_creation_input_tokens: tokenCount,
+});
+
+/** Validates one stream-json event before it maps the event to GenerateEvents. */
+export function mapEvent(raw: unknown, cwd: string): GenerateEvent[] {
+  const e = objectSchema.parse(raw);
+  if (e.type === "stream_event") {
+    const event = objectSchema.parse(e.event);
+    if (event.type !== "content_block_delta") return [];
+    const delta = objectSchema.parse(event.delta);
+    if (delta.type !== "text_delta") return [];
+    const text = z.string().parse(delta.text);
+    return text ? [{ type: "text", delta: text }] : [];
   }
   if (e.type === "assistant") {
     const out: GenerateEvent[] = [];
-    for (const block of e.message?.content ?? []) {
-      if (block.type !== "tool_use") continue;
-      const file = insideCwd(cwd, block.input?.file_path);
+    const message = objectSchema.parse(e.message ?? {});
+    for (const value of z.array(z.unknown()).parse(message.content ?? [])) {
+      const block = objectSchema.parse(value);
+      if (block.type !== "tool_use" || (block.name !== "Edit" && block.name !== "Write")) continue;
+      const input = objectSchema.parse(block.input);
+      const file = insideCwd(cwd, input.file_path);
       if (!file) continue;
-      if (block.name === "Edit") out.push({ type: "edit", file, oldText: block.input.old_string, newText: block.input.new_string });
-      if (block.name === "Write") out.push({ type: "write", file, content: block.input.content });
+      if (block.name === "Edit") {
+        const edit = z.object({ old_string: z.string(), new_string: z.string() }).parse(input);
+        out.push({ type: "edit", file, oldText: edit.old_string, newText: edit.new_string });
+      } else {
+        out.push({ type: "write", file, content: z.string().parse(input.content) });
+      }
     }
     return out;
   }
   if (e.type === "result") {
-    if (e.is_error || e.subtype !== "success") {
-      throw new Error(`Claude Code failed (${e.subtype ?? "error"}): ${String(e.result ?? "").slice(0, 300)}`);
+    const result = z.object({ subtype: z.string().optional(), is_error: z.boolean().optional() }).parse(e);
+    if (result.is_error || result.subtype !== "success") {
+      throw new Error(`Claude Code failed (${result.subtype ?? "error"}): ${String(e.result ?? "").slice(0, 300)}`);
     }
-    const u = e.usage ?? {};
+    const u = usageSchema.parse(e.usage ?? {});
     const cached = u.cache_read_input_tokens ?? 0;
     return [
       {

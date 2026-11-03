@@ -156,6 +156,23 @@ describe("claude-code provider", () => {
     }
   });
 
+  test("event values are validated before they become generation events", () => {
+    const malformed: unknown[] = [
+      null,
+      { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: 7 } } },
+      toolUse("Edit", { file_path: "styles.css", old_string: 7, new_string: "blue" }),
+      toolUse("Write", { file_path: "index.html", content: false }),
+      { type: "assistant", message: { content: {} } },
+      result({ usage: { input_tokens: "10" } }),
+      result({ usage: { output_tokens: -1 } }),
+    ];
+    for (const event of malformed) expect(() => mapEvent(event, CWD)).toThrow();
+    expect(mapEvent({ type: "future_event", payload: {} }, CWD)).toEqual([]);
+    expect(mapEvent({ type: "result", subtype: "success" }, CWD)).toContainEqual({
+      type: "usage", inputTokens: 0, outputTokens: 0, cachedTokens: 0,
+    });
+  });
+
   test("a result error fails the run", async () => {
     const { spawn } = fakeSpawn([result({ subtype: "error_during_execution", is_error: true, result: "rate limited" })]);
     await expect(collect(createClaudeCode(config, spawn).generate(req()))).rejects.toThrow("rate limited");
