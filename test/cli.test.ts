@@ -66,20 +66,26 @@ test("an invalid config reports its file and field without a stack trace", async
   const dir = await mkdtemp(join(tmpdir(), "doi-bad-config-"));
   const path = join(dir, "config.toml");
   try {
-    await Bun.write(path, 'port = "not a port"\n');
-    const proc = Bun.spawn([process.execPath, fileURLToPath(new URL("../src/server/index.ts", import.meta.url)), "--config", path], {
-      stdin: "ignore", stdout: "pipe", stderr: "pipe", timeout: 5000,
-    });
-    const [stdout, stderr, code] = await Promise.all([
-      new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited,
-    ]);
-    expect(code).toBe(2);
-    expect(stdout).toBe("");
-    expect(stderr).toContain(path);
-    expect(stderr).toContain("port:");
-    expect(stderr).not.toContain("ZodError");
-    expect(stderr).not.toContain("NaN");
-    expect(stderr.trim().split("\n")).toHaveLength(1);
+    for (const { source, field, detail } of [
+      { source: 'port = "not a port"\n', field: "port:", detail: "Use a port number" },
+      { source: "[providers.mistral]\n", field: "providers:", detail: "mistral" },
+    ]) {
+      await Bun.write(path, source);
+      const proc = Bun.spawn([process.execPath, fileURLToPath(new URL("../src/server/index.ts", import.meta.url)), "--config", path], {
+        stdin: "ignore", stdout: "pipe", stderr: "pipe", timeout: 5000,
+      });
+      const [stdout, stderr, code] = await Promise.all([
+        new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited,
+      ]);
+      expect(code).toBe(2);
+      expect(stdout).toBe("");
+      expect(stderr).toContain(path);
+      expect(stderr).toContain(field);
+      expect(stderr).toContain(detail);
+      expect(stderr).not.toContain("ZodError");
+      expect(stderr).not.toContain("NaN");
+      expect(stderr.trim().split("\n")).toHaveLength(1);
+    }
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

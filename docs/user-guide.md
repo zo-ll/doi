@@ -161,6 +161,8 @@ If both exist, the environment variable wins. doi never shows a key in the UI.
 
 The ids `google`, `openrouter` and `ollama` are reserved for adapters that are not available yet.
 
+Use only the provider ids in this section for `[providers.<id>]` tables. An unknown id stops doi before the server starts. The error names the config file and the unknown id.
+
 ![Settings: the provider login and the model for each task](images/settings.png)
 
 ### Usage and cost
