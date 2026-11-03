@@ -156,6 +156,22 @@ describe("codex provider", () => {
     expect(out).toEqual([]);
   });
 
+  test("event values are validated before they become generation events", async () => {
+    const cwd = await designDir();
+    const malformed: unknown[] = [
+      null,
+      { type: "item.completed", item: { type: "agent_message", text: 7 } },
+      { type: "item.completed", item: { type: "file_change", status: "completed", changes: {} } },
+      { type: "turn.completed", usage: { input_tokens: "10" } },
+      { type: "turn.completed", usage: { reasoning_output_tokens: -1 } },
+    ];
+    for (const event of malformed) await expect(mapCodexEvent(event, cwd)).rejects.toThrow();
+    expect(await mapCodexEvent({ type: "future_event", payload: {} }, cwd)).toEqual([]);
+    expect(await mapCodexEvent({ type: "turn.completed" }, cwd)).toContainEqual({
+      type: "usage", inputTokens: 0, outputTokens: 0, cachedTokens: 0,
+    });
+  });
+
   test("turn.failed and error events fail the run", async () => {
     const cwd = await designDir();
     for (const event of [{ type: "turn.failed", error: { message: "usage limit reached" } }, { type: "error", message: "usage limit reached" }]) {

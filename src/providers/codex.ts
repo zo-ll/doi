@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { z } from "zod";
 import type { Config } from "../config.ts";
 import { bunSpawn, insideCwd, lines, textOf, type Proc, type Spawn } from "./cli.ts";
 import type { GenerateEvent, GenerateRequest, Message, Provider } from "./types.ts";
@@ -47,23 +48,38 @@ export function codexPrompt(system: string[], messages: Message[]): string {
   ].join("\n\n");
 }
 
-/** Maps one Codex JSONL event. File changes need the file content, so this may read files. */
-export async function mapCodexEvent(e: any, cwd: string): Promise<GenerateEvent[]> {
-  if (e.type === "item.completed" && e.item?.type === "agent_message" && e.item.text) {
-    return [{ type: "text", delta: e.item.text.endsWith("\n") ? e.item.text : `${e.item.text}\n` }];
-  }
-  if (e.type === "item.completed" && e.item?.type === "file_change" && e.item.status === "completed") {
-    const out: GenerateEvent[] = [];
-    for (const change of e.item.changes ?? []) {
-      const file = insideCwd(cwd, change.path);
-      if (!file || change.kind === "delete") continue;
-      const content = await Bun.file(join(cwd, file)).text().catch(() => null);
-      if (content !== null) out.push({ type: "write", file, content });
+const objectSchema = z.record(z.string(), z.unknown());
+const tokenCount = z.number().int().nonnegative().nullish();
+const usageSchema = z.object({
+  input_tokens: tokenCount,
+  output_tokens: tokenCount,
+  cached_input_tokens: tokenCount,
+  reasoning_output_tokens: tokenCount,
+});
+
+/** Validates one Codex JSONL event. File changes also need the file content. */
+export async function mapCodexEvent(raw: unknown, cwd: string): Promise<GenerateEvent[]> {
+  const e = objectSchema.parse(raw);
+  if (e.type === "item.completed") {
+    const item = objectSchema.parse(e.item);
+    if (item.type === "agent_message") {
+      const text = z.string().parse(item.text);
+      return text ? [{ type: "text", delta: text.endsWith("\n") ? text : `${text}\n` }] : [];
     }
-    return out;
+    if (item.type === "file_change" && item.status === "completed") {
+      const out: GenerateEvent[] = [];
+      for (const value of z.array(z.unknown()).parse(item.changes ?? [])) {
+        const change = objectSchema.parse(value);
+        const file = insideCwd(cwd, change.path);
+        if (!file || change.kind === "delete") continue;
+        const content = await Bun.file(join(cwd, file)).text().catch(() => null);
+        if (content !== null) out.push({ type: "write", file, content });
+      }
+      return out;
+    }
   }
   if (e.type === "turn.completed") {
-    const u = e.usage ?? {};
+    const u = usageSchema.parse(e.usage ?? {});
     return [
       {
         type: "usage",
@@ -75,7 +91,10 @@ export async function mapCodexEvent(e: any, cwd: string): Promise<GenerateEvent[
       { type: "done" },
     ];
   }
-  if (e.type === "turn.failed") throw new Error(`Codex failed: ${String(e.error?.message ?? "unknown error").slice(0, 300)}`);
+  if (e.type === "turn.failed") {
+    const error = objectSchema.parse(e.error ?? {});
+    throw new Error(`Codex failed: ${String(error.message ?? "unknown error").slice(0, 300)}`);
+  }
   if (e.type === "error") throw new Error(`Codex error: ${String(e.message ?? "unknown error").slice(0, 300)}`);
   return [];
 }
