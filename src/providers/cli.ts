@@ -18,6 +18,18 @@ export const bunSpawn: Spawn = (cmd, cwd) => {
   return { stdin: proc.stdin, stdout: proc.stdout, stderr: proc.stderr, exited: proc.exited, kill: () => proc.kill() };
 };
 
+type ProcessResult = { ok: true; code: number; stderr: string } | { ok: false; error: unknown };
+
+/** Owns both process promises at once. The caller must handle the failure result. */
+export async function readProcessResult(proc: Pick<Proc, "stderr" | "exited">): Promise<ProcessResult> {
+  try {
+    const [code, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+    return { ok: true, code, stderr };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
 export function textOf(m: Message): string {
   return m.content.flatMap((p) => (p.type === "text" ? [p.text] : [])).join("\n");
 }
