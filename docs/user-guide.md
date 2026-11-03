@@ -167,6 +167,8 @@ The ids `google`, `openrouter` and `ollama` are reserved for adapters that are n
 
 Usage (top bar) shows the tokens of each answer. For an API model with an entry in `[prices]`, it also shows an estimated cost. A subscription shows tokens only.
 
+**Warning:** Usage omits unpicked and discarded variants. Its token totals and cost estimates can be lower than actual use.
+
 ## Make a design
 
 1. Open the projects drawer (the doi logo, or Ctrl/⌘ + P). Make a project, then a design, a mobile app or a slide deck.
