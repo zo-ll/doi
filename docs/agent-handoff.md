@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-11-03. The TypeScript refactor and two browser fixes are on `refactor/typescript-boundaries`. A real browser drive found an open Usage gap for unpicked variants. `CI=1 bun test`: 527 pass, no skips or failures. `bun check`: no errors. The Linux binary build and smoke test pass. Section 6 has the scope and evidence.
+Last update: 2026-11-03. The TypeScript refactor and two browser fixes are on `refactor/typescript-boundaries`. A real browser drive found an open Usage gap for unpicked variants. `CI=1 bun test`: 529 pass, no skips or failures. `bun check`: no errors. The Linux binary build and smoke test pass. Section 6 has the scope and evidence.
 
 Earlier state: #72 closed (the user tested OpenCode Go with a real key), #130 (narrow windows) and #131 (Settings model list, Codex catalog) merged. The user needs no other providers for now. Tests: 501 pass, 3 skip (CI only). M1, M2, M3 and M4 have no open issues. The M1 gate is done (the user, 2026-11-02); the M4 gate is still open. `bun check`: no errors.
 
@@ -128,6 +128,10 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 - CLI backends (`editsFiles: true`) change the files in `GenerateRequest.cwd` themselves. Their `edit`/`write` events only report the change. **The edit applier must skip them.**
 
 ## 6. State and next steps
+
+**2026-11-03: critic corrections before merge.** The critic reviewed all 19 files at `a62bea0` and requested changes. The report is `~/.local/state/spawn-critic/review.uYPW6Mub/REPORT.md`. Three focused commits address its findings: `9ca8824` limits the stderr drain after process exit; `659b4d3` reports config errors with their file and field; `5a8f7d5` documents and tests unknown provider ids. A real descendant process reproduced the stderr delay before the fix. The corrected reader finishes after a bounded drain and releases its stream lock. The CLI now exits with code 2 and a short config error instead of a stack trace.
+
+The strict provider-id rule remains explicit. The user requested review corrections only; #145 and #146 are future work, not implementation scope. Re-review must approve the current head before a merge. Evidence: `/tmp/doi-review-fixes/`. The Usage gap remains open.
 
 **2026-11-03: browser drive with the permitted model.** The user permitted `opencode-go:deepseek-v4.1-flash`. Four real requests ran in a temporary workspace: one generation, one targeted edit and two variants. The drive used `http://127.0.0.1:4337`, from this source folder. The real workspace, config, credentials and logins stay intact. Evidence and the full report: `/tmp/doi-browser-check.CZhjlGr7/REPORT.md`.
 
