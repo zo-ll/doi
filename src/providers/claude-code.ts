@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { Config } from "../config.ts";
 import { bunSpawn, insideCwd, lines, textOf, type Proc, type Spawn } from "./cli.ts";
-import type { ContentPart, GenerateEvent, GenerateRequest, Message, Provider } from "./types.ts";
+import type { GenerateEvent, GenerateRequest, Message, Provider } from "./types.ts";
 
 export type { Proc, Spawn } from "./cli.ts";
 
@@ -50,7 +50,7 @@ export function userInput(messages: Message[]): string {
     const transcript = history.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${textOf(m)}`).join("\n\n");
     content.push({ type: "text", text: `Conversation so far:\n\n${transcript}` });
   }
-  for (const part of last.content as ContentPart[]) {
+  for (const part of last.content) {
     content.push(
       part.type === "text"
         ? { type: "text", text: part.text }
@@ -126,6 +126,8 @@ export function createClaudeCode(_config: Config, spawn: Spawn = bunSpawn): Prov
       if (!req.cwd) throw new Error("The claude-code provider needs the design folder (cwd).");
       if (req.signal?.aborted) throw new DOMException("The generation was stopped.", "AbortError");
 
+      const stdinText = userInput(req.messages); // a bad request starts no process
+
       // A private temporary folder, not the design folder: a file there would show in the canvas and in git.
       const tmp = await mkdtemp(join(tmpdir(), "doi-claude-"));
       const systemFile = join(tmp, "system.md");
@@ -141,7 +143,7 @@ export function createClaudeCode(_config: Config, spawn: Spawn = bunSpawn): Prov
       req.signal?.addEventListener("abort", onAbort, { once: true });
       const stderr = new Response(proc.stderr).text();
       try {
-        proc.stdin.write(userInput(req.messages));
+        proc.stdin.write(stdinText);
         proc.stdin.end();
 
         let done = false;

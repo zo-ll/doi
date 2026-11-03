@@ -173,6 +173,12 @@ describe("claude-code provider", () => {
     });
   });
 
+  test("a bad request starts no process", async () => {
+    const { spawn, seen } = fakeSpawn([]);
+    await expect(collect(createClaudeCode(config, spawn).generate(req({ messages: [] })))).rejects.toThrow("last message");
+    expect(seen.cmd).toEqual([]);
+  });
+
   test("a result error fails the run", async () => {
     const { spawn } = fakeSpawn([result({ subtype: "error_during_execution", is_error: true, result: "rate limited" })]);
     await expect(collect(createClaudeCode(config, spawn).generate(req()))).rejects.toThrow("rate limited");
