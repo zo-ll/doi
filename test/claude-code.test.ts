@@ -207,6 +207,30 @@ describe("claude-code provider", () => {
     expect(existsSync(seen.systemFile)).toBe(false);
   });
 
+  test("an abort during startup still stops the process", async () => {
+    const { spawn, seen } = fakeSpawn([textDelta("working")], { hang: true });
+    const controller = new AbortController();
+    let stop = () => {};
+    let emergencyStop = false;
+    const abortDuringSpawn: Spawn = (cmd, cwd) => {
+      const proc = spawn(cmd, cwd);
+      stop = () => proc.kill();
+      controller.abort();
+      return proc;
+    };
+    // The timer releases a broken implementation instead of leaving the test blocked.
+    const timer = setTimeout(() => { emergencyStop = true; stop(); }, 200);
+    try {
+      await expect(collect(createClaudeCode(config, abortDuringSpawn).generate(req({ signal: controller.signal }))))
+        .rejects.toMatchObject({ name: "AbortError" });
+      expect(emergencyStop).toBe(false);
+      expect(seen.killed).toBe(true);
+    } finally {
+      clearTimeout(timer);
+      stop();
+    }
+  });
+
   test("process failures retain their cause and release resources", async () => {
     const { spawn, seen } = fakeSpawn([result()]);
     const failure = new Error("process result failed");

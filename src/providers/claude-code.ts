@@ -143,6 +143,7 @@ export function createClaudeCode(_config: Config, spawn: Spawn = bunSpawn): Prov
       req.signal?.addEventListener("abort", onAbort, { once: true });
       const completion = readProcessResult(proc);
       try {
+        if (req.signal?.aborted) throw new DOMException("The generation was stopped.", "AbortError");
         proc.stdin.write(stdinText);
         proc.stdin.end();
 

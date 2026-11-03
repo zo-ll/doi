@@ -132,6 +132,7 @@ export function createCodex(_config: Config, spawn: Spawn = bunSpawn): Provider 
       req.signal?.addEventListener("abort", onAbort, { once: true });
       const completion = readProcessResult(proc);
       try {
+        if (req.signal?.aborted) throw new DOMException("The generation was stopped.", "AbortError");
         // Inside the main try: if the write fails, the finally still kills the process.
         proc.stdin.write(stdinText);
         proc.stdin.end();
