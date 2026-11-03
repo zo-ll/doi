@@ -7,7 +7,7 @@ import { lines } from "./cli.ts";
  * show it when no browser opens. doi never reads, copies or stores the token, and never sends
  * the rest of the output (it can name the account) to the UI.
  */
-export const LOGIN_COMMANDS: Partial<Record<ProviderId, string[]>> = {
+export const LOGIN_COMMANDS: Readonly<Partial<Record<ProviderId, readonly [string, ...string[]]>>> = {
   "claude-code": ["claude", "auth", "login"],
   codex: ["codex", "login"],
 };
@@ -63,9 +63,14 @@ export function startLogin(id: ProviderId, deps: LoginDeps = defaultLoginDeps): 
   if (!cmd) return Promise.resolve({ ok: false, error: "This provider has no OAuth login. Use an API key." });
   const now = running.get(id);
   if (now) return now.url;
-  if (!deps.which(cmd[0]!)) return Promise.resolve({ ok: false, error: `${cmd[0]} is not on PATH. Install the CLI first.` });
+  if (!deps.which(cmd[0])) return Promise.resolve({ ok: false, error: `${cmd[0]} is not on PATH. Install the CLI first.` });
 
-  const proc = deps.spawn(cmd);
+  let proc: LoginProc;
+  try {
+    proc = deps.spawn([...cmd]);
+  } catch {
+    return Promise.resolve({ ok: false, error: "Could not start the login CLI." });
+  }
   const stop = setTimeout(() => proc.kill(), deps.maxMs ?? 10 * 60_000);
   const url = new Promise<LoginResult>((resolve) => {
     const wait = setTimeout(() => resolve({ ok: true, url: null }), deps.urlWaitMs ?? 8_000);
@@ -78,15 +83,27 @@ export function startLogin(id: ProviderId, deps: LoginDeps = defaultLoginDeps): 
         }
       }
     };
+    // The URL is optional. The process exit, not an output stream, decides success.
     void read(proc.stdout).catch(() => {});
     void read(proc.stderr).catch(() => {});
-    void proc.exited.then((code) => {
+    const finish = (result: LoginResult) => {
       clearTimeout(wait);
       clearTimeout(stop);
       running.delete(id);
       // A resolve after the URL was found changes nothing.
-      resolve(code === 0 ? { ok: true, url: null } : { ok: false, error: `${cmd.join(" ")} stopped with exit code ${code}.` });
-    });
+      resolve(result);
+    };
+    void proc.exited.then(
+      (code) => finish(code === 0 ? { ok: true, url: null } : { ok: false, error: `${cmd.join(" ")} stopped with exit code ${code}.` }),
+      () => {
+        finish({ ok: false, error: "The login CLI failed." });
+        try {
+          proc.kill();
+        } catch {
+          // The result already reports failure, even if the process cannot stop.
+        }
+      },
+    );
   });
   running.set(id, { url });
   return url;

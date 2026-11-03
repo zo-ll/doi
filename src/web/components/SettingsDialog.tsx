@@ -122,6 +122,11 @@ export function SettingsDialog({ config, providers, workspace, themeChoice, onTh
         "/api/config/models",
         Object.fromEntries(TASKS.map((t) => [t.id, `${draft[t.id].provider}:${draft[t.id].model.trim()}`])),
       );
+      setDraft((d) => ({
+        generate: { ...d.generate, model: d.generate.model.trim() },
+        edit: { ...d.edit, model: d.edit.model.trim() },
+        extract: { ...d.extract, model: d.extract.model.trim() },
+      }));
       setSaved(true);
       onSaved();
     } catch (e) {

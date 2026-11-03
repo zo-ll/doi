@@ -1,9 +1,10 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { z } from "zod";
 import type { Config } from "../config.ts";
-import { bunSpawn, insideCwd, lines, textOf, type Proc, type Spawn } from "./cli.ts";
-import type { ContentPart, GenerateEvent, GenerateRequest, Message, Provider } from "./types.ts";
+import { bunSpawn, insideCwd, lines, readProcessResult, textOf, type Proc, type Spawn } from "./cli.ts";
+import type { GenerateEvent, GenerateRequest, Message, Provider } from "./types.ts";
 
 export type { Proc, Spawn } from "./cli.ts";
 
@@ -49,7 +50,7 @@ export function userInput(messages: Message[]): string {
     const transcript = history.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${textOf(m)}`).join("\n\n");
     content.push({ type: "text", text: `Conversation so far:\n\n${transcript}` });
   }
-  for (const part of last.content as ContentPart[]) {
+  for (const part of last.content) {
     content.push(
       part.type === "text"
         ? { type: "text", text: part.text }
@@ -59,27 +60,50 @@ export function userInput(messages: Message[]): string {
   return JSON.stringify({ type: "user", message: { role: "user", content } }) + "\n";
 }
 
-/** Maps one stream-json event to GenerateEvents. Throws on a result error. */
-export function mapEvent(e: any, cwd: string): GenerateEvent[] {
-  if (e.type === "stream_event" && e.event?.type === "content_block_delta" && e.event.delta?.type === "text_delta") {
-    return e.event.delta.text ? [{ type: "text", delta: e.event.delta.text }] : [];
+const objectSchema = z.record(z.string(), z.unknown());
+const tokenCount = z.number().int().nonnegative().nullish();
+const usageSchema = z.object({
+  input_tokens: tokenCount,
+  output_tokens: tokenCount,
+  cache_read_input_tokens: tokenCount,
+  cache_creation_input_tokens: tokenCount,
+});
+
+/** Validates one stream-json event before it maps the event to GenerateEvents. */
+export function mapEvent(raw: unknown, cwd: string): GenerateEvent[] {
+  const e = objectSchema.parse(raw);
+  if (e.type === "stream_event") {
+    const event = objectSchema.parse(e.event);
+    if (event.type !== "content_block_delta") return [];
+    const delta = objectSchema.parse(event.delta);
+    if (delta.type !== "text_delta") return [];
+    const text = z.string().parse(delta.text);
+    return text ? [{ type: "text", delta: text }] : [];
   }
   if (e.type === "assistant") {
     const out: GenerateEvent[] = [];
-    for (const block of e.message?.content ?? []) {
-      if (block.type !== "tool_use") continue;
-      const file = insideCwd(cwd, block.input?.file_path);
+    const message = objectSchema.parse(e.message ?? {});
+    for (const value of z.array(z.unknown()).parse(message.content ?? [])) {
+      const block = objectSchema.parse(value);
+      if (block.type !== "tool_use" || (block.name !== "Edit" && block.name !== "Write")) continue;
+      const input = objectSchema.parse(block.input);
+      const file = insideCwd(cwd, input.file_path);
       if (!file) continue;
-      if (block.name === "Edit") out.push({ type: "edit", file, oldText: block.input.old_string, newText: block.input.new_string });
-      if (block.name === "Write") out.push({ type: "write", file, content: block.input.content });
+      if (block.name === "Edit") {
+        const edit = z.object({ old_string: z.string(), new_string: z.string() }).parse(input);
+        out.push({ type: "edit", file, oldText: edit.old_string, newText: edit.new_string });
+      } else {
+        out.push({ type: "write", file, content: z.string().parse(input.content) });
+      }
     }
     return out;
   }
   if (e.type === "result") {
-    if (e.is_error || e.subtype !== "success") {
-      throw new Error(`Claude Code failed (${e.subtype ?? "error"}): ${String(e.result ?? "").slice(0, 300)}`);
+    const result = z.object({ subtype: z.string().optional(), is_error: z.boolean().optional() }).parse(e);
+    if (result.is_error || result.subtype !== "success") {
+      throw new Error(`Claude Code failed (${result.subtype ?? "error"}): ${String(e.result ?? "").slice(0, 300)}`);
     }
-    const u = e.usage ?? {};
+    const u = usageSchema.parse(e.usage ?? {});
     const cached = u.cache_read_input_tokens ?? 0;
     return [
       {
@@ -102,6 +126,8 @@ export function createClaudeCode(_config: Config, spawn: Spawn = bunSpawn): Prov
       if (!req.cwd) throw new Error("The claude-code provider needs the design folder (cwd).");
       if (req.signal?.aborted) throw new DOMException("The generation was stopped.", "AbortError");
 
+      const stdinText = userInput(req.messages); // a bad request starts no process
+
       // A private temporary folder, not the design folder: a file there would show in the canvas and in git.
       const tmp = await mkdtemp(join(tmpdir(), "doi-claude-"));
       const systemFile = join(tmp, "system.md");
@@ -115,9 +141,10 @@ export function createClaudeCode(_config: Config, spawn: Spawn = bunSpawn): Prov
       }
       const onAbort = () => proc.kill();
       req.signal?.addEventListener("abort", onAbort, { once: true });
-      const stderr = new Response(proc.stderr).text();
+      const completion = readProcessResult(proc);
       try {
-        proc.stdin.write(userInput(req.messages));
+        if (req.signal?.aborted) throw new DOMException("The generation was stopped.", "AbortError");
+        proc.stdin.write(stdinText);
         proc.stdin.end();
 
         let done = false;
@@ -133,15 +160,17 @@ export function createClaudeCode(_config: Config, spawn: Spawn = bunSpawn): Prov
             yield out;
           }
         }
-        const code = await proc.exited;
+        const result = await completion;
         if (req.signal?.aborted) throw new DOMException("The generation was stopped.", "AbortError");
+        if (!result.ok) throw new Error("Could not read the CLI result.", { cause: result.error });
         if (!done) {
-          const detail = (await stderr).trim().split("\n").slice(-3).join(" ");
-          throw new Error(`Claude Code stopped without a result (exit ${code})${detail ? `: ${detail}` : ""}`);
+          const detail = result.stderr.trim().split("\n").slice(-3).join(" ");
+          throw new Error(`Claude Code stopped without a result (exit ${result.code})${detail ? `: ${detail}` : ""}`);
         }
       } finally {
         req.signal?.removeEventListener("abort", onAbort);
         proc.kill(); // no-op after a normal exit; stops the process when the consumer leaves early
+        await completion;
         await rm(tmp, { recursive: true, force: true });
       }
     },

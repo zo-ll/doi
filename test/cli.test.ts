@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { loadConfig } from "../src/config.ts";
 import { isDownloadChild } from "../src/export/browser.ts";
 import { openCommand, parseCli } from "../src/server/cli.ts";
@@ -56,6 +57,35 @@ test("loadConfig: a relative workspace is relative to the config file", async ()
     await Bun.write(join(dir, "doi.toml"), 'workspace = "ws"\n');
     expect((await loadConfig(join(dir, "doi.toml"))).workspace).toBe(join(dir, "ws"));
     expect((await loadConfig(join(dir, "missing.toml"))).workspace).toBe(join(dir, "workspace"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("an invalid config reports its file and field without a stack trace", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "doi-bad-config-"));
+  const path = join(dir, "config.toml");
+  try {
+    for (const { source, field, detail } of [
+      { source: 'port = "not a port"\n', field: "port:", detail: "Use a port number" },
+      { source: "[providers.mistral]\n", field: "providers:", detail: "mistral" },
+    ]) {
+      await Bun.write(path, source);
+      const proc = Bun.spawn([process.execPath, fileURLToPath(new URL("../src/server/index.ts", import.meta.url)), "--config", path], {
+        stdin: "ignore", stdout: "pipe", stderr: "pipe", timeout: 5000,
+      });
+      const [stdout, stderr, code] = await Promise.all([
+        new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited,
+      ]);
+      expect(code).toBe(2);
+      expect(stdout).toBe("");
+      expect(stderr).toContain(path);
+      expect(stderr).toContain(field);
+      expect(stderr).toContain(detail);
+      expect(stderr).not.toContain("ZodError");
+      expect(stderr).not.toContain("NaN");
+      expect(stderr.trim().split("\n")).toHaveLength(1);
+    }
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

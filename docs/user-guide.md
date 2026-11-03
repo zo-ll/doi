@@ -161,11 +161,15 @@ If both exist, the environment variable wins. doi never shows a key in the UI.
 
 The ids `google`, `openrouter` and `ollama` are reserved for adapters that are not available yet.
 
+Use only the provider ids in this section for `[providers.<id>]` tables. An unknown id stops doi before the server starts. The error names the config file and the unknown id.
+
 ![Settings: the provider login and the model for each task](images/settings.png)
 
 ### Usage and cost
 
 Usage (top bar) shows the tokens of each answer. For an API model with an entry in `[prices]`, it also shows an estimated cost. A subscription shows tokens only.
+
+**Warning:** Usage omits unpicked and discarded variants. Its token totals and cost estimates can be lower than actual use.
 
 ## Make a design
 
@@ -173,6 +177,8 @@ Usage (top bar) shows the tokens of each answer. For an API model with an entry 
 2. Type a description in the chat on the left, and send it with Ctrl/⌘ + Enter.
 3. The model writes the pages. The canvas shows each page in its frames, for example Desktop and Mobile.
 4. Send more messages to change the design. Each completed turn is a new version.
+
+To rename a design, use its Rename control in the projects drawer. F2 also starts a rename when the design has focus.
 
 You can attach images to a message (Attach), for example a sketch or a screenshot.
 

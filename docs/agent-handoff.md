@@ -2,7 +2,9 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-11-02, a drive of the whole flow with `opencode-go:deepseek-v4.1-flash` and the UI fixes from it (branch `ui/seamless-flow`). Before: #72 closed (the user tested OpenCode Go with a real key), #130 (narrow windows) and #131 (Settings model list, Codex catalog) merged. The user needs no other providers for now. Tests: 501 pass, 3 skip (CI only). M1, M2, M3 and M4 have no open issues. The M1 gate is done (the user, 2026-11-02); the M4 gate is still open. `bun check`: no errors.
+Last update: 2026-11-03. The TypeScript refactor and two browser fixes are on `refactor/typescript-boundaries`. A real browser drive found an open Usage gap for unpicked variants. `CI=1 bun test`: 529 pass, no skips or failures. `bun check`: no errors. The Linux binary build and smoke test pass. Section 6 has the scope and evidence.
+
+Earlier state: #72 closed (the user tested OpenCode Go with a real key), #130 (narrow windows) and #131 (Settings model list, Codex catalog) merged. The user needs no other providers for now. Tests: 501 pass, 3 skip (CI only). M1, M2, M3 and M4 have no open issues. The M1 gate is done (the user, 2026-11-02); the M4 gate is still open. `bun check`: no errors.
 
 ## 1. What doi is
 
@@ -126,6 +128,30 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 - CLI backends (`editsFiles: true`) change the files in `GenerateRequest.cwd` themselves. Their `edit`/`write` events only report the change. **The edit applier must skip them.**
 
 ## 6. State and next steps
+
+**2026-11-03: critic corrections before merge.** The critic reviewed all 19 files at `a62bea0` and requested changes. The report is `~/.local/state/spawn-critic/review.uYPW6Mub/REPORT.md`. Three focused commits address its findings: `9ca8824` limits the stderr drain after process exit; `659b4d3` reports config errors with their file and field; `5a8f7d5` documents and tests unknown provider ids. A real descendant process reproduced the stderr delay before the fix. The corrected reader finishes after a bounded drain and releases its stream lock. The CLI now exits with code 2 and a short config error instead of a stack trace.
+
+The strict provider-id rule remains explicit. The user requested review corrections only; #145 and #146 are future work, not implementation scope. Re-review must approve the current head before a merge. Evidence: `/tmp/doi-review-fixes/`. The Usage gap remains open.
+
+**2026-11-03: browser drive with the permitted model.** The user permitted `opencode-go:deepseek-v4.1-flash`. Four real requests ran in a temporary workspace: one generation, one targeted edit and two variants. The drive used `http://127.0.0.1:4337`, from this source folder. The real workspace, config, credentials and logins stay intact. Evidence and the full report: `/tmp/doi-browser-check.CZhjlGr7/REPORT.md`.
+
+Two UI fixes accompany the refactor on `refactor/typescript-boundaries`. The user requested small, focused commits and a push. `SettingsDialog.tsx` now trims the draft after a successful save, so Save becomes disabled and the confirmation appears. `ProjectsNav.tsx` now has an explicit Rename control. The old first click closed the drawer before a double-click could start a rename. Normal navigation still closes the drawer without a delay; F2 still works. New Chromium tests cover both fixes and real persistence.
+
+The drive passed generation, comments, targeted edits, tweaks, frames, history preview, variants, pick, reopen, discard, HTML/PNG/PDF/ZIP downloads, the handoff prompt, mobile screens and both themes. The final read-only plan gives 18 pass. `CI=1 bun test` gives 527 pass, 0 fail, no skips; `bun check` has no errors.
+
+**Open accounting gap:** Usage omits unpicked variants. The four real requests used 15,024 input tokens and 2,872 output tokens. After a pick and discard, Usage shows three answers with 10,998 input tokens and 2,735 output tokens. It omits the second variant: 4,026 input, 137 output and 2,944 cached tokens. The browser reproduces this in `usage-gap/`; the variant metadata remains in workspace commit `fccf800`. `workspace/chat.ts:112` reads only stored assistant answers; `server/variants.ts:281` stores only the picked answer. No accounting code changed. Next: persist usage separately from the chosen answer, without a duplicate count after pick, discard or reopen. The user guide now states the limitation.
+
+**2026-11-03: TypeScript boundaries and process resources.** The work is on `refactor/typescript-boundaries`, from `main` at `809a2f1`. The work uses small commits by concern. The branch is not merged. The separate `ui/first-use` branch stays unchanged. No UI, provider command, dependency or compiler option changed. The existing strict checks remain active.
+
+- `src/config.ts` now takes `unknown` and validates the config with the existing Zod dependency. Invalid tables, fields and ports fail before typed consumers use them. Numeric port strings, null defaults and the tolerant price parser retain their contracts. Parsed provider values no longer share mutable data with the input.
+- `src/providers/models.ts` validates catalogs and pagination. Invalid responses return errors instead of successful empty or partial lists. Invalid rows still cannot hide valid model ids. Fixed catalogs return independent arrays.
+- `src/providers/claude-code.ts` and `codex.ts` validate text, edits, writes and token counts before they emit generation events. Unknown event types remain safe to ignore. A bad request starts no process. No explicit `any` types remain in `src`.
+- `src/providers/cli.ts` owns the stderr and exit promises together through a discriminated result. Both adapters preserve the original failure as an error cause. They await process completion before they remove temporary files. They also stop the process if the request aborts during startup or the consumer leaves early.
+- `src/providers/login.ts` returns explicit errors for spawn and exit failures. An exit failure clears the timer and active login. Error responses contain no private CLI details. Commands use nonempty, readonly tuples. Each spawn receives a copy.
+
+The 19 new tests cover invalid data, mutable aliases, process failures, early consumer exit and the startup abort race. One test uses a real child process without a provider or subscription. Regression tests failed before each fix. Evidence: `/tmp/doi-ts-{config,models,events,resources,abort}-before.log`.
+
+Final checks: `CI=1 bun test` gives 523 pass, 0 fail, no skips; `bun check` has no errors. The Linux binary build and smoke test pass. Evidence: `/tmp/doi-ts-final-ci-tests.log`, `/tmp/doi-ts-build.log` and `/tmp/doi-ts-smoke.log`. The repo has no lint command. No live subscription request ran. This pass focused on external data and process resources; it does not certify every module. Each commit passes targeted tests and a type check on its exact staged tree. Next: review the branch before a merge.
 
 **2026-11-02: drive with DeepSeek.** The user asked for a drive of the whole flow with `opencode-go:deepseek-v4.1-flash` (the models in the user's `config.toml`) and for a seamless app. Checked in Chromium on a scratch workspace: first turn (134 s, 21k out), selection + comment + Apply (12 s), 2 variants (26 s) and a pick, tweaks, history, the four design exports, project export and import, new project and design, hand off. All worked. Fixes from the drive:
 

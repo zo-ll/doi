@@ -156,6 +156,22 @@ describe("codex provider", () => {
     expect(out).toEqual([]);
   });
 
+  test("event values are validated before they become generation events", async () => {
+    const cwd = await designDir();
+    const malformed: unknown[] = [
+      null,
+      { type: "item.completed", item: { type: "agent_message", text: 7 } },
+      { type: "item.completed", item: { type: "file_change", status: "completed", changes: {} } },
+      { type: "turn.completed", usage: { input_tokens: "10" } },
+      { type: "turn.completed", usage: { reasoning_output_tokens: -1 } },
+    ];
+    for (const event of malformed) await expect(mapCodexEvent(event, cwd)).rejects.toThrow();
+    expect(await mapCodexEvent({ type: "future_event", payload: {} }, cwd)).toEqual([]);
+    expect(await mapCodexEvent({ type: "turn.completed" }, cwd)).toContainEqual({
+      type: "usage", inputTokens: 0, outputTokens: 0, cachedTokens: 0,
+    });
+  });
+
   test("turn.failed and error events fail the run", async () => {
     const cwd = await designDir();
     for (const event of [{ type: "turn.failed", error: { message: "usage limit reached" } }, { type: "error", message: "usage limit reached" }]) {
@@ -196,6 +212,56 @@ describe("codex provider", () => {
     const bad = req(cwd, { messages: [{ role: "assistant", content: [{ type: "text", text: "hi" }] }] });
     await expect(collect(createCodex(config, counted.spawn).generate(bad))).rejects.toThrow("last message");
     expect(counted.seen.cmd).toEqual([]);
+  });
+
+  test("a consumer that leaves early stops the process", async () => {
+    const cwd = await designDir();
+    const { spawn, seen } = fakeSpawn([message("working")], { hang: true });
+    for await (const _event of createCodex(config, spawn).generate(req(cwd))) break;
+    expect(seen.killed).toBe(true);
+  });
+
+  test("an abort during startup still stops the process", async () => {
+    const cwd = await designDir();
+    const { spawn, seen } = fakeSpawn([message("working")], { hang: true });
+    const controller = new AbortController();
+    let stop = () => {};
+    let emergencyStop = false;
+    const abortDuringSpawn: Spawn = (cmd, cwd) => {
+      const proc = spawn(cmd, cwd);
+      stop = () => proc.kill();
+      controller.abort();
+      return proc;
+    };
+    // The timer releases a broken implementation instead of leaving the test blocked.
+    const timer = setTimeout(() => { emergencyStop = true; stop(); }, 200);
+    try {
+      await expect(collect(createCodex(config, abortDuringSpawn).generate(req(cwd, { signal: controller.signal }))))
+        .rejects.toMatchObject({ name: "AbortError" });
+      expect(emergencyStop).toBe(false);
+      expect(seen.killed).toBe(true);
+    } finally {
+      clearTimeout(timer);
+      stop();
+    }
+  });
+
+  test("process failures retain their cause and release resources", async () => {
+    const cwd = await designDir();
+    const { spawn, seen } = fakeSpawn([turnCompleted]);
+    const failure = new Error("process result failed");
+    const failingExit: Spawn = (cmd, cwd) => ({ ...spawn(cmd, cwd), exited: Promise.reject(failure) });
+    await expect(collect(createCodex(config, failingExit).generate(req(cwd))))
+      .rejects.toMatchObject({ message: "Could not read the CLI result.", cause: failure });
+    expect(seen.killed).toBe(true);
+
+    const failingStderr: Spawn = (cmd, cwd) => ({
+      ...spawn(cmd, cwd),
+      stderr: new ReadableStream<Uint8Array>({ start(controller) { controller.error(failure); } }),
+    });
+    await expect(collect(createCodex(config, failingStderr).generate(req(cwd))))
+      .rejects.toMatchObject({ message: "Could not read the CLI result.", cause: failure });
+    expect(seen.killed).toBe(true);
   });
 
   test("the design folder is required, and the provider edits files itself", async () => {

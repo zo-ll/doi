@@ -1,7 +1,8 @@
 import { dirname, resolve } from "node:path";
+import { z } from "zod";
 
 /** API providers, and CLI backends that use a subscription through the official CLI. */
-export type ProviderId = "anthropic" | "openai" | "opencode-go" | "google" | "openrouter" | "ollama" | "claude-code" | "codex";
+export type ProviderId = (typeof PROVIDERS)[number];
 export type ModelTask = "generate" | "edit" | "extract";
 
 export interface ModelRef {
@@ -36,7 +37,7 @@ export interface Price {
   cached?: number;
 }
 
-export const PROVIDERS: readonly ProviderId[] = [
+export const PROVIDERS = [
   "anthropic",
   "openai",
   "opencode-go",
@@ -45,7 +46,7 @@ export const PROVIDERS: readonly ProviderId[] = [
   "ollama",
   "claude-code",
   "codex",
-];
+] as const;
 /** Default API key variables. config.toml can name another one per provider (api_key_env). */
 export const DEFAULT_KEY_ENV: Partial<Record<ProviderId, string>> = {
   anthropic: "ANTHROPIC_API_KEY",
@@ -80,11 +81,12 @@ export function parseModelRef(ref: string): ModelRef {
   if (sep <= 0 || sep === ref.length - 1) {
     throw new Error(`Invalid model ref "${ref}". Use "<provider>:<model>".`);
   }
-  const provider = ref.slice(0, sep);
-  if (!PROVIDERS.includes(provider as ProviderId)) {
-    throw new Error(`Unknown provider "${provider}" in "${ref}".`);
+  const name = ref.slice(0, sep);
+  const provider = PROVIDERS.find((id) => id === name);
+  if (!provider) {
+    throw new Error(`Unknown provider "${name}" in "${ref}".`);
   }
-  return { provider: provider as ProviderId, model: ref.slice(sep + 1) };
+  return { provider, model: ref.slice(sep + 1) };
 }
 
 const DEFAULTS = {
@@ -98,18 +100,35 @@ const DEFAULTS = {
   editorUrl: "vscode://file{path}",
 } as const;
 
-export function parseConfig(raw: Record<string, any>, baseDir = process.cwd()): Config {
-  const models = { ...DEFAULTS.models, ...(raw.models ?? {}) } as Record<ModelTask, string>;
+const providerConfigSchema = z.object({
+  api_key_env: z.string().optional(),
+  base_url: z.string().optional(),
+  formats: z.record(z.string(), z.string()).optional(),
+});
+
+const configSchema = z.object({
+  workspace: z.string().nullish(),
+  port: z.union([z.number(), z.string()]).transform(Number).pipe(z.number({ error: "Use a port number from 0 to 65535." }).int().min(0).max(65535)).nullish(),
+  providers: z.partialRecord(z.enum(PROVIDERS), providerConfigSchema).nullish(),
+  models: z.object({ generate: z.string().optional(), edit: z.string().optional(), extract: z.string().optional() }).nullish(),
+  editor_url: z.string().nullish(),
+  prices: z.unknown().optional(),
+});
+
+/** Validates external config values before it constructs the application config. */
+export function parseConfig(input: unknown, baseDir = process.cwd()): Config {
+  const raw = configSchema.parse(input);
+  const models = raw.models;
   return {
     workspace: resolve(baseDir, raw.workspace ?? DEFAULTS.workspace),
-    port: Number(raw.port ?? DEFAULTS.port),
+    port: raw.port ?? DEFAULTS.port,
     providers: raw.providers ?? {},
     models: {
-      generate: parseModelRef(models.generate),
-      edit: parseModelRef(models.edit),
-      extract: parseModelRef(models.extract),
+      generate: parseModelRef(models?.generate ?? DEFAULTS.models.generate),
+      edit: parseModelRef(models?.edit ?? DEFAULTS.models.edit),
+      extract: parseModelRef(models?.extract ?? DEFAULTS.models.extract),
     },
-    editorUrl: String(raw.editor_url ?? DEFAULTS.editorUrl),
+    editorUrl: raw.editor_url ?? DEFAULTS.editorUrl,
     prices: parsePrices(raw.prices),
     configPath: null,
   };
@@ -118,12 +137,16 @@ export function parseConfig(raw: Record<string, any>, baseDir = process.cwd()): 
 /** The [prices] table. An entry with a bad number is left out, not an error. */
 function parsePrices(raw: unknown): Record<string, Price> {
   const out: Record<string, Price> = {};
-  if (typeof raw !== "object" || raw === null) return out;
+  const table = z.record(z.string(), z.unknown());
+  const entries = table.safeParse(raw);
+  if (!entries.success) return out;
   const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : undefined);
-  for (const [ref, p] of Object.entries(raw as Record<string, Record<string, unknown>>)) {
-    const input = num(p?.input);
-    const output = num(p?.output);
-    const cached = num(p?.cached);
+  for (const [ref, value] of Object.entries(entries.data)) {
+    const price = table.safeParse(value);
+    if (!price.success) continue;
+    const input = num(price.data.input);
+    const output = num(price.data.output);
+    const cached = num(price.data.cached);
     if (input === undefined || output === undefined) continue;
     out[ref] = { input, output, ...(cached !== undefined ? { cached } : {}) };
   }
@@ -190,5 +213,5 @@ export function withPrices(text: string, prices: Record<string, Price>): string 
 export async function loadConfig(path = "config.toml"): Promise<Config> {
   const file = Bun.file(path);
   const raw = (await file.exists()) ? Bun.TOML.parse(await file.text()) : {};
-  return { ...parseConfig(raw as Record<string, any>, dirname(resolve(path))), configPath: resolve(path) };
+  return { ...parseConfig(raw, dirname(resolve(path))), configPath: resolve(path) };
 }

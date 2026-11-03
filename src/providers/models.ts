@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { MODEL_NAME, type Config, type ProviderId } from "../config.ts";
 import { keyStore, resolveKey, type KeyStore } from "./keys.ts";
 import { DEFAULT_MODEL as DEFAULT_CODEX_MODEL } from "./codex.ts";
@@ -26,7 +27,8 @@ export const defaultModelListDeps: ModelListDeps = {
     return keyStore();
   },
   async run(cmd) {
-    if (!Bun.which(cmd[0]!)) return null;
+    const [bin] = cmd;
+    if (!bin || !Bun.which(bin)) return null;
     const proc = Bun.spawn(cmd, { stdin: "ignore", stdout: "pipe", stderr: "ignore", timeout: TIMEOUT_MS });
     const [out, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
     return code === 0 ? out : null;
@@ -40,8 +42,12 @@ export const defaultModelListDeps: ModelListDeps = {
 async function codexModels(deps: ModelListDeps): Promise<string[]> {
   const out = await deps.run(["codex", "debug", "models"]).catch(() => null);
   try {
-    const models: unknown[] = out ? JSON.parse(out)?.models ?? [] : [];
-    const listed = models.filter((m: any) => m?.visibility === "list").map((m: any) => m?.slug);
+    if (!out) return [DEFAULT_CODEX_MODEL];
+    const { models } = z.object({ models: z.array(z.unknown()) }).parse(JSON.parse(out));
+    const listed = models.flatMap((value) => {
+      const model = entrySchema.safeParse(value);
+      return model.success && model.data.visibility === "list" ? [model.data.slug] : [];
+    });
     return [DEFAULT_CODEX_MODEL, ...clean(listed).filter((m) => m !== DEFAULT_CODEX_MODEL)];
   } catch {
     return [DEFAULT_CODEX_MODEL];
@@ -49,7 +55,7 @@ async function codexModels(deps: ModelListDeps): Promise<string[]> {
 }
 
 /** Claude Code takes these ids with --model. */
-const FIXED: Partial<Record<ProviderId, string[]>> = {
+const FIXED: Partial<Record<ProviderId, readonly string[]>> = {
   "claude-code": ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-1"],
 };
 
@@ -62,11 +68,24 @@ const MAX_PAGES = 5;
 const trim = (url: string) => url.replace(/\/+$/, "");
 
 /** Ids that the model field takes, sorted and without doubles. */
-function clean(ids: unknown[]): string[] {
+function clean(ids: readonly unknown[]): string[] {
   return [...new Set(ids.filter((id): id is string => typeof id === "string" && MODEL_NAME.test(id)))].sort();
 }
 
-async function getJSON(deps: ModelListDeps, url: string, headers: Record<string, string>): Promise<any> {
+const entrySchema = z.record(z.string(), z.unknown());
+const modelsSchema = z.object({ data: z.array(z.unknown()) });
+const tagsSchema = z.object({ models: z.array(z.unknown()) });
+const pageSchema = modelsSchema.extend({ has_more: z.boolean().optional(), last_id: z.string().nullish() })
+  .refine((page) => !page.has_more || Boolean(page.last_id));
+
+function idsOf(entries: readonly unknown[], field: "id" | "name"): unknown[] {
+  return entries.flatMap((value) => {
+    const entry = entrySchema.safeParse(value);
+    return entry.success ? [entry.data[field]] : [];
+  });
+}
+
+async function getJSON(deps: ModelListDeps, url: string, headers: Record<string, string>): Promise<unknown> {
   const res = await deps.fetch(url, { headers: { "user-agent": DOI_USER_AGENT, ...headers }, signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (res.status === 401 || res.status === 403) throw new Error(`The provider refused the API key (${res.status}).`);
   if (!res.ok) throw new Error(`The models endpoint answered ${res.status}.`);
@@ -75,13 +94,13 @@ async function getJSON(deps: ModelListDeps, url: string, headers: Record<string,
 
 export async function listModels(id: ProviderId, config: Config, deps: ModelListDeps = defaultModelListDeps): Promise<ModelList> {
   const fixed = FIXED[id];
-  if (fixed) return { ok: true, models: fixed, fixed: true };
+  if (fixed) return { ok: true, models: [...fixed], fixed: true };
   if (id === "codex") return { ok: true, models: await codexModels(deps), fixed: true };
   const base = config.providers[id]?.base_url;
   try {
     if (id === "ollama") {
-      const data = await getJSON(deps, `${trim(base ?? "http://localhost:11434")}/api/tags`, {});
-      return { ok: true, models: clean((data?.models ?? []).map((m: any) => m?.name)), fixed: false };
+      const data = tagsSchema.parse(await getJSON(deps, `${trim(base ?? "http://localhost:11434")}/api/tags`, {}));
+      return { ok: true, models: clean(idsOf(data.models, "name")), fixed: false };
     }
     if (id !== "anthropic" && id !== "openai" && id !== "opencode-go") return { ok: false, error: "doi has no adapter for this provider yet." };
 
@@ -89,27 +108,28 @@ export async function listModels(id: ProviderId, config: Config, deps: ModelList
     // OpenCode Go lists its models without a key; the other two need one.
     if (!key && id !== "opencode-go") return { ok: false, error: "Add an API key to list the models." };
 
-    if (id === "anthropic") {
+    if (id === "anthropic" && key) {
       const ids: unknown[] = [];
       let after: string | undefined;
       for (let page = 0; page < MAX_PAGES; page++) {
         const q = new URLSearchParams({ limit: "1000", ...(after ? { after_id: after } : {}) });
-        const data = await getJSON(deps, `${trim(base ?? "https://api.anthropic.com/v1")}/models?${q}`, {
-          "x-api-key": key!,
+        const data = pageSchema.parse(await getJSON(deps, `${trim(base ?? "https://api.anthropic.com/v1")}/models?${q}`, {
+          "x-api-key": key,
           "anthropic-version": "2023-06-01",
-        });
-        ids.push(...(data?.data ?? []).map((m: any) => m?.id));
-        if (!data?.has_more || typeof data.last_id !== "string") break;
+        }));
+        ids.push(...idsOf(data.data, "id"));
+        if (!data.has_more || !data.last_id) break;
         after = data.last_id;
       }
       return { ok: true, models: clean(ids), fixed: false };
     }
 
     const url = `${trim(base ?? (id === "openai" ? "https://api.openai.com/v1" : OPENCODE_GO_BASE_URL))}/models`;
-    const data = await getJSON(deps, url, key ? { authorization: `Bearer ${key}` } : {});
-    const ids = (data?.data ?? []).map((m: any) => m?.id);
+    const data = modelsSchema.parse(await getJSON(deps, url, key ? { authorization: `Bearer ${key}` } : {}));
+    const ids = idsOf(data.data, "id");
     return { ok: true, models: clean(id === "openai" ? ids.filter((m: unknown) => typeof m === "string" && !NOT_CHAT.test(m)) : ids), fixed: false };
   } catch (e) {
+    if (e instanceof z.ZodError) return { ok: false, error: "The models endpoint returned an invalid response." };
     const timeout = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
     return { ok: false, error: timeout ? "The models endpoint did not answer in 10 seconds." : e instanceof Error ? e.message : String(e) };
   }

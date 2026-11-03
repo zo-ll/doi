@@ -18,6 +18,37 @@ export const bunSpawn: Spawn = (cmd, cwd) => {
   return { stdin: proc.stdin, stdout: proc.stdout, stderr: proc.stderr, exited: proc.exited, kill: () => proc.kill() };
 };
 
+type ProcessResult = { ok: true; code: number; stderr: string } | { ok: false; error: unknown };
+
+/** Captures stderr concurrently, but a descendant cannot hold its pipe beyond 500 ms after exit. */
+export async function readProcessResult(proc: Pick<Proc, "stderr" | "exited">): Promise<ProcessResult> {
+  const stop = new AbortController();
+  const decoder = new TextDecoder();
+  let text = "";
+  let closed = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const stderr = proc.stderr.pipeTo(new WritableStream<Uint8Array>({
+    write(chunk) { text += decoder.decode(chunk, { stream: true }); },
+  }), { signal: stop.signal }).catch((error: unknown) => {
+    if (!stop.signal.aborted || error !== stop.signal.reason) throw error;
+  }).finally(() => { closed = true; });
+  const exited = proc.exited.then((code) => {
+    if (!closed) timer = setTimeout(() => stop.abort(), 500);
+    return code;
+  });
+  try {
+    const [code] = await Promise.all([exited, stderr]);
+    return { ok: true, code, stderr: text + decoder.decode() };
+  } catch (error) {
+    return { ok: false, error };
+  } finally {
+    clearTimeout(timer);
+    stop.abort();
+    // The result above reports read failures. Cancellation only releases the pipe.
+    await stderr.catch(() => {});
+  }
+}
+
 export function textOf(m: Message): string {
   return m.content.flatMap((p) => (p.type === "text" ? [p.text] : [])).join("\n");
 }

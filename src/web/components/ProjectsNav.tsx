@@ -298,23 +298,30 @@ export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onCh
                       const deck = p.decks.includes(d);
                       const app = p.apps.includes(d);
                       return (
-                        <button
-                          key={d}
-                          className="nav-design"
-                          aria-current={current ? "page" : undefined}
-                          title="Double-click or F2 to rename"
-                          onClick={() => {
-                            onOpen({ project: p.id, design: d });
-                            onClose();
-                          }}
-                          onDoubleClick={() => setEditing({ kind: "rename-design", project: p.id, design: d })}
-                          onKeyDown={(e) => e.key === "F2" && setEditing({ kind: "rename-design", project: p.id, design: d })}
-                        >
-                          <span className={`nav-design-icon ${deck ? "is-deck" : app ? "is-app" : ""}`} aria-hidden="true" />
-                          <span className="nav-design-name">{d}</span>
-                          {deck && <span className="visually-hidden">(slide deck)</span>}
-                          {app && <span className="visually-hidden">(mobile app)</span>}
-                        </button>
+                        <div key={d} className="nav-design-row">
+                          <button
+                            className="nav-design"
+                            aria-current={current ? "page" : undefined}
+                            title="Open design. F2 to rename."
+                            onClick={() => {
+                              onOpen({ project: p.id, design: d });
+                              onClose();
+                            }}
+                            onKeyDown={(e) => e.key === "F2" && setEditing({ kind: "rename-design", project: p.id, design: d })}
+                          >
+                            <span className={`nav-design-icon ${deck ? "is-deck" : app ? "is-app" : ""}`} aria-hidden="true" />
+                            <span className="nav-design-name">{d}</span>
+                            {deck && <span className="visually-hidden">(slide deck)</span>}
+                            {app && <span className="visually-hidden">(mobile app)</span>}
+                          </button>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            aria-label={`Rename design ${d} in ${p.name}`}
+                            onClick={() => setEditing({ kind: "rename-design", project: p.id, design: d })}
+                          >
+                            Rename
+                          </button>
+                        </div>
                       );
                     })}
                     {p.designs.length === 0 && !addingHere && <div className="nav-empty">No designs yet</div>}

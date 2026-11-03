@@ -156,6 +156,29 @@ describe("claude-code provider", () => {
     }
   });
 
+  test("event values are validated before they become generation events", () => {
+    const malformed: unknown[] = [
+      null,
+      { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: 7 } } },
+      toolUse("Edit", { file_path: "styles.css", old_string: 7, new_string: "blue" }),
+      toolUse("Write", { file_path: "index.html", content: false }),
+      { type: "assistant", message: { content: {} } },
+      result({ usage: { input_tokens: "10" } }),
+      result({ usage: { output_tokens: -1 } }),
+    ];
+    for (const event of malformed) expect(() => mapEvent(event, CWD)).toThrow();
+    expect(mapEvent({ type: "future_event", payload: {} }, CWD)).toEqual([]);
+    expect(mapEvent({ type: "result", subtype: "success" }, CWD)).toContainEqual({
+      type: "usage", inputTokens: 0, outputTokens: 0, cachedTokens: 0,
+    });
+  });
+
+  test("a bad request starts no process", async () => {
+    const { spawn, seen } = fakeSpawn([]);
+    await expect(collect(createClaudeCode(config, spawn).generate(req({ messages: [] })))).rejects.toThrow("last message");
+    expect(seen.cmd).toEqual([]);
+  });
+
   test("a result error fails the run", async () => {
     const { spawn } = fakeSpawn([result({ subtype: "error_during_execution", is_error: true, result: "rate limited" })]);
     await expect(collect(createClaudeCode(config, spawn).generate(req()))).rejects.toThrow("rate limited");
@@ -174,6 +197,54 @@ describe("claude-code provider", () => {
     const run = collect(createClaudeCode(config, spawn).generate(req({ signal: controller.signal })));
     setTimeout(() => controller.abort(), 20);
     await expect(run).rejects.toMatchObject({ name: "AbortError" });
+    expect(seen.killed).toBe(true);
+  });
+
+  test("a consumer that leaves early stops the process and removes its system file", async () => {
+    const { spawn, seen } = fakeSpawn([textDelta("working")], { hang: true });
+    for await (const _event of createClaudeCode(config, spawn).generate(req())) break;
+    expect(seen.killed).toBe(true);
+    expect(existsSync(seen.systemFile)).toBe(false);
+  });
+
+  test("an abort during startup still stops the process", async () => {
+    const { spawn, seen } = fakeSpawn([textDelta("working")], { hang: true });
+    const controller = new AbortController();
+    let stop = () => {};
+    let emergencyStop = false;
+    const abortDuringSpawn: Spawn = (cmd, cwd) => {
+      const proc = spawn(cmd, cwd);
+      stop = () => proc.kill();
+      controller.abort();
+      return proc;
+    };
+    // The timer releases a broken implementation instead of leaving the test blocked.
+    const timer = setTimeout(() => { emergencyStop = true; stop(); }, 200);
+    try {
+      await expect(collect(createClaudeCode(config, abortDuringSpawn).generate(req({ signal: controller.signal }))))
+        .rejects.toMatchObject({ name: "AbortError" });
+      expect(emergencyStop).toBe(false);
+      expect(seen.killed).toBe(true);
+    } finally {
+      clearTimeout(timer);
+      stop();
+    }
+  });
+
+  test("process failures retain their cause and release resources", async () => {
+    const { spawn, seen } = fakeSpawn([result()]);
+    const failure = new Error("process result failed");
+    const failingExit: Spawn = (cmd, cwd) => ({ ...spawn(cmd, cwd), exited: Promise.reject(failure) });
+    await expect(collect(createClaudeCode(config, failingExit).generate(req())))
+      .rejects.toMatchObject({ message: "Could not read the CLI result.", cause: failure });
+    expect(seen.killed).toBe(true);
+
+    const failingStderr: Spawn = (cmd, cwd) => ({
+      ...spawn(cmd, cwd),
+      stderr: new ReadableStream<Uint8Array>({ start(controller) { controller.error(failure); } }),
+    });
+    await expect(collect(createClaudeCode(config, failingStderr).generate(req())))
+      .rejects.toMatchObject({ message: "Could not read the CLI result.", cause: failure });
     expect(seen.killed).toBe(true);
   });
 
