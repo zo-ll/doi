@@ -200,6 +200,30 @@ describe("claude-code provider", () => {
     expect(seen.killed).toBe(true);
   });
 
+  test("a consumer that leaves early stops the process and removes its system file", async () => {
+    const { spawn, seen } = fakeSpawn([textDelta("working")], { hang: true });
+    for await (const _event of createClaudeCode(config, spawn).generate(req())) break;
+    expect(seen.killed).toBe(true);
+    expect(existsSync(seen.systemFile)).toBe(false);
+  });
+
+  test("process failures retain their cause and release resources", async () => {
+    const { spawn, seen } = fakeSpawn([result()]);
+    const failure = new Error("process result failed");
+    const failingExit: Spawn = (cmd, cwd) => ({ ...spawn(cmd, cwd), exited: Promise.reject(failure) });
+    await expect(collect(createClaudeCode(config, failingExit).generate(req())))
+      .rejects.toMatchObject({ message: "Could not read the CLI result.", cause: failure });
+    expect(seen.killed).toBe(true);
+
+    const failingStderr: Spawn = (cmd, cwd) => ({
+      ...spawn(cmd, cwd),
+      stderr: new ReadableStream<Uint8Array>({ start(controller) { controller.error(failure); } }),
+    });
+    await expect(collect(createClaudeCode(config, failingStderr).generate(req())))
+      .rejects.toMatchObject({ message: "Could not read the CLI result.", cause: failure });
+    expect(seen.killed).toBe(true);
+  });
+
   test("the design folder is required", async () => {
     const { spawn } = fakeSpawn([]);
     await expect(collect(createClaudeCode(config, spawn).generate(req({ cwd: undefined })))).rejects.toThrow("design folder");

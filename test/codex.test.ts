@@ -214,6 +214,31 @@ describe("codex provider", () => {
     expect(counted.seen.cmd).toEqual([]);
   });
 
+  test("a consumer that leaves early stops the process", async () => {
+    const cwd = await designDir();
+    const { spawn, seen } = fakeSpawn([message("working")], { hang: true });
+    for await (const _event of createCodex(config, spawn).generate(req(cwd))) break;
+    expect(seen.killed).toBe(true);
+  });
+
+  test("process failures retain their cause and release resources", async () => {
+    const cwd = await designDir();
+    const { spawn, seen } = fakeSpawn([turnCompleted]);
+    const failure = new Error("process result failed");
+    const failingExit: Spawn = (cmd, cwd) => ({ ...spawn(cmd, cwd), exited: Promise.reject(failure) });
+    await expect(collect(createCodex(config, failingExit).generate(req(cwd))))
+      .rejects.toMatchObject({ message: "Could not read the CLI result.", cause: failure });
+    expect(seen.killed).toBe(true);
+
+    const failingStderr: Spawn = (cmd, cwd) => ({
+      ...spawn(cmd, cwd),
+      stderr: new ReadableStream<Uint8Array>({ start(controller) { controller.error(failure); } }),
+    });
+    await expect(collect(createCodex(config, failingStderr).generate(req(cwd))))
+      .rejects.toMatchObject({ message: "Could not read the CLI result.", cause: failure });
+    expect(seen.killed).toBe(true);
+  });
+
   test("the design folder is required, and the provider edits files itself", async () => {
     const { spawn } = fakeSpawn([]);
     await expect(collect(createCodex(config, spawn).generate(req("", { cwd: undefined })))).rejects.toThrow("design folder");

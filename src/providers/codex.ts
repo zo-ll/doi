@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import type { Config } from "../config.ts";
-import { bunSpawn, insideCwd, lines, textOf, type Proc, type Spawn } from "./cli.ts";
+import { bunSpawn, insideCwd, lines, readProcessResult, textOf, type Proc, type Spawn } from "./cli.ts";
 import type { GenerateEvent, GenerateRequest, Message, Provider } from "./types.ts";
 
 /**
@@ -130,7 +130,7 @@ export function createCodex(_config: Config, spawn: Spawn = bunSpawn): Provider 
 
       const onAbort = () => proc.kill();
       req.signal?.addEventListener("abort", onAbort, { once: true });
-      const stderr = new Response(proc.stderr).text();
+      const completion = readProcessResult(proc);
       try {
         // Inside the main try: if the write fails, the finally still kills the process.
         proc.stdin.write(stdinText);
@@ -149,15 +149,17 @@ export function createCodex(_config: Config, spawn: Spawn = bunSpawn): Provider 
             yield out;
           }
         }
-        const code = await proc.exited;
+        const result = await completion;
         if (req.signal?.aborted) throw new DOMException("The generation was stopped.", "AbortError");
+        if (!result.ok) throw new Error("Could not read the CLI result.", { cause: result.error });
         if (!done) {
-          const detail = (await stderr).trim().split("\n").slice(-3).join(" ");
-          throw new Error(`Codex stopped without a result (exit ${code})${detail ? `: ${detail}` : ""}`);
+          const detail = result.stderr.trim().split("\n").slice(-3).join(" ");
+          throw new Error(`Codex stopped without a result (exit ${result.code})${detail ? `: ${detail}` : ""}`);
         }
       } finally {
         req.signal?.removeEventListener("abort", onAbort);
         proc.kill(); // no-op after a normal exit; stops the process when the consumer leaves early
+        await completion;
         await rm(tmp, { recursive: true, force: true });
       }
     },
