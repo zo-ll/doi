@@ -95,6 +95,35 @@ describe("listModels", () => {
     expect(await listModels("ollama", config, d)).toMatchObject({ ok: true, models: ["llama4:latest", "qwen3:14b"] });
   });
 
+  test("malformed catalogs fail instead of becoming a successful empty list", async () => {
+    for (const body of [null, [], {}, { data: null }, { data: {} }, { data: "models" }]) {
+      const { d } = deps({ "https://opencode.ai/inference/go/v1/models": body });
+      expect(await listModels("opencode-go", config, d)).toEqual({ ok: false, error: "The models endpoint returned an invalid response." });
+    }
+    const ollama = deps({ "http://localhost:11434/api/tags": { models: {} } });
+    expect(await listModels("ollama", config, ollama.d)).toEqual({ ok: false, error: "The models endpoint returned an invalid response." });
+  });
+
+  test("an empty catalog is valid; malformed rows do not hide valid model ids", async () => {
+    const url = "https://opencode.ai/inference/go/v1/models";
+    expect(await listModels("opencode-go", config, deps({ [url]: { data: [] } }).d)).toMatchObject({ ok: true, models: [] });
+    expect(await listModels("opencode-go", config, deps({ [url]: { data: [null, 7, [], { id: "glm-5.3" }] } }).d))
+      .toMatchObject({ ok: true, models: ["glm-5.3"] });
+  });
+
+  test("an incomplete pagination response is an error", async () => {
+    const { d } = deps({ "https://api.anthropic.com/v1/models?limit=1000": { data: [{ id: "first" }], has_more: true } }, { anthropic: "sk-test" });
+    expect(await listModels("anthropic", config, d)).toEqual({ ok: false, error: "The models endpoint returned an invalid response." });
+  });
+
+  test("callers cannot mutate the fixed catalog", async () => {
+    const first = await listModels("claude-code", config, deps({}).d);
+    if (!first.ok) throw new Error(first.error);
+    first.models.length = 0;
+    const next = await listModels("claude-code", config, deps({}).d);
+    expect(next).toMatchObject({ ok: true, models: expect.arrayContaining(["claude-opus-5-5"]) });
+  });
+
   test("errors: no key, refused key, bad status, no adapter; never the key", async () => {
     expect(await listModels("openai", config, deps({}).d)).toEqual({ ok: false, error: "Add an API key to list the models." });
     const refused = await listModels("anthropic", config, deps({ "https://api.anthropic.com/v1/models?limit=1000": 401 }, { anthropic: "sk-secret" }).d);
