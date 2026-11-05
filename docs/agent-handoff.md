@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-11-05. The first real UML edit path is on `feature/optional-uml`. It has an optional panel, editable graphs, conflict-safe Save, session undo, comments, UI links, JSON import/export and MCP reads. All 550 tests pass; type checks and the Linux binary smoke test pass. The full 26-part contract remains open in #145. Section 6 records the scope and remaining work.
+Last update: 2026-11-05. The first real UML edit path is on `feature/optional-uml`. It has an optional panel, editable graphs, conflict-safe Save, session undo, comments, UI links, JSON import/export and MCP reads. All 559 tests pass; type checks and the Linux binary smoke test pass. The critic findings M1–M3 and L1–L6 have corrections. The full 26-part contract remains open in #145. Section 6 records the scope and remaining work.
 
 PR #147 merged the TypeScript refactor and two browser fixes into `main` at `e95e541`. All 529 tests passed, with no skips or failures. The type check, Linux binary build and smoke test passed. The Usage gap for unpicked variants remains open.
 
@@ -130,6 +130,8 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 - CLI backends (`editsFiles: true`) change the files in `GenerateRequest.cwd` themselves. Their `edit`/`write` events only report the change. **The edit applier must skip them.**
 
 ## 6. State and next steps
+
+**2026-11-05: critic corrections for PR #149.** The critic report is `~/.local/state/spawn-critic/review.rN3d8NE0/REPORT.md` (REQUEST_CHANGES at `33abe69`). `07ff6f1` fixes M1 (cross-design UI link page). `b35546c` fixes M2 (dirty state on a click on the open diagram). `63541da` fixes M3: `src/architecture/errors.ts` turns a schema error into one line with the field and the rule; inspector fields have `required` and `maxlength`. `8d705c2` fixes L5. `89923d9` fixes L1 (an imported name gets " copy"), L2 (chat is blocked only while a diagram is open) and L3 (a removed diagram closes the editor with a toast). `bae1fa1` closes L4 (saved and reloaded geometry). L6 is documented: one doi process for each workspace. Each new browser case failed before its fix. `CI=1 bun test`: 559 pass, 0 fail, 0 skip. Next: critic re-review of the current head, CI, then merge.
 
 **2026-11-05: first real UML editor.** The implementation branch is `feature/optional-uml`, above the three design-note commits. The existing dark reference remains in `doi-uml/home`. The new app feature uses the normal right-panel UML tab and a separate versioned `projects/<project>/architecture.json` file. A read or tab selection creates no file. Explicit enable creates the first diagram; Hide keeps all saved diagrams.
 
