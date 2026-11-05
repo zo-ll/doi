@@ -3,22 +3,32 @@ import { edgeSchema } from "./edges.ts";
 import { createNode, nodeSchema, type DiagramNode, type Point } from "./nodes.ts";
 import { diagramSchema, type Diagram } from "./schema.ts";
 
-const LIMIT = 100_000;
+const LIMIT = 100_000, MAX_SIZE = 4096;
+/** The schema allows 20 nested groups; walks stop one level after that. */
+const MAX_WALK = 21;
 const clamp = (value: number) => Math.max(-LIMIT, Math.min(LIMIT, value));
 
 /** The canvas position of a node: its own position plus the positions of its groups. */
 export function absolutePosition(graph: Diagram, id: string): Point {
   const byId = new Map(graph.nodes.map(n => [n.id, n]));
   let node = byId.get(id), x = 0, y = 0, depth = 0;
-  while (node && depth++ <= 21) { x += node.position.x; y += node.position.y; node = node.parent ? byId.get(node.parent) : undefined; }
+  while (node && depth++ <= MAX_WALK) { x += node.position.x; y += node.position.y; node = node.parent ? byId.get(node.parent) : undefined; }
   return { x, y };
 }
 function parentOrigin(graph: Diagram, node: DiagramNode): Point {
   return node.parent ? absolutePosition(graph, node.parent) : { x: 0, y: 0 };
 }
-/** Unlocked nodes in the selection, in graph order. */
+/** True when a group above the node is in `ids`: the node moves with that group. */
+function insideSelected(graph: Diagram, node: DiagramNode, ids: ReadonlySet<string>): boolean {
+  const byId = new Map(graph.nodes.map(n => [n.id, n]));
+  let parent = node.parent, depth = 0;
+  while (parent && depth++ <= MAX_WALK) { if (ids.has(parent)) return true; parent = byId.get(parent)?.parent ?? null; }
+  return false;
+}
+/** Unlocked nodes in the selection, in graph order, without the nodes that move with a selected group. */
 function movable(graph: Diagram, ids: ReadonlySet<string>): DiagramNode[] {
-  return graph.nodes.filter(n => ids.has(n.id) && !n.locked);
+  const unlocked = new Set(graph.nodes.filter(n => ids.has(n.id) && !n.locked).map(n => n.id));
+  return graph.nodes.filter(n => unlocked.has(n.id) && !insideSelected(graph, n, unlocked));
 }
 function moveTo(graph: Diagram, targets: ReadonlyMap<string, Point>): Diagram {
   return { ...graph, nodes: graph.nodes.map(node => {
@@ -66,15 +76,14 @@ export function distributeItems(graph: Diagram, ids: ReadonlySet<string>, axis: 
 /** Move the unlocked selected boxes. A box inside a moved group moves with the group only. */
 export function nudgeItems(graph: Diagram, ids: ReadonlySet<string>, dx: number, dy: number): Diagram {
   const moved = new Set(movable(graph, ids).map(n => n.id));
-  const byId = new Map(graph.nodes.map(n => [n.id, n]));
-  const insideMoved = (node: DiagramNode) => { let parent = node.parent, depth = 0; while (parent && depth++ <= 21) { if (moved.has(parent)) return true; parent = byId.get(parent)?.parent ?? null; } return false; };
-  return { ...graph, nodes: graph.nodes.map(node => !moved.has(node.id) || insideMoved(node) ? node : { ...node, position: { x: clamp(node.position.x + dx), y: clamp(node.position.y + dy) } }) };
+  return { ...graph, nodes: graph.nodes.map(node => !moved.has(node.id) ? node : { ...node, position: { x: clamp(node.position.x + dx), y: clamp(node.position.y + dy) } }) };
 }
 
 export const orderModes = ["front", "forward", "backward", "back"] as const;
 export type OrderMode = typeof orderModes[number];
-/** Change the draw order. A later node in `graph.nodes` draws above an earlier one. */
-export function reorderItems(graph: Diagram, ids: ReadonlySet<string>, mode: OrderMode): Diagram {
+/** Change the draw order of unlocked boxes. A later node in `graph.nodes` draws above an earlier one. */
+export function reorderItems(graph: Diagram, selection: ReadonlySet<string>, mode: OrderMode): Diagram {
+  const ids = new Set(graph.nodes.filter(n => selection.has(n.id) && !n.locked).map(n => n.id));
   const picked = graph.nodes.filter(n => ids.has(n.id)), rest = graph.nodes.filter(n => !ids.has(n.id));
   if (!picked.length) return graph;
   if (mode === "front") return { ...graph, nodes: [...rest, ...picked] };
@@ -103,15 +112,19 @@ export function groupItems(graph: Diagram, ids: ReadonlySet<string>, padding = 3
   const left = Math.min(...boxes.map(b => b.p.x)) - padding, top = Math.min(...boxes.map(b => b.p.y)) - padding * 1.5;
   const right = Math.max(...boxes.map(b => b.p.x + b.n.size.width)) + padding, bottom = Math.max(...boxes.map(b => b.p.y + b.n.size.height)) + padding;
   const origin = parent ? absolutePosition(graph, parent) : { x: 0, y: 0 };
-  const group = createNode("group", { x: Math.round(left - origin.x), y: Math.round(top - origin.y) }, "Group");
-  group.parent = parent;
-  group.size = { width: Math.min(4096, Math.round(right - left)), height: Math.min(4096, Math.round(bottom - top)) };
+  const position = { x: Math.round(left - origin.x), y: Math.round(top - origin.y) };
+  const size = { width: Math.round(right - left), height: Math.round(bottom - top) };
+  if (size.width > MAX_SIZE || size.height > MAX_SIZE) return { error: `A group can be at most ${MAX_SIZE} px wide and high. Select boxes that are closer together.` };
+  if (Math.abs(position.x) > LIMIT || Math.abs(position.y) > LIMIT) return { error: "Move the boxes away from the edge of the canvas before you group them." };
+  const group = { ...createNode("group", { x: 0, y: 0 }, "Group"), parent, position, size };
   const first = graph.nodes.findIndex(n => ids.has(n.id));
   const members = new Set(nodes.map(n => n.id));
   const updated = graph.nodes.map(n => members.has(n.id) ? { ...n, parent: group.id, position: { x: Math.round(absolutePosition(graph, n.id).x - left), y: Math.round(absolutePosition(graph, n.id).y - top) } } : n);
   const next = { ...graph, nodes: [...updated.slice(0, first), group, ...updated.slice(first)] };
   const checked = diagramSchema.safeParse(next);
-  return checked.success ? { graph: next, group: group.id } : { error: "This group would exceed the limit of 20 nested groups." };
+  if (checked.success) return { graph: next, group: group.id };
+  const nesting = checked.error.issues.some(issue => issue.path.at(-1) === "parent");
+  return { error: nesting ? "This group would exceed the limit of 20 nested groups." : "The group does not fit the diagram limits." };
 }
 
 /** Remove the selected groups. Their boxes keep their canvas positions. Connectors to a group block the action. */
@@ -147,13 +160,14 @@ export function snapToGuides(graph: Diagram, id: string, position: Point, thresh
   const { width, height } = node.size;
   let best = { x: { delta: threshold + 1, at: 0 }, y: { delta: threshold + 1, at: 0 } };
   for (const other of siblings) {
-    const xs = [other.position.x, other.position.x + other.size.width / 2, other.position.x + other.size.width];
-    const ys = [other.position.y, other.position.y + other.size.height / 2, other.position.y + other.size.height];
-    for (const at of xs) for (const offset of [0, width / 2, width]) {
+    // Like with like: start edges, centres and end edges of the two boxes, plus the edge-to-edge contact lines.
+    const xs: [number, number][] = [[other.position.x, 0], [other.position.x + other.size.width / 2, width / 2], [other.position.x + other.size.width, width], [other.position.x + other.size.width, 0], [other.position.x, width]];
+    const ys: [number, number][] = [[other.position.y, 0], [other.position.y + other.size.height / 2, height / 2], [other.position.y + other.size.height, height], [other.position.y + other.size.height, 0], [other.position.y, height]];
+    for (const [at, offset] of xs) {
       const delta = at - (position.x + offset);
       if (Math.abs(delta) < Math.abs(best.x.delta)) best = { ...best, x: { delta, at } };
     }
-    for (const at of ys) for (const offset of [0, height / 2, height]) {
+    for (const [at, offset] of ys) {
       const delta = at - (position.y + offset);
       if (Math.abs(delta) < Math.abs(best.y.delta)) best = { ...best, y: { delta, at } };
     }
@@ -173,7 +187,7 @@ const clipboardSchema = z.strictObject({
 export type Clipboard = z.infer<typeof clipboardSchema>;
 export function copyItems(graph: Diagram, ids: ReadonlySet<string>): Clipboard | null {
   const included = new Set(graph.nodes.filter(n => ids.has(n.id)).map(n => n.id));
-  for (let depth = 0; depth < 21; depth++) {
+  for (let depth = 0; depth < MAX_WALK; depth++) {
     const before = included.size;
     for (const node of graph.nodes) if (node.parent && included.has(node.parent)) included.add(node.id);
     if (before === included.size) break;

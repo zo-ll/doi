@@ -148,3 +148,43 @@ test("the clipboard reader rejects foreign and invalid data", () => {
   if (!clip) throw new Error("Nothing copied");
   expect(pasteItems(full, clip, { x: 0, y: 0 })).toEqual({ error: "The paste would exceed the diagram limits." });
 });
+
+test("align and distribute move a selected group once, with its children", () => {
+  const a = box("Alpha", 40, 40), b = box("Other", 200, 40), zed = box("Zed", -300, 300), far = box("Far", 900, 300);
+  const grouped = groupItems(graphOf([a, b, zed, far]), ids(a, b));
+  if ("error" in grouped) throw new Error(grouped.error);
+  const group = grouped.graph.nodes.find(n => n.id === grouped.group);
+  if (!group) throw new Error("No group");
+  const all = new Set(grouped.graph.nodes.map(n => n.id));
+  const aligned = alignItems(grouped.graph, all, "left");
+  expect(at(aligned, group).x).toBe(-300);
+  expect(at(aligned, a).x - at(aligned, group).x).toBe(at(grouped.graph, a).x - at(grouped.graph, group).x);
+  const spread = distributeItems(grouped.graph, all, "horizontal");
+  expect(at(spread, b).x - at(spread, a).x).toBe(160);
+});
+
+test("draw order skips locked boxes", () => {
+  const a = box("A", 0, 0), b = box("B", 10, 0), c = box("C", 20, 0);
+  a.locked = true;
+  const g = graphOf([a, b, c]);
+  expect(reorderItems(g, ids(a), "front").nodes.map(n => n.name)).toEqual(["A", "B", "C"]);
+  expect(reorderItems(g, ids(a, b), "front").nodes.map(n => n.name)).toEqual(["A", "C", "B"]);
+});
+
+test("group refuses positions past the canvas limit and sizes past 4096 px", () => {
+  const edge = box("Edge", -100000, 0);
+  expect(groupItems(graphOf([edge]), ids(edge))).toEqual({ error: "Move the boxes away from the edge of the canvas before you group them." });
+  const left = box("Left", 0, 0), right = box("Right", 5000, 0);
+  expect(groupItems(graphOf([left, right]), ids(left, right))).toEqual({ error: "A group can be at most 4096 px wide and high. Select boxes that are closer together." });
+});
+
+test("a guide does not match a centre with an edge", () => {
+  const a = box("A", 0, 0, 100, 100), b = box("B", 300, 300, 100, 40);
+  const g = graphOf([a, b]);
+  // B's top at y 47 is 3 px from A's centre (50); centre-to-edge pairs must not snap.
+  const moved = snapToGuides(g, b.id, { x: 150, y: 47 }, 6);
+  expect(moved.position).toEqual({ x: 150, y: 47 });
+  expect(moved.guides).toEqual([]);
+  // B's centre at y 47 + 20 = 67 does not meet A's centre either; at y 32 it does (32 + 20 = 52, 2 px from 50).
+  expect(snapToGuides(g, b.id, { x: 150, y: 32 }, 6).position.y).toBe(30);
+});
