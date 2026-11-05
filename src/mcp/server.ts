@@ -166,7 +166,11 @@ export function createMcpServer(deps: McpDeps): McpServer {
           saved = await writeArchitecture(workspace, project, revision, { ...current.state, diagrams });
         } catch (e) {
           if (e instanceof ArchitectureError) throw new ToolError(e.status === 409 ? "The UML changed since that revision. Call get_architecture again, merge your change and send the new revision." : e.message);
-          throw new ToolError(`The UML is invalid. ${architectureErrorMessage(e)}`);
+          if (e instanceof z.ZodError) {
+            if (e.issues.some(issue => issue.path.length === 1 && issue.path[0] === "diagrams")) throw new ToolError("A project can have at most 50 UML diagrams. Replace a diagram instead of adding one.");
+            throw new ToolError(`The UML is invalid. ${architectureErrorMessage(e)}`);
+          }
+          throw new ToolError(`The UML could not be saved: ${e instanceof Error ? e.message : String(e)}`);
         }
         const version = await checkpointArchitecture(workspace, project, `agent: ${parsed.data.name}`);
         return json({ revision: saved.revision, diagram: parsed.data.id, created: !exists, version: version.sha });

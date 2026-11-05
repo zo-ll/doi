@@ -84,3 +84,12 @@ test("render_architecture renders a diagram by id, name or default as a PNG", as
     expect(text(missing)).toContain('Diagram "Nope" not found. Diagrams: First (');
   });
 });
+
+test("update_architecture names the diagram limit plainly", async () => {
+  await withClient(async (client, ws) => {
+    const view = await writeArchitecture(ws, "shop", null, { version: 1, enabled: true, diagrams: Array.from({ length: 50 }, (_, i) => ({ ...createDiagram(), name: `D${i}` })) });
+    const full = await client.callTool({ name: "update_architecture", arguments: { project: "shop", revision: view.revision, diagram: diagram("One more") } });
+    expect(full.isError).toBe(true);
+    expect(text(full)).toBe("A project can have at most 50 UML diagrams. Replace a diagram instead of adding one.");
+  });
+});
