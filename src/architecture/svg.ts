@@ -29,13 +29,13 @@ const FONT = "'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe U
 const MONO = "'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace";
 const PAD = 32, MAX_WALK = 21;
 
-/** XML text: the five special characters as entities; C0 controls other than TAB, LF and CR are invalid XML 1.0 and go. */
-const escape = (text: string) => text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c);
+/** XML text: the five special characters as entities; C0 controls other than TAB, LF and CR, U+FFFE and U+FFFF are invalid XML 1.0 and go. */
+const escape = (text: string) => text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c);
 const num = (n: number) => Number.isInteger(n) ? String(n) : n.toFixed(2);
 type Rect = { x: number; y: number; width: number; height: number };
 
-/** Lines that fit `width` at `size`, about 0.56 em for each character; long words break. */
-export function wrap(text: string, width: number, size: number, mono = false): string[] {
+/** Lines that fit `width` at `size`, about 0.56 em for each character. Long words break, except with `breakWords` false (the class compartments keep them, as the canvas does). */
+export function wrap(text: string, width: number, size: number, mono = false, breakWords = true): string[] {
   const per = Math.max(1, Math.floor(width / (size * (mono ? 0.62 : 0.56))));
   const out: string[] = [];
   for (const paragraph of text.split("\n")) {
@@ -44,7 +44,7 @@ export function wrap(text: string, width: number, size: number, mono = false): s
       if ((line + word).length <= per) { line += word; continue; }
       if (line.trim()) out.push(line.trimEnd());
       let rest = word.trimStart();
-      while (rest.length > per) { out.push(rest.slice(0, per)); rest = rest.slice(per); }
+      while (breakWords && rest.length > per) { out.push(rest.slice(0, per)); rest = rest.slice(per); }
       line = rest;
     }
     out.push(line.trimEnd());
@@ -97,6 +97,8 @@ function textLines(lines: string[], x: number, y: number, size: number, options:
   return lines.map((line, i) => `<text x="${num(x)}" y="${num(y + i * lineHeight)}" font-size="${size}" font-family="${escape(options.mono ? MONO : FONT)}"${options.weight ? ` font-weight="${options.weight}"` : ""} fill="${escape(options.colour)}"${options.anchor === "middle" ? ' text-anchor="middle"' : ""} dominant-baseline="hanging" xml:space="preserve">${escape(line)}</text>`).join("");
 }
 
+/** The canvas line for a box with UI references. */
+const links = (node: DiagramNode) => `↗ ${node.references.length} UI link${node.references.length === 1 ? "" : "s"}`;
 /** One box. `defs` receives its clip paths: the box, and the two class compartments. */
 function nodeSvg(node: DiagramNode, rect: Rect, palette: Palette, clip: string, defs: string[]): string {
   const { x, y, width, height } = rect;
@@ -126,23 +128,28 @@ function nodeSvg(node: DiagramNode, rect: Rect, palette: Palette, clip: string, 
     const title = wrap(node.name, inner, size).slice(0, 2);
     head.push(textLines(title, x + width / 2, cursor, size, { colour: text, weight: 600, anchor: "middle" }));
     cursor += title.length * lineHeight + 8;
-    const attributes = wrap(node.attributes, inner, size, true), operations = wrap(node.operations, inner, size, true);
-    const split = Math.min(y + height - 16, cursor + attributes.length * lineHeight + 16);
+    const attributes = wrap(node.attributes, inner, size, true, false), operations = wrap(node.operations, inner, size, true, false);
+    // The canvas gives the two compartments equal shares of the rest; a UI-link row takes the bottom.
+    const bottom = node.references.length ? y + height - Math.round(Math.max(10, size - 2) * 1.35) - 8 : y + height;
+    const split = cursor + Math.round((bottom - cursor) / 2);
     body += head.join("");
     body += `<path d="M${num(x)} ${num(cursor)}H${num(x + width)}M${num(x)} ${num(split)}H${num(x + width)}" stroke="${palette.line}"/>`;
     // Each compartment clips its own text, as the canvas scrolls each one.
     defs.push(`<clipPath id="${clip}a"><rect x="${num(x)}" y="${num(cursor)}" width="${num(width)}" height="${num(Math.max(0, split - cursor))}"/></clipPath>`);
-    defs.push(`<clipPath id="${clip}o"><rect x="${num(x)}" y="${num(split)}" width="${num(width)}" height="${num(Math.max(0, y + height - split))}"/></clipPath>`);
+    defs.push(`<clipPath id="${clip}o"><rect x="${num(x)}" y="${num(split)}" width="${num(width)}" height="${num(Math.max(0, bottom - split))}"/></clipPath>`);
     body += `<g clip-path="url(#${clip}a)">${textLines(attributes, x + 12, cursor + 8, size, { colour: text, mono: true })}</g>`;
     body += `<g clip-path="url(#${clip}o)">${textLines(operations, x + 12, split + 8, size, { colour: text, mono: true })}</g>`;
+    if (node.references.length) body += textLines([links(node)], x + 12, bottom + 4, Math.max(10, size - 2), { colour: palette.text2 });
   } else if (node.shape === "actor") {
     // The canvas icon: 48 × 58 px in the text colour, above the name, both centred.
     const cx = x + width / 2, name = wrap(node.name, width, size).slice(0, 2);
     const top = y + Math.max(0, (height - 58 - 4 - name.length * lineHeight) / 2);
     body += `<g transform="translate(${num(cx - 24)} ${num(top)}) scale(0.8 ${num(58 / 70)})" fill="none" stroke="${escape(text)}" stroke-width="1.5" vector-effect="non-scaling-stroke"><circle cx="30" cy="10" r="8"/><path d="M30 18V45M12 29H48M30 45L14 66M30 45L46 66"/></g>`;
     body += textLines(name, cx, top + 62, size, { colour: text, weight: 600, anchor: "middle" });
+    if (node.references.length) body += textLines([links(node)], cx, top + 62 + name.length * lineHeight + 4, Math.max(10, size - 2), { colour: palette.text2, anchor: "middle" });
   } else if (node.shape === "group") {
     body += textLines(wrap(node.name, inner, Math.max(10, size - 2)).slice(0, 1), x + 12, y + 8, Math.max(10, size - 2), { colour: palette.text2, weight: 600 });
+    if (node.references.length) body += textLines([links(node)], x + 12, y + 8 + lineHeight + 4, Math.max(10, size - 2), { colour: palette.text2 });
   } else {
     const centred = node.shape === "ellipse" || node.shape === "diamond";
     const box = centred ? width - 32 : node.shape === "text" ? width : inner;
@@ -150,7 +157,7 @@ function nodeSvg(node: DiagramNode, rect: Rect, palette: Palette, clip: string, 
     if (node.stereotype) lines.push([[`«${node.stereotype}»`], { colour: palette.text2, small: true }]);
     lines.push([wrap(node.name, box, size), { colour: text, weight: 600 }]);
     if (node.content) lines.push([wrap(node.content, box, size), { colour: node.style.text ?? palette.text2 }]);
-    if (node.references.length) lines.push([[`↗ ${node.references.length} UI link${node.references.length === 1 ? "" : "s"}`], { colour: palette.text2, small: true }]);
+    if (node.references.length) lines.push([[links(node)], { colour: palette.text2, small: true }]);
     const total = lines.reduce((sum, [l]) => sum + l.length * lineHeight, 0) + (lines.length - 1) * 4;
     let cursor = note ? y + 10 : y + Math.max(8, (height - total) / 2);
     const tx = centred ? x + width / 2 : node.shape === "text" ? x : x + 12;
@@ -172,8 +179,17 @@ function markerSvg(id: string, marker: Marker, colour: string, background: strin
   const shape = marker === "circle" ? `<circle cx="5" cy="5" r="4" fill="${escape(fill)}" stroke="${escape(colour)}"/>` : `<path d="${GLYPHS[marker] ?? ""}" fill="${escape(fill)}" stroke="${escape(colour)}" stroke-linejoin="round"/>`;
   return `<marker id="${id}" viewBox="0 0 12 10" markerWidth="14" markerHeight="12" refX="10" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse">${shape}</marker>`;
 }
-/** The chip around a connector label: about 7 px for each character of 12 px text. */
-const labelBox = (text: string, at: Point): Rect => { const width = text.length * 7 + 10; return { x: at.x - width / 2, y: at.y - 9, width, height: 18 }; };
+/** A generous width of 12 px IBM Plex Sans text: wide letters and CJK count more than narrow ones. */
+export function labelWidth(text: string): number {
+  let width = 0;
+  for (const char of text) {
+    const code = char.codePointAt(0) ?? 0;
+    width += code >= 0x2e80 ? 12.5 : /[MWmw@%]/.test(char) ? 12 : /[A-Z0-9#&]/.test(char) ? 8.5 : /[ilj.,:;'|!()\[\] ]/.test(char) ? 4 : 7;
+  }
+  return Math.ceil(width);
+}
+/** The chip around a connector label. */
+const labelBox = (text: string, at: Point): Rect => { const width = labelWidth(text) + 10; return { x: at.x - width / 2, y: at.y - 9, width, height: 18 }; };
 function labelSvg(text: string, at: Point, palette: Palette): string {
   const { width, height } = labelBox(text, at);
   return `<rect x="${num(at.x - width / 2)}" y="${num(at.y - height / 2)}" width="${num(width)}" height="${height}" rx="3" fill="${palette.panel}"/><text x="${num(at.x)}" y="${num(at.y)}" font-size="12" font-family="${escape(FONT)}" fill="${palette.text}" text-anchor="middle" dominant-baseline="central">${escape(text)}</text>`;
@@ -222,12 +238,27 @@ export function diagramSvg(graph: Diagram, options: SvgOptions): DiagramImage | 
     return nodeSvg(node, r, palette, `c${i}`, defs);
   });
   const groups = shapes.filter((_, i) => drawn[i]?.shape === "group"), boxes = shapes.filter((_, i) => drawn[i]?.shape !== "group");
-  const lines = routes.map(({ edge, path, labels }) => {
+  const hollow = (marker: Marker) => marker === "triangle" || marker === "diamond" || marker === "circle";
+  /** The unit vector from a connector end out along its line: the side's normal, or toward the nearest bend point. */
+  const outward = (at: Point, side: Side, toward: Point | undefined): Point => {
+    if (toward) { const dx = toward.x - at.x, dy = toward.y - at.y, length = Math.hypot(dx, dy) || 1; return { x: dx / length, y: dy / length }; }
+    return side === "left" ? { x: -1, y: 0 } : side === "right" ? { x: 1, y: 0 } : side === "top" ? { x: 0, y: -1 } : { x: 0, y: 1 };
+  };
+  const lines = routes.map(({ edge, path, labels, source, target }, index) => {
     const colour = edge.colour ?? palette.text2;
     const dash = edge.line === "dashed" ? ' stroke-dasharray="7 4"' : edge.line === "dotted" ? ' stroke-dasharray="2 4"' : "";
     const start = edge.startMarker === "none" ? "" : ` marker-start="url(#${markerId(edge.startMarker, colour)})"`;
     const end = edge.endMarker === "none" ? "" : ` marker-end="url(#${markerId(edge.endMarker, colour)})"`;
-    return `<g data-id="${escape(edge.id)}"><path d="${escape(path)}" fill="none" stroke="${escape(colour)}" stroke-width="${num(edge.width)}"${dash}${start}${end}/>${labels.map(([text, at]) => text ? labelSvg(text, at, palette) : "").join("")}</g>`;
+    const text = labels.map(([label, at]) => label ? labelSvg(label, at, palette) : "").join("");
+    const line = `fill="none" stroke="${escape(colour)}" stroke-width="${num(edge.width)}"${dash}`;
+    // Without a background, a hollow marker shows what is behind it: a mask hides the line under it.
+    const holes = options.background ? [] : [
+      ...(hollow(edge.startMarker) ? [[source, outward(source, edge.sourceSide, edge.points[0])] as const] : []),
+      ...(hollow(edge.endMarker) ? [[target, outward(target, edge.targetSide, edge.points.at(-1))] as const] : []),
+    ];
+    if (!holes.length) return `<g data-id="${escape(edge.id)}"><path d="${escape(path)}" ${line}${start}${end}/>${text}</g>`;
+    defs.push(`<mask id="k${index}" maskUnits="userSpaceOnUse" x="${left}" y="${top}" width="${width}" height="${height}"><rect x="${left}" y="${top}" width="${width}" height="${height}" fill="#fff"/>${holes.map(([tip, n]) => `<circle cx="${num(tip.x + n.x * 6)}" cy="${num(tip.y + n.y * 6)}" r="6" fill="#000"/>`).join("")}</mask>`);
+    return `<g data-id="${escape(edge.id)}"><path d="${escape(path)}" ${line} mask="url(#k${index})"/><path d="${escape(path)}" fill="none" stroke="none"${start}${end}/>${text}</g>`;
   });
   const background = options.background ? `<rect x="${left}" y="${top}" width="${width}" height="${height}" fill="${palette.canvas}"/>` : "";
   const title = `<title>${escape(graph.name)}</title>`;

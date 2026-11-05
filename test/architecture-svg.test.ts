@@ -3,7 +3,7 @@ import { createDiagram, diagramSchema, type Diagram } from "../src/architecture/
 import { createNode, type DiagramNode } from "../src/architecture/nodes.ts";
 import { applyRelationship, createEdge } from "../src/architecture/edges.ts";
 import { groupItems } from "../src/architecture/layout.ts";
-import { diagramSvg, wrap, type DiagramImage } from "../src/architecture/svg.ts";
+import { diagramSvg, labelWidth, wrap, type DiagramImage } from "../src/architecture/svg.ts";
 
 function sample(): { graph: Diagram; web: DiagramNode; api: DiagramNode; db: DiagramNode } {
   const web = createNode("box", { x: 0, y: 0 }, "Web app");
@@ -118,4 +118,39 @@ test("control characters are removed and UI links show as on the canvas", () => 
   expect(svg).toContain(">Badname<");
   expect(svg).toContain("↗ 2 UI links");
   expect(svg).not.toContain("<script");
+});
+
+test("class compartments share the height, keep long words, and every shape shows its UI links", () => {
+  const box = createNode("class", { x: 0, y: 0 }, "Busy");
+  box.attributes = Array.from({ length: 7 }, (_, i) => `field${i}: string`).join("\n") + "\nlongAttributeNameThatTheCanvasKeepsOnOneLine: string";
+  box.operations = "saveNote()\nload(\"x\")";
+  const area = (svg: string, id: string) => { const m = svg.match(new RegExp(`<clipPath id="${id}"><rect x="[^"]+" y="([^"]+)" width="[^"]+" height="([^"]+)"`)); if (!m) throw new Error(`No ${id}`); return Number(m[2]); };
+  const svg = image(diagramSvg(diagramSchema.parse({ ...createDiagram(), nodes: [box] }), { theme: "dark", background: true })).svg;
+  expect(Math.abs(area(svg, "c0a") - area(svg, "c0o"))).toBeLessThanOrEqual(1);
+  expect(area(svg, "c0o")).toBeGreaterThan(40);
+  // The canvas pre-wrap breaks at spaces only: the long word stays whole.
+  expect(svg).toContain(">longAttributeNameThatTheCanvasKeepsOnOneLine:<");
+  for (const shape of ["class", "actor", "group", "ellipse"] as const) {
+    const node = createNode(shape, { x: 0, y: 0 }, "Linked");
+    node.references.push({ design: "home", page: "index.html", node: null });
+    expect(image(diagramSvg(diagramSchema.parse({ ...createDiagram(), nodes: [node] }), { theme: "dark", background: true })).svg).toContain("↗ 1 UI link<");
+  }
+});
+
+test("wide label text gets a wide chip; U+FFFE and U+FFFF go", () => {
+  // IBM Plex Sans 12 px: "W" is about 11.9 px wide; "i" about 3.3 px.
+  expect(labelWidth("W".repeat(32))).toBeGreaterThanOrEqual(380);
+  expect(labelWidth("i".repeat(32))).toBeLessThan(140);
+  expect(labelWidth("漢字")).toBeGreaterThanOrEqual(24);
+  const box = createNode("box", { x: 0, y: 0 }, "a￾b￿c");
+  expect(image(diagramSvg(diagramSchema.parse({ ...createDiagram(), nodes: [box] }), { theme: "dark", background: true })).svg).toContain(">abc<");
+});
+
+test("without a background, a mask hides the line under hollow markers and the markers stay", () => {
+  const { graph } = sample();
+  const clear = image(diagramSvg(graph, { theme: "light", background: false })).svg;
+  // One hollow marker (the inheritance triangle); the filled diamond needs no mask.
+  expect(clear.match(/<mask id="k\d+"/g)).toHaveLength(1);
+  expect(clear).toMatch(/<path d="[^"]+" fill="none" stroke="none" marker-start="url\(#m\d+\)"\/>|<path d="[^"]+" fill="none" stroke="none" marker-end="url\(#m\d+\)"\/>/);
+  expect(image(diagramSvg(graph, { theme: "light", background: true })).svg).not.toContain("<mask");
 });
