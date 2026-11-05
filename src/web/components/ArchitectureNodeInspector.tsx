@@ -16,7 +16,7 @@ export function ArchitectureNodeInspector({ node, designs, onChange, onReference
     <label className="uml-check"><input type="checkbox" checked={node.locked} onChange={e => patch({ locked: e.target.checked })}/>Locked</label>
     <fieldset disabled={node.locked}>
       <TextField label="Box name" value={node.name} onChange={name => patch({ name })}/>
-      <label className="field">Shape<select className="select" value={node.shape} onChange={e => { const shape = shapeSchema.safeParse(e.target.value); if (shape.success) patch({ shape: shape.data }); }}>{shapeSchema.options.map(shape => <option key={shape}>{shape}</option>)}</select></label>
+      <label className="field">Shape<select className="select" aria-label="Shape" value={node.shape} onChange={e => { const shape = shapeSchema.safeParse(e.target.value); if (shape.success) patch({ shape: shape.data }); }}>{shapeSchema.options.map(shape => <option key={shape}>{shape}</option>)}</select></label>
       <TextField label="Box content" value={node.content} multiline onChange={content => patch({ content })}/>
       {node.shape === "class" && <><TextField label="Stereotype" value={node.stereotype} onChange={stereotype => patch({ stereotype })}/><TextField label="Attributes" multiline value={node.attributes} onChange={attributes => patch({ attributes })}/><TextField label="Operations" multiline value={node.operations} onChange={operations => patch({ operations })}/></>}
       <div className="uml-field-row"><NumberField label="X" value={node.position.x} onChange={x => patch({ position: { ...node.position, x } })}/><NumberField label="Y" value={node.position.y} onChange={y => patch({ position: { ...node.position, y } })}/></div>
@@ -30,7 +30,7 @@ export function ArchitectureNodeInspector({ node, designs, onChange, onReference
       <button className="btn btn-ghost btn-sm" aria-label={`Remove UI link ${i + 1}`} disabled={node.locked} onClick={() => patch({ references: node.references.filter((_, n) => n !== i) })}>×</button>
     </div>)}
     <fieldset disabled={node.locked || node.references.length >= 30}>
-      <label className="field">UI design<select className="select" value={design} onChange={e => setDesign(e.target.value)}>{designs.map(name => <option key={name}>{name}</option>)}</select></label>
+      <label className="field">UI design<select className="select" aria-label="UI design" value={design} onChange={e => setDesign(e.target.value)}>{designs.map(name => <option key={name}>{name}</option>)}</select></label>
       <TextField label="UI page" value={page} onChange={setPage}/><TextField label="UI node (optional)" value={oid} onChange={setOid}/>
       <button className="btn btn-secondary" disabled={!design} onClick={() => {
         const reference = uiReferenceSchema.safeParse({ design, page, node: oid.trim() || null });

@@ -3,7 +3,7 @@ import { lineStyleSchema, sideSchema } from "../../architecture/nodes.ts";
 import { ColourField, NumberField, TextField } from "./ArchitectureFields.tsx";
 
 function Choice<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: readonly T[]; onChange: (value: T) => void }) {
-  return <label className="field">{label}<select className="select" value={value} onChange={e => { const next = options.find(option => option === e.target.value); if (next !== undefined) onChange(next); }}>{options.map(option => <option key={option}>{option}</option>)}</select></label>;
+  return <label className="field">{label}<select className="select" aria-label={label} value={value} onChange={e => { const next = options.find(option => option === e.target.value); if (next !== undefined) onChange(next); }}>{options.map(option => <option key={option}>{option}</option>)}</select></label>;
 }
 export function ArchitectureEdgeInspector({ edge, onChange }: { edge: DiagramEdge; onChange: (edge: DiagramEdge) => void }) {
   const patch = (next: Partial<DiagramEdge>) => onChange({ ...edge, ...next });
