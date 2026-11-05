@@ -35,6 +35,7 @@ test.skipIf(!hasBrowser)("UML is optional, edits real graphs, preserves data and
       await page.getByRole("spinbutton", { name: "X", exact: true }).fill(x ?? "0");
       await page.getByRole("spinbutton", { name: "Y", exact: true }).fill("100");
     }
+    await page.getByRole("textbox", { name: "Stereotype", exact: true }).fill("service");
     await page.getByRole("textbox", { name: "Attributes", exact: true }).fill("endpoint: URL");
     await page.getByRole("textbox", { name: "Operations", exact: true }).fill("saveNote()");
     const from = await page.getByLabel("Connect right of Web app", { exact: true }).boundingBox();
@@ -57,6 +58,7 @@ test.skipIf(!hasBrowser)("UML is optional, edits real graphs, preserves data and
     await page.waitForFunction(() => document.querySelector(".uml-save-state")?.textContent === "Saved");
     let stored = await readArchitecture(workspace, "sample");
     expect(stored.state.diagrams[0]?.nodes).toHaveLength(2);
+    expect(stored.state.diagrams[0]?.nodes.find(n => n.shape === "class")).toMatchObject({ stereotype: "service", attributes: "endpoint: URL", operations: "saveNote()" });
     expect(stored.state.diagrams[0]?.edges[0]?.endMarker).toBe("triangle");
     expect(stored.state.diagrams[0]?.edges[0]?.endLabel).toBe("0..*");
     expect(await page.getByRole("button", { name: "Undo", exact: true }).isEnabled()).toBe(true);
