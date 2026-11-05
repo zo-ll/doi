@@ -71,3 +71,8 @@
 .uml-ui-reference { display: flex; }
 .uml-ui-reference > .btn:first-child { flex: 1; min-width: 0; white-space: normal; text-align: left; }
 .uml-hint { margin: 0; padding: var(--space-2) var(--space-3); color: var(--text-3); font-size: var(--text-meta); }
+.uml-menu .uml-shape-menu { min-width: 200px; max-height: min(70vh, 520px); overflow-y: auto; }
+.uml-menu-label { padding: var(--space-1) var(--space-2) 0; font-size: var(--text-meta); color: var(--text-2); }
+.uml-guide { position: absolute; pointer-events: none; background: var(--accent); z-index: 20000; }
+.uml-guide--x { top: -100000px; width: 1px; height: 200000px; }
+.uml-guide--y { left: -100000px; height: 1px; width: 200000px; }

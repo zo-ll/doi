@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Background, ConnectionMode, Controls, ReactFlow, type Connection, type EdgeChange, type NodeChange, type ReactFlowInstance } from "@xyflow/react";
+import { Background, ConnectionMode, Controls, ReactFlow, ViewportPortal, type Connection, type EdgeChange, type NodeChange, type ReactFlowInstance } from "@xyflow/react";
 import { createNode, shapeSchema, type Shape, type uiReferenceSchema } from "../../architecture/nodes.ts";
 import type { z } from "zod";
 import { createEdge } from "../../architecture/edges.ts";
 import { diagramSchema, type Diagram } from "../../architecture/schema.ts";
 import { architectureErrorMessage } from "../../architecture/errors.ts";
 import { duplicateItems, removeItems } from "../../architecture/edit.ts";
+import { absolutePosition, alignItems, copyItems, distributeItems, groupItems, nudgeItems, pasteItems, readClipboard, reorderItems, snapToGuides, ungroupItems, type AlignMode, type Clipboard, type Guide, type OrderMode } from "../../architecture/layout.ts";
 import { diagramFile, MAX_DIAGRAM_FILE_BYTES, readDiagramFile } from "../../architecture/interchange.ts";
 import { applyGraphChanges, attachment, flowEdges, flowNodes } from "../architecture-flow.ts";
 import { saveBlob } from "../export.ts";
@@ -29,7 +30,9 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
   const [grid, setGrid] = useState(true), [snap, setSnap] = useState(true);
   const [comment, setComment] = useState("");
   const [notice, setNotice] = useState<{ kind: "status" | "error"; text: string } | null>(null);
-  const clean = useRef(diagram), gesture = useRef<Diagram | null>(null), canvas = useRef<HTMLDivElement>(null);
+  const [guides, setGuides] = useState<{ origin: { x: number; y: number }; lines: Guide[] }>({ origin: { x: 0, y: 0 }, lines: [] });
+  const clean = useRef(diagram), gesture = useRef<Diagram | null>(null), canvas = useRef<HTMLDivElement>(null), section = useRef<HTMLElement>(null);
+  const clipboard = useRef<{ clip: Clipboard; pastes: number } | null>(null);
   const graph = doc.graph;
   const dirty = JSON.stringify(graph) !== JSON.stringify(clean.current);
   useEffect(() => { onDirty(dirty); }, [dirty, onDirty]);
@@ -38,6 +41,10 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
     if (JSON.stringify(doc.graph) === JSON.stringify(diagram)) { clean.current = diagram; return; }
     if (JSON.stringify(doc.graph) === JSON.stringify(clean.current)) { clean.current = diagram; setDoc(current => ({ ...current, graph: diagram })); }
   }, [diagram]);
+  useEffect(() => {
+    const close = (event: PointerEvent) => { for (const menu of document.querySelectorAll<HTMLDetailsElement>(".uml-toolbar details[open]")) if (!(event.target instanceof Node && menu.contains(event.target))) menu.open = false; };
+    document.addEventListener("pointerdown", close, true); return () => document.removeEventListener("pointerdown", close, true);
+  }, []);
   useEffect(() => {
     if (!dirty) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
@@ -80,24 +87,108 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
   }
   function changes(changes: (NodeChange | EdgeChange)[]) {
     if (changes.some(change => change.type === "select")) setSelected(current => { const next = new Set(current); for (const change of changes) if (change.type === "select") { if (change.selected) next.add(change.id); else next.delete(change.id); } return next.size === current.size && [...next].every(id => current.has(id)) ? current : next; });
+    // Guides apply to a pointer drag of one box, including the final position when the drag ends.
+    const moving = changes.filter(c => c.type === "position" && c.position);
+    const single = moving.length === 1 && gesture.current && !changes.some(c => c.type === "dimensions") ? moving[0] : undefined;
+    if (single?.type === "position" && single.position) {
+      const node = graph.nodes.find(n => n.id === single.id);
+      const snapped = snapToGuides(graph, single.id, single.position, 6 / (flow?.getZoom() ?? 1));
+      setGuides({ origin: node?.parent ? absolutePosition(graph, node.parent) : { x: 0, y: 0 }, lines: single.dragging ? snapped.guides : [] });
+      changes = changes.map(c => c === single ? { ...single, position: snapped.position } : c);
+    } else if (moving.some(c => c.type === "position" && !c.dragging)) setGuides(current => current.lines.length ? { ...current, lines: [] } : current);
     if (changes.some(c => c.type === "position" || c.type === "dimensions" && c.setAttributes || c.type === "remove")) edit(g => applyGraphChanges(g, changes));
   }
   function duplicate() { const result = duplicateItems(graph, selected); edit(() => result.graph); setSelected(result.ids); }
+  function copy(cut: boolean): Clipboard | null {
+    const clip = copyItems(graph, selected);
+    if (!clip) return null;
+    clipboard.current = { clip, pastes: 0 };
+    if (cut) { const ids = new Set([...clip.nodes.map(n => n.id), ...selected]); edit(g => removeItems(g, ids)); setSelected(new Set()); }
+    setNotice({ kind: "status", text: `${cut ? "Cut" : "Copied"} ${clip.nodes.length} box${clip.nodes.length === 1 ? "" : "es"} and ${clip.edges.length} connector${clip.edges.length === 1 ? "" : "s"}.` });
+    return clip;
+  }
+  function paste(clip: Clipboard | null) {
+    if (!clip) return;
+    if (clipboard.current?.clip !== clip) clipboard.current = { clip, pastes: 0 };
+    const count = ++clipboard.current.pastes;
+    const result = pasteItems(graph, clip, { x: 24 * count, y: 24 * count });
+    if ("error" in result) { setNotice({ kind: "error", text: result.error }); return; }
+    edit(() => result.graph); setSelected(result.ids);
+  }
+  function arrange(change: (graph: Diagram) => Diagram | { error: string } | { graph: Diagram; select: Set<string> }) {
+    const result = change(graph);
+    if ("error" in result) { setNotice({ kind: "error", text: result.error }); return; }
+    if ("select" in result) { edit(() => result.graph); setSelected(result.select); return; }
+    edit(() => result);
+  }
+  const group = () => arrange(g => { const r = groupItems(g, selected); return "error" in r ? r : { graph: r.graph, select: new Set([r.group]) }; });
+  const ungroup = () => arrange(g => { const r = ungroupItems(g, selected); return "error" in r ? r : { graph: r.graph, select: r.children }; });
+  const order = (mode: OrderMode) => arrange(g => reorderItems(g, selected, mode));
+  const align = (mode: AlignMode) => arrange(g => alignItems(g, selected, mode));
+  const lock = (locked: boolean) => arrange(g => ({ ...g, nodes: g.nodes.map(n => selected.has(n.id) ? { ...n, locked } : n), edges: g.edges.map(e => selected.has(e.id) ? { ...e, locked } : e) }));
+  function fitSelection() {
+    const ids = [...selected].filter(id => graph.nodes.some(n => n.id === id));
+    if (ids.length) flow?.fitView({ nodes: ids.map(id => ({ id })), padding: 0.3, maxZoom: 1.5 }).catch(showError);
+  }
   const nodes = useMemo(() => flowNodes(graph, selected).map(node => ({ ...node, draggable: !busy && node.draggable, data: { ...node.data, busy, onGesture: (active: boolean) => active ? beginGesture() : endGesture() } })), [graph, selected, busy]);
   const edges = useMemo(() => flowEdges(graph, selected), [graph, selected]);
   const pickedNode = selected.size === 1 ? graph.nodes.find(n => selected.has(n.id)) : undefined;
   const pickedEdge = selected.size === 1 ? graph.edges.find(e => selected.has(e.id)) : undefined;
   const selectedNodes = graph.nodes.filter(n => selected.has(n.id));
-  return <section className="uml-workspace" aria-label="UML editor" onKeyDown={event => {
+  const editable = (target: EventTarget | null) => target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+  const arrows: Readonly<Record<string, [number, number]>> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+  const selectedGroups = graph.nodes.filter(n => selected.has(n.id) && n.shape === "group");
+  function onKey(event: KeyboardEvent) {
     const mod = event.ctrlKey || event.metaKey, key = event.key.toLowerCase();
     if (mod && key === "s") { event.preventDefault(); if (!busy) save(); return; }
-    const target = event.target;
-    if (busy || target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
-    if (mod && key === "z") { event.preventDefault(); undo(event.shiftKey); }
-    if (mod && key === "d") { event.preventDefault(); event.stopPropagation(); duplicate(); }
-    if (key === "delete" || key === "backspace") { event.preventDefault(); edit(g => removeItems(g, selected)); setSelected(new Set()); }
-    if (key === "escape") setSelected(new Set());
-  }}>
+    if (busy || editable(document.activeElement)) return;
+    const step = arrows[event.key];
+    if (step && !mod && !event.altKey) {
+      if (!selectedNodes.length) return;
+      event.preventDefault(); event.stopPropagation();
+      const distance = event.shiftKey ? 16 : 1;
+      edit(g => nudgeItems(g, selected, step[0] * distance, step[1] * distance));
+      return;
+    }
+    const run = (action: () => void) => { event.preventDefault(); event.stopPropagation(); action(); };
+    if (mod && key === "z") run(() => undo(event.shiftKey));
+    else if (mod && key === "y") run(() => undo(true));
+    else if (mod && key === "d") run(duplicate);
+    else if (mod && key === "a") run(() => setSelected(new Set([...graph.nodes, ...graph.edges].map(item => item.id))));
+    else if (mod && key === "g") run(event.shiftKey ? ungroup : group);
+    else if (!mod && (key === "delete" || key === "backspace")) run(() => { edit(g => removeItems(g, selected)); setSelected(new Set()); });
+    else if (key === "escape" && selected.size) setSelected(new Set());
+  }
+  function onClipboard(event: ClipboardEvent) {
+    if (editable(document.activeElement) || !event.clipboardData) return;
+    if (event.type === "paste") {
+      if (busy) return;
+      const clip = readClipboard(event.clipboardData.getData("text/plain"));
+      if (clip) { event.preventDefault(); paste(clip); }
+      return;
+    }
+    if (!selected.size || event.type === "cut" && busy) return;
+    const clip = copy(event.type === "cut");
+    if (clip) { event.preventDefault(); event.clipboardData.setData("text/plain", JSON.stringify(clip)); }
+  }
+  const handlers = useRef({ onKey, onClipboard });
+  handlers.current = { onKey, onClipboard };
+  useEffect(() => {
+    /**
+     * Shortcuts act when the focus is in the editor or on the page body, never in a field or over a dialog.
+     * Chrome can send a clipboard event to an old text selection elsewhere, so the focus decides, not the event target.
+     */
+    const inScope = () => {
+      const focus = document.activeElement;
+      return !document.querySelector('[aria-modal="true"]') && (!focus || focus === document.body || !!section.current?.contains(focus));
+    };
+    const key = (event: KeyboardEvent) => { if (typeof event.key === "string" && inScope()) handlers.current.onKey(event); };
+    const clip = (event: ClipboardEvent) => { if (inScope()) handlers.current.onClipboard(event); };
+    document.addEventListener("keydown", key, true);
+    for (const type of ["copy", "cut", "paste"] as const) document.addEventListener(type, clip);
+    return () => { document.removeEventListener("keydown", key, true); for (const type of ["copy", "cut", "paste"] as const) document.removeEventListener(type, clip); };
+  }, []);
+  return <section className="uml-workspace" aria-label="UML editor" ref={section}>
     <header className="uml-canvas-header"><button className="btn btn-ghost" onClick={onBack} disabled={busy}>← Back to UI design</button><strong>{graph.name}</strong><span className="chip">UML</span><span className="uml-save-state" role="status">{busy ? "Save…" : dirty ? "Unsaved changes" : "Saved"}</span><button className="btn btn-primary" disabled={busy || !dirty} onClick={save}>Save diagram</button><button className="btn btn-ghost" disabled={busy} onClick={onReload}>Load latest</button></header>
     <div className="uml-toolbar" aria-label="Diagram tools">
       <details><summary className="btn btn-secondary">+ Shape</summary><div className="uml-shape-menu">{shapeSchema.options.map(shape => <button className="btn" key={shape} disabled={busy || graph.nodes.length >= 2000} onClick={event => { add(shape); event.currentTarget.closest("details")?.removeAttribute("open"); }}>Add {shape}</button>)}</div></details>
@@ -105,15 +196,33 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
       <button className="btn btn-ghost" onClick={() => undo()} disabled={busy || !doc.past.length}>Undo</button><button className="btn btn-ghost" onClick={() => undo(true)} disabled={busy || !doc.future.length}>Redo</button>
       <button className="btn btn-ghost" onClick={duplicate} disabled={busy || !selectedNodes.length}>Duplicate</button><button className="btn btn-ghost" disabled={busy || !selected.size} onClick={() => { edit(g => removeItems(g, selected)); setSelected(new Set()); }}>Delete selected</button>
       <label className="uml-check"><input type="checkbox" checked={grid} onChange={e => setGrid(e.target.checked)}/>Grid</label><label className="uml-check"><input type="checkbox" checked={snap} onChange={e => setSnap(e.target.checked)}/>Snap</label>
+      <details className="uml-menu"><summary className="btn btn-secondary">Arrange</summary><div className="uml-shape-menu" role="group" aria-label="Arrange" onClick={event => { if (event.target instanceof HTMLButtonElement) event.currentTarget.closest("details")?.removeAttribute("open"); }}>
+        <span className="uml-menu-label">Align</span>
+        {([["left", "Align left"], ["centre", "Align centres"], ["right", "Align right"], ["top", "Align top"], ["middle", "Align middles"], ["bottom", "Align bottom"]] as const).map(([mode, label]) => <button className="btn" key={mode} disabled={busy || selectedNodes.length < 2} onClick={() => align(mode)}>{label}</button>)}
+        <span className="uml-menu-label">Distribute</span>
+        <button className="btn" disabled={busy || selectedNodes.length < 3} onClick={() => arrange(g => distributeItems(g, selected, "horizontal"))}>Distribute horizontally</button>
+        <button className="btn" disabled={busy || selectedNodes.length < 3} onClick={() => arrange(g => distributeItems(g, selected, "vertical"))}>Distribute vertically</button>
+        <span className="uml-menu-label">Order</span>
+        {([["front", "Bring to front"], ["forward", "Bring forward"], ["backward", "Send backward"], ["back", "Send to back"]] as const).map(([mode, label]) => <button className="btn" key={mode} disabled={busy || !selectedNodes.length} onClick={() => order(mode)}>{label}</button>)}
+        <span className="uml-menu-label">Group</span>
+        <button className="btn" disabled={busy || !selectedNodes.length} onClick={group}>Group selection</button>
+        <button className="btn" disabled={busy || !selectedGroups.length} onClick={ungroup}>Ungroup</button>
+        <button className="btn" disabled={busy || !selected.size} onClick={() => lock(true)}>Lock selection</button>
+        <button className="btn" disabled={busy || !selected.size} onClick={() => lock(false)}>Unlock selection</button>
+      </div></details>
+      <button className="btn btn-ghost" disabled={!selected.size} onClick={() => copy(false)}>Copy</button>
+      <button className="btn btn-ghost" disabled={busy || !clipboard.current} onClick={() => paste(clipboard.current?.clip ?? null)}>Paste</button>
       <button className="btn btn-ghost" onClick={() => { flow?.fitView({ padding: 0.15 }).catch(showError); }}>Fit all</button>
+      <button className="btn btn-ghost" disabled={!selectedNodes.length} onClick={fitSelection}>Fit selection</button>
       <button className="btn btn-secondary" onClick={() => { try { saveBlob(new Blob([diagramFile(graph)], { type: "application/json" }), `${graph.id}.doi-diagram.json`); } catch (error) { showError(error); } }}>Export JSON</button>
       <label className={`btn btn-secondary${busy ? " is-disabled" : ""}`}>Import JSON<input className="visually-hidden" type="file" accept=".json,application/json" disabled={busy} onChange={async event => { const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; try { if (file.size > MAX_DIAGRAM_FILE_BYTES) throw new Error("The diagram file exceeds 4 MB."); await onImport(readDiagramFile(await file.text())); } catch (error) { showError(error); } }}/></label>
     </div>
     {notice && <p className={`uml-notice${notice.kind === "error" ? " field-error" : ""}`} role={notice.kind === "error" ? "alert" : "status"}>{notice.text}</p>}
     <div className="uml-flow" ref={canvas}><ReactFlow<FlowNode, FlowEdge> nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onInit={setFlow} onNodesChange={changes} onEdgesChange={changes} onConnect={connection => connect(connection)} onReconnect={(edge, connection) => connect(connection, edge.id)} onNodeDragStart={beginGesture} onNodeDragStop={endGesture} onSelectionDragStart={beginGesture} onSelectionDragStop={endGesture} onPaneClick={() => setSelected(new Set())} connectionMode={ConnectionMode.Loose} selectionOnDrag panOnDrag={[1, 2]} multiSelectionKeyCode={["Control", "Meta", "Shift"]} deleteKeyCode={null} snapToGrid={snap} snapGrid={[16, 16]} defaultViewport={{ x: 40, y: 60, zoom: 1 }} minZoom={0.2} maxZoom={3} colorMode="system">
       {grid && <Background gap={16} size={1}/>}<Controls showInteractive={false}/>
+      <ViewportPortal>{guides.lines.map(line => <div key={`${line.axis}${line.at}`} className={`uml-guide uml-guide--${line.axis}`} data-testid="uml-guide" style={line.axis === "x" ? { left: guides.origin.x + line.at } : { top: guides.origin.y + line.at }}/>)}</ViewportPortal>
     </ReactFlow></div>
-    <footer className="uml-status">{graph.nodes.length} boxes · {graph.edges.length} connectors · {selected.size} selected<span>Drag handles to connect · Shift-click to select several · Space-drag to pan · Ctrl/⌘S to save</span></footer>
+    <footer className="uml-status">{graph.nodes.length} boxes · {graph.edges.length} connectors · {selected.size} selected<span>Drag handles to connect · Shift-click to select several · Arrows nudge (Shift: 16 px) · Ctrl/⌘C, X, V copy · Ctrl/⌘G group, Shift ungroups · Ctrl/⌘S to save</span></footer>
     {inspector && createPortal(<fieldset className="uml-inspector" disabled={busy}>
       {tab === "uml" && (pickedNode ? <ArchitectureNodeInspector node={pickedNode} designs={designs} onChange={node => edit(g => ({ ...g, nodes: g.nodes.map(n => n.id === node.id ? node : n) }))} onReference={onReference}/> : pickedEdge ? <ArchitectureEdgeInspector edge={pickedEdge} onChange={edge => edit(g => ({ ...g, edges: g.edges.map(e => e.id === edge.id ? edge : e) }))}/> : <p className="uml-empty">Select a box or connector to edit its properties.</p>)}
       {tab === "comments" && <div className="uml-properties"><h3>Diagram comments</h3>{graph.comments.map(c => <article className="uml-comment" key={c.id}><strong>{c.status === "done" ? "Done" : "Open"} · {c.item}</strong><p>{c.text}</p><button className="btn btn-ghost" onClick={() => edit(g => ({ ...g, comments: g.comments.map(item => item.id === c.id ? { ...item, status: item.status === "open" ? "done" : "open" } : item) }))}>{c.status === "open" ? "Mark done" : "Reopen"}</button></article>)}<label className="field">Comment on the selected item<textarea className="textarea" maxLength={5000} value={comment} onChange={e => setComment(e.target.value)}/></label><button className="btn btn-secondary" disabled={selected.size !== 1 || !comment.trim()} onClick={() => { const item = [...selected][0]; if (item) { edit(g => ({ ...g, comments: [...g.comments, { id: crypto.randomUUID(), item, text: comment.trim(), status: "open", createdAt: new Date().toISOString() }] })); setComment(""); } }}>Add diagram comment</button></div>}

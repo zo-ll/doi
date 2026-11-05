@@ -19,12 +19,13 @@ export function attachment(graph: Diagram, node: string, handle: string | null, 
 export function flowNodes(graph: Diagram, selected: ReadonlySet<string>): FlowNode[] {
   const nodes = new Map(graph.nodes.map(n => [n.id, n]));
   const depth = (id: string): number => { let n = nodes.get(id), level = 0; while (n?.parent && level < 21) { n = nodes.get(n.parent); level++; } return level; };
+  const order = new Map(graph.nodes.map((n, index) => [n.id, index]));
   return graph.nodes.toSorted((a, b) => depth(a.id) - depth(b.id)).map(item => ({
     id: item.id, type: "uml", position: item.position, parentId: item.parent ?? undefined,
     data: { item, ports: portsFor(graph, item.id) }, selected: selected.has(item.id),
     draggable: !item.locked, deletable: !item.locked, ariaLabel: item.name,
     width: item.size.width, height: item.size.height, measured: { ...item.size },
-    style: { width: item.size.width, height: item.size.height }, zIndex: item.shape === "group" ? 0 : 1,
+    style: { width: item.size.width, height: item.size.height }, zIndex: (item.shape === "group" ? 0 : 10_000) + (order.get(item.id) ?? 0),
   }));
 }
 export function flowEdges(graph: Diagram, selected: ReadonlySet<string>): FlowEdge[] {
