@@ -181,9 +181,10 @@ test.skipIf(!hasBrowser)("locked boxes stay put through the arrange tools and cu
     await arrange(page, "Bring to front");
     await page.keyboard.press("Shift+ArrowRight");
     await box(page, "Beta").click({ modifiers: ["Shift"] });
-    await arrange(page, "Align right");
+    await page.getByText("Arrange", { exact: true }).click();
+    expect(await page.getByRole("group", { name: "Arrange", exact: true }).getByRole("button", { name: "Align right", exact: true }).isDisabled()).toBe(true);
     await page.keyboard.press("Control+x");
-    await page.getByRole("alert").filter({ hasText: "Unlock the selected boxes before you cut them." }).waitFor();
+    await page.getByRole("alert").filter({ hasText: "Unlock the selected boxes and the boxes in the selected groups before you cut them." }).waitFor();
     let d = await saved();
     expect(d.nodes.map(n => n.name)).toEqual(["Alpha", "Beta", "Gamma"]);
     expect(byName(d, "Alpha").position).toEqual({ x: 40, y: 40 });
@@ -229,5 +230,36 @@ test.skipIf(!hasBrowser)("copy leaves a text selection and Ctrl+D without boxes 
     expect(await page.locator(".uml-status").innerText()).toContain("0 selected");
     await page.keyboard.press("Control+d");
     await page.getByRole("dialog", { name: "Design systems", exact: true }).waitFor();
+  });
+}, 30_000);
+
+test.skipIf(!hasBrowser)("a locked child blocks a group cut; a group with its children is one arrange unit; a connector alone is not copied", async () => {
+  await withTools(async (page, saved) => {
+    await box(page, "Alpha").click();
+    await box(page, "Beta").click({ modifiers: ["Shift"] });
+    await page.keyboard.press("Control+g");
+    await page.waitForFunction(() => document.querySelectorAll(".uml-node--group").length === 1);
+    await page.keyboard.press("Escape");
+    await box(page, "Alpha").click();
+    await arrange(page, "Lock selection");
+    await page.keyboard.press("Escape");
+    await box(page, "Group").click({ position: { x: 12, y: 8 } });
+    await page.keyboard.press("Control+x");
+    await page.getByRole("alert").filter({ hasText: "Unlock the selected boxes and the boxes in the selected groups before you cut them." }).waitFor();
+    expect(await page.locator(".react-flow__node").count()).toBe(4);
+    await box(page, "Beta").click({ modifiers: ["Shift"] });
+    await box(page, "Alpha").click({ modifiers: ["Shift"] });
+    await page.getByText("Arrange", { exact: true }).click();
+    const menu = page.getByRole("group", { name: "Arrange", exact: true });
+    expect(await menu.getByRole("button", { name: "Align left", exact: true }).isDisabled()).toBe(true);
+    await box(page, "Gamma").click({ modifiers: ["Shift"] });
+    await page.getByText("Arrange", { exact: true }).click();
+    expect(await menu.getByRole("button", { name: "Align left", exact: true }).isEnabled()).toBe(true);
+    await page.keyboard.press("Escape");
+    await page.locator(".react-flow__edge").first().click({ force: true });
+    expect(await page.locator(".uml-status").innerText()).toContain("1 selected");
+    await page.keyboard.press("Control+c");
+    await page.getByRole("alert").filter({ hasText: "Select one or more boxes to copy." }).waitFor();
+    expect((await saved()).nodes).toHaveLength(4);
   });
 }, 30_000);

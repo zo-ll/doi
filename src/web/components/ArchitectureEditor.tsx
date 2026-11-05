@@ -7,7 +7,7 @@ import { createEdge } from "../../architecture/edges.ts";
 import { diagramSchema, type Diagram } from "../../architecture/schema.ts";
 import { architectureErrorMessage } from "../../architecture/errors.ts";
 import { duplicateItems, removeItems } from "../../architecture/edit.ts";
-import { absolutePosition, alignItems, copyItems, distributeItems, groupItems, nudgeItems, pasteItems, readClipboard, reorderItems, snapToGuides, ungroupItems, type AlignMode, type Clipboard, type Guide, type OrderMode } from "../../architecture/layout.ts";
+import { absolutePosition, alignItems, movableNodes, copyItems, distributeItems, groupItems, nudgeItems, pasteItems, readClipboard, reorderItems, snapToGuides, ungroupItems, type AlignMode, type Clipboard, type Guide, type OrderMode } from "../../architecture/layout.ts";
 import { diagramFile, MAX_DIAGRAM_FILE_BYTES, readDiagramFile } from "../../architecture/interchange.ts";
 import { applyGraphChanges, attachment, flowEdges, flowNodes } from "../architecture-flow.ts";
 import { saveBlob } from "../export.ts";
@@ -100,9 +100,9 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
   }
   function duplicate() { const result = duplicateItems(graph, selected); edit(() => result.graph); setSelected(result.ids); }
   function copy(cut: boolean): Clipboard | null {
-    if (cut && graph.nodes.some(n => selected.has(n.id) && n.locked)) { setNotice({ kind: "error", text: "Unlock the selected boxes before you cut them." }); return null; }
     const clip = copyItems(graph, selected);
-    if (!clip) return null;
+    if (!clip) { setNotice({ kind: "error", text: "Select one or more boxes to copy." }); return null; }
+    if (cut && clip.nodes.some(n => n.locked)) { setNotice({ kind: "error", text: "Unlock the selected boxes and the boxes in the selected groups before you cut them." }); return null; }
     clipboard.current = { clip, pastes: 0 };
     if (cut) { const ids = new Set([...clip.nodes.map(n => n.id), ...selected]); edit(g => removeItems(g, ids)); setSelected(new Set()); }
     setNotice({ kind: "status", text: `${cut ? "Cut" : "Copied"} ${clip.nodes.length} box${clip.nodes.length === 1 ? "" : "es"} and ${clip.edges.length} connector${clip.edges.length === 1 ? "" : "s"}.` });
@@ -139,6 +139,8 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
   const editable = (target: EventTarget | null) => target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
   const arrows: Readonly<Record<string, [number, number]>> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
   const selectedGroups = graph.nodes.filter(n => selected.has(n.id) && n.shape === "group");
+  // Align and distribute count a group with its selected children as one unit.
+  const arrangeable = movableNodes(graph, selected).length;
   function onKey(event: KeyboardEvent) {
     const mod = event.ctrlKey || event.metaKey, key = event.key.toLowerCase();
     if (mod && key === "s") { event.preventDefault(); if (!busy) save(); return; }
@@ -158,7 +160,11 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
     else if (mod && key === "a") run(() => setSelected(new Set([...graph.nodes, ...graph.edges].map(item => item.id))));
     else if (mod && key === "g") run(event.shiftKey ? ungroup : group);
     else if (!mod && (key === "delete" || key === "backspace")) run(() => { edit(g => removeItems(g, selected)); setSelected(new Set()); });
-    else if (key === "escape" && selected.size) setSelected(new Set());
+    else if (key === "escape") {
+      const menus = section.current?.querySelectorAll<HTMLDetailsElement>(".uml-toolbar details[open]") ?? [];
+      if (menus.length) { for (const menu of menus) menu.open = false; return; }
+      if (selected.size) setSelected(new Set());
+    }
   }
   function onClipboard(event: ClipboardEvent) {
     if (editable(document.activeElement) || !event.clipboardData) return;
@@ -202,10 +208,10 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
       <label className="uml-check"><input type="checkbox" checked={grid} onChange={e => setGrid(e.target.checked)}/>Grid</label><label className="uml-check"><input type="checkbox" checked={snap} onChange={e => setSnap(e.target.checked)}/>Snap</label>
       <details className="uml-menu"><summary className="btn btn-secondary">Arrange</summary><div className="uml-shape-menu" role="group" aria-label="Arrange" onClick={event => { if (event.target instanceof HTMLButtonElement) event.currentTarget.closest("details")?.removeAttribute("open"); }}>
         <span className="uml-menu-label">Align</span>
-        {([["left", "Align left"], ["centre", "Align centres"], ["right", "Align right"], ["top", "Align top"], ["middle", "Align middles"], ["bottom", "Align bottom"]] as const).map(([mode, label]) => <button className="btn" key={mode} disabled={busy || selectedNodes.length < 2} onClick={() => align(mode)}>{label}</button>)}
+        {([["left", "Align left"], ["centre", "Align centres"], ["right", "Align right"], ["top", "Align top"], ["middle", "Align middles"], ["bottom", "Align bottom"]] as const).map(([mode, label]) => <button className="btn" key={mode} disabled={busy || arrangeable < 2} onClick={() => align(mode)}>{label}</button>)}
         <span className="uml-menu-label">Distribute</span>
-        <button className="btn" disabled={busy || selectedNodes.length < 3} onClick={() => arrange(g => distributeItems(g, selected, "horizontal"))}>Distribute horizontally</button>
-        <button className="btn" disabled={busy || selectedNodes.length < 3} onClick={() => arrange(g => distributeItems(g, selected, "vertical"))}>Distribute vertically</button>
+        <button className="btn" disabled={busy || arrangeable < 3} onClick={() => arrange(g => distributeItems(g, selected, "horizontal"))}>Distribute horizontally</button>
+        <button className="btn" disabled={busy || arrangeable < 3} onClick={() => arrange(g => distributeItems(g, selected, "vertical"))}>Distribute vertically</button>
         <span className="uml-menu-label">Order</span>
         {([["front", "Bring to front"], ["forward", "Bring forward"], ["backward", "Send backward"], ["back", "Send to back"]] as const).map(([mode, label]) => <button className="btn" key={mode} disabled={busy || !selectedNodes.length} onClick={() => order(mode)}>{label}</button>)}
         <span className="uml-menu-label">Group</span>
