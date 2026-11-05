@@ -239,6 +239,29 @@ UML is optional for each project. The first editor supports real boxes, class co
 
 The connector inspector has relationship presets, labels, markers, routes and attachment controls. A box can link to a UI design, page or node. **Back to UI design** returns to the normal design canvas. Chat sends UI requests only; the composer is disabled while a UML diagram owns the canvas.
 
+### Arrange a diagram
+
+Select several items with Shift-click, Ctrl/⌘A or a drag on the empty canvas. The **Arrange** menu has these tools:
+
+- **Align**: left, centres, right, top, middles or bottom. Select two or more boxes.
+- **Distribute**: equal gaps, horizontally or vertically. Select three or more boxes.
+- **Order**: bring to front, bring forward, send backward or send to back. Groups always draw behind other boxes.
+- **Group**: put the selected boxes into a new group, or ungroup a group. The boxes keep their positions and connectors. Remove the connectors of a group before you ungroup it.
+- **Lock** and **Unlock**: a locked item does not move, resize or change.
+
+| Shortcut | Action |
+| --- | --- |
+| Arrow keys | Move the selected boxes 1 px. Hold Shift to move 16 px. |
+| Ctrl/⌘C, Ctrl/⌘X, Ctrl/⌘V | Copy, cut and paste boxes and the connectors between them. A paste gives the copies new ids. |
+| Ctrl/⌘D | Duplicate the selection. |
+| Ctrl/⌘G, Ctrl/⌘Shift+G | Group, ungroup. |
+| Ctrl/⌘Z, Ctrl/⌘Shift+Z | Undo, redo. |
+| Delete | Delete the selection. |
+
+The shortcuts work when the focus is in the diagram, not in a text field. Copy uses the system clipboard, so you can paste into another diagram or another doi window.
+
+When you drag one box, a line shows where its edges or centre align with another box in the same group. The box snaps to that line. **Fit all** shows the whole diagram; **Fit selection** zooms to the selected boxes.
+
 **Hide UML** keeps saved diagrams. **Show UML in this project** restores the area. Rename, duplicate and delete controls appear in each diagram's menu.
 
 **Export JSON** saves an editable diagram. **Import JSON** adds a diagram to the current project. If the project already has a diagram with the same name, the import adds " copy" to the name. If a save conflict occurs, export your edits before **Load latest**. You can then import that file as another diagram.
