@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createEdge } from "../src/architecture/edges.ts";
-import { edgeRoute } from "../src/web/architecture-routing.ts";
+import { edgeRoute } from "../src/architecture/routing.ts";
 test("connector routes cover straight, elbow, curves, bends and self relations", () => {
   const edge = createEdge("a", "b");
   for (const route of ["straight", "elbow", "curved"] satisfies typeof edge.route[]) {

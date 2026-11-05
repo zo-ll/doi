@@ -1,6 +1,6 @@
 import { BaseEdge, EdgeText, useViewport, type Edge, type EdgeProps } from "@xyflow/react";
 import type { DiagramEdge, Marker } from "../../architecture/edges.ts";
-import { edgeRoute } from "../architecture-routing.ts";
+import { edgeRoute } from "../../architecture/routing.ts";
 export type FlowEdge = Edge<{ item: DiagramEdge }, "uml">;
 const glyphs: Readonly<Partial<Record<Marker, string>>> = {
   arrow: "M1 1L10 5L1 9Z", "open-arrow": "M1 1L10 5L1 9", triangle: "M1 0L10 5L1 10Z",
