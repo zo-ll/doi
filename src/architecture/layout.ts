@@ -18,18 +18,21 @@ export function absolutePosition(graph: Diagram, id: string): Point {
 function parentOrigin(graph: Diagram, node: DiagramNode): Point {
   return node.parent ? absolutePosition(graph, node.parent) : { x: 0, y: 0 };
 }
-/** True when a group above the node is in `ids`: the node moves with that group. */
-function insideSelected(graph: Diagram, node: DiagramNode, ids: ReadonlySet<string>): boolean {
+/**
+ * Unlocked nodes in the selection, in graph order, without the nodes that move with a selected group.
+ * One parent map per call: the walk is O(nodes × nesting depth).
+ */
+export function movableNodes(graph: Diagram, ids: ReadonlySet<string>): DiagramNode[] {
   const byId = new Map(graph.nodes.map(n => [n.id, n]));
-  let parent = node.parent, depth = 0;
-  while (parent && depth++ <= MAX_WALK) { if (ids.has(parent)) return true; parent = byId.get(parent)?.parent ?? null; }
-  return false;
-}
-/** Unlocked nodes in the selection, in graph order, without the nodes that move with a selected group. */
-function movable(graph: Diagram, ids: ReadonlySet<string>): DiagramNode[] {
   const unlocked = new Set(graph.nodes.filter(n => ids.has(n.id) && !n.locked).map(n => n.id));
-  return graph.nodes.filter(n => unlocked.has(n.id) && !insideSelected(graph, n, unlocked));
+  const inside = (node: DiagramNode) => {
+    let parent = node.parent, depth = 0;
+    while (parent && depth++ <= MAX_WALK) { if (unlocked.has(parent)) return true; parent = byId.get(parent)?.parent ?? null; }
+    return false;
+  };
+  return graph.nodes.filter(n => unlocked.has(n.id) && !inside(n));
 }
+const movable = movableNodes;
 function moveTo(graph: Diagram, targets: ReadonlyMap<string, Point>): Diagram {
   return { ...graph, nodes: graph.nodes.map(node => {
     const target = targets.get(node.id);
