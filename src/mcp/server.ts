@@ -8,6 +8,7 @@ import { readDesignFiles } from "../generation/context.ts";
 import { designOids } from "../generation/oids.ts";
 import { readElement, type ElementInfo } from "./element.ts";
 import { readChat } from "../workspace/chat.ts";
+import { readArchitecture } from "../workspace/architecture.ts";
 import { readComments } from "../workspace/comments.ts";
 import { activeDesignSystem, designSystemDir } from "../workspace/design-systems.ts";
 import { designFrames, isApp } from "../workspace/layout.ts";
@@ -77,6 +78,16 @@ export function createMcpServer(deps: McpDeps): McpServer {
       annotations: { readOnlyHint: true },
     },
     () => tool(async () => json({ projects: await listProjects(workspace) })),
+  );
+
+  server.registerTool(
+    "get_architecture",
+    {
+      description: "Reads the optional UML diagrams of a project, including the versioned graph, stable item ids, UI links and file revision. This does not create or enable UML.",
+      inputSchema: { project: projectArg },
+      annotations: { readOnlyHint: true },
+    },
+    ({ project }) => tool(async () => json(await readArchitecture(workspace, project))),
   );
 
   server.registerTool(

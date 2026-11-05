@@ -11,6 +11,9 @@ import {
   type ProviderStatus,
 } from "./api.ts";
 import { Canvas } from "./components/Canvas.tsx";
+import { ArchitectureEditor } from "./components/ArchitectureEditor.tsx";
+import { ArchitecturePanel } from "./components/ArchitecturePanel.tsx";
+import { useArchitecture } from "./architecture.ts";
 import { ChatPanel, type AppliedComment, type Selection } from "./components/ChatPanel.tsx";
 import { CommentsPanel } from "./components/CommentsPanel.tsx";
 import { NodeCssBlock } from "./components/NodeCssBlock.tsx";
@@ -59,21 +62,22 @@ type Panels = { chat: boolean; side: boolean };
 const isPanels = (v: unknown): v is Panels => typeof (v as Panels)?.chat === "boolean" && typeof (v as Panels)?.side === "boolean";
 
 function useLoad<T>(url: string | null): [Load<T>, () => void] {
-  const [load, setLoad] = useState<Load<T>>({ state: "loading" });
+  const [snapshot, setSnapshot] = useState<{ url: string | null; value: Load<T> }>({ url: null, value: { state: "loading" } });
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!url) return;
     let live = true;
-    // A reload keeps the old data on screen until the new data arrives.
-    setLoad((l) => (l.state === "ready" ? l : { state: "loading" }));
+    // Keep data for a reload, but never return another request's result.
+    setSnapshot(current => current.url === url && current.value.state === "ready" ? current : { url, value: { state: "loading" } });
     getJSON<T>(url)
-      .then((data) => live && setLoad({ state: "ready", data }))
-      .catch((e: unknown) => live && setLoad({ state: "error", message: e instanceof Error ? e.message : String(e) }));
+      .then(data => { if (live) setSnapshot({ url, value: { state: "ready", data } }); })
+      .catch((error: unknown) => { if (live) setSnapshot({ url, value: { state: "error", message: error instanceof Error ? error.message : String(error) } }); });
     return () => {
       live = false;
     };
   }, [url, attempt]);
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  const load: Load<T> = snapshot.url === url ? snapshot.value : { state: "loading" };
   return [load, retry];
 }
 
@@ -97,7 +101,30 @@ export function App() {
   const keepSelection = useCallback(() => void (keepSelectionUntil.current = Date.now() + 3000), []);
   const [navOpen, setNavOpen] = useState(false);
   const [panels, setPanels] = useState<Panels>(() => read(PANELS, isPanels) ?? { chat: true, side: true });
-  const [sideTab, setSideTab] = useState<"comments" | "history">("comments");
+  const [sideTab, setSideTab] = useState<"comments" | "history" | "uml">("comments");
+  const [umlOpen, setUmlOpen] = useState<string | null>(null);
+  const [umlDirty, setUmlDirty] = useState(false);
+  const [umlInspector, setUmlInspector] = useState<HTMLDivElement | null>(null);
+  const architecture = useArchitecture(active?.project ?? null);
+  const umlDiagram = architecture.load.state === "ready" && architecture.load.data.state.enabled ? architecture.load.data.state.diagrams.find(d => d.id === umlOpen) : undefined;
+  const umlMissing = umlOpen === null ? null : !active ? "project" : architecture.load.state !== "ready" || umlDiagram ? null : architecture.load.data.state.enabled ? "diagram" : "hidden";
+  useEffect(() => {
+    if (!umlMissing) return;
+    setUmlOpen(null); setUmlDirty(false);
+    if (umlMissing === "hidden") setToast("UML is hidden in this project. Your diagrams are kept.");
+    if (umlMissing === "diagram") setToast("The open diagram is no longer in this project.");
+  }, [umlMissing]);
+  function leaveUml(): boolean {
+    if (umlDirty && !window.confirm("Leave the diagram and discard unsaved edits?")) return false;
+    setUmlOpen(null); setUmlDirty(false); return true;
+  }
+  function openUml(id: string) {
+    if (id === umlOpen) return;
+    if (running) { setToast("Wait for the current design request before opening UML."); return; }
+    if (umlDirty && !window.confirm("Open another diagram and discard unsaved edits?")) return;
+    setSelection(null); setUmlDirty(false); setUmlOpen(id); setSideTab("uml");
+    if (!panels.side) togglePanel("side");
+  }
   const [dsOpen, setDsOpen] = useState(false);
   const [repoOpen, setRepoOpen] = useState(false);
   /** The export dialog for one project or the workspace (#114). */
@@ -149,13 +176,16 @@ export function App() {
   }, []);
 
   const open = useCallback((a: Active) => {
+    if (umlDirty && !window.confirm("Open a UI design and discard unsaved diagram edits?")) return false;
+    setUmlOpen(null); setUmlDirty(false);
     setActive(a);
     setSelection(null);
     setApplied([]); // applied comments belong to the design they were made on
     setLiveVars({});
     setPage("index.html");
     write(LAST_DESIGN, a);
-  }, []);
+    return true;
+  }, [umlDirty]);
 
   /** Projects deleted in this session: the old list can still name them until it loads again. */
   const deleted = useRef(new Set<string>());
@@ -178,7 +208,7 @@ export function App() {
       if (link.node) setSelection({ oid: link.node });
       return;
     }
-    if (last && exists(last)) return open(last);
+    if (last && exists(last)) { open(last); return; }
     const first = list.find((p) => p.designs.length > 0);
     if (first) open({ project: first.id, design: first.designs[0]! });
   }, [projects, active, open]);
@@ -322,7 +352,7 @@ export function App() {
         }
       }
       const key = e.key.toLowerCase();
-      if (!mod && !e.altKey && key === "t" && !typing(e) && activeRef.current && !document.querySelector('[aria-modal="true"]')) {
+      if (!umlOpen && !mod && !e.altKey && key === "t" && !typing(e) && activeRef.current && !document.querySelector('[aria-modal="true"]')) {
         e.preventDefault();
         setTweaksOpen((o) => !o);
         return;
@@ -339,10 +369,10 @@ export function App() {
         "[": () => togglePanel("chat"),
         "]": () => togglePanel("side"),
         d: () => activeProject && setDsOpen(true),
-        e: () => active && setExportOpen("file"),
+        e: () => !umlOpen && active && setExportOpen("file"),
         ",": () => setScreen("settings"),
       };
-      if (e.shiftKey && key === "h") act.h = () => active && setExportOpen("handoff");
+      if (e.shiftKey && key === "h") act.h = () => !umlOpen && active && setExportOpen("handoff");
       const run = act[key];
       if (run) {
         e.preventDefault();
@@ -351,7 +381,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleNav, togglePanel, activeProject, active]);
+  }, [toggleNav, togglePanel, activeProject, active, umlOpen]);
 
   // A file dropped outside a drop zone must not replace the app (the browser opens it in the tab).
   // A dropped .zip opens the import dialog; the composer and the screenshot import take their own drops first.
@@ -403,10 +433,11 @@ export function App() {
         design={active?.design ?? null}
         isDeck={!!(active && activeProject?.decks.includes(active.design))}
         isApp={isApp}
-        onToggleApp={active && !activeProject?.decks.includes(active.design) ? toggleApp : undefined}
+        onToggleApp={!umlOpen && active && !activeProject?.decks.includes(active.design) ? toggleApp : undefined}
         pages={pages.state === "ready" ? pages.data : [page]}
         page={page}
         onPage={(p) => {
+          if (umlOpen && !leaveUml()) return;
           if (p === page) return; // the same page: keep the selection
           setPage(p);
           setSelection(null); // the node is on the old page; the link must not pair it with the new one
@@ -420,9 +451,9 @@ export function App() {
         repo={activeProject ? (activeProject.repo?.name ?? null) : undefined}
         onRepo={() => setRepoOpen(true)}
         tweaksOpen={tweaksOpen}
-        onTweaks={active ? () => setTweaksOpen((o) => !o) : undefined}
-        onExport={active ? () => setExportOpen("file") : undefined}
-        onHandoff={active ? () => setExportOpen("handoff") : undefined}
+        onTweaks={!umlOpen && active ? () => setTweaksOpen((o) => !o) : undefined}
+        onExport={!umlOpen && active ? () => setExportOpen("file") : undefined}
+        onHandoff={!umlOpen && active ? () => setExportOpen("handoff") : undefined}
         tasks={tasks}
         onUsage={() => setScreen("usage")}
         onSettings={() => setScreen("settings")}
@@ -548,6 +579,7 @@ export function App() {
             <ChatPanel
               key={active ? `${active.project}/${active.design}/${chatEpoch}` : ""}
               target={active}
+              readOnlyReason={umlOpen ? "Chat edits the UI design. Use the UML tools for this diagram, or return to the UI design to send a request." : undefined}
               selection={selection}
               tasks={tasks}
               onClearSelection={clearSelection}
@@ -594,7 +626,22 @@ export function App() {
           />
         )}
 
-        <Canvas
+        {umlOpen ? (umlDiagram ? <ArchitectureEditor key={`${active?.project}/${umlDiagram.id}`} diagram={umlDiagram} busy={architecture.busy} inspector={umlInspector} tab={sideTab} designs={activeProject?.designs ?? []} onDirty={setUmlDirty} onBack={leaveUml} onReload={() => { if (!umlDirty || window.confirm("Discard unsaved edits and load the latest diagram?")) architecture.reload(); }} onSave={graph => {
+          if (architecture.load.state !== "ready") return Promise.reject(new Error("Load UML before saving."));
+          return architecture.write({ ...architecture.load.data.state, diagrams: architecture.load.data.state.diagrams.map(d => d.id === graph.id ? graph : d) });
+        }} onImport={async graph => {
+          if (architecture.load.state !== "ready") throw new Error("Load UML before importing.");
+          if (umlDirty && !window.confirm("Discard unsaved edits and open the imported diagram?")) return;
+          const names = new Set(architecture.load.data.state.diagrams.map(d => d.name));
+          let name = graph.name;
+          for (let n = 1; names.has(name); n++) name = `${graph.name.slice(0, 190)} copy${n > 1 ? ` ${n}` : ""}`;
+          const copy = { ...graph, id: crypto.randomUUID(), name };
+          await architecture.write({ ...architecture.load.data.state, diagrams: [...architecture.load.data.state.diagrams, copy] });
+          setUmlDirty(false); setUmlOpen(copy.id);
+        }} onReference={reference => {
+          if (!active || !activeProject?.designs.includes(reference.design)) { setToast("The linked UI design no longer exists."); return; }
+          if (open({ project: active.project, design: reference.design })) { setPage(reference.page); setSelection(reference.node ? { oid: reference.node } : null); }
+        }}/> : <section className="uml-workspace"><button className="btn" onClick={leaveUml}>Back to UI design</button><p className="uml-empty">{architecture.load.state === "error" ? architecture.load.message : "Load the UML diagram…"}</p></section>) : <Canvas
           active={active}
           page={page}
           revision={revision}
@@ -659,7 +706,7 @@ export function App() {
               )}
             </>
           }
-        />
+        />}
         {!panels.chat && (
           <button className="btn btn-secondary reopen-btn reopen-chat" onClick={() => togglePanel("chat")} title={`Show chat (${MOD}[)`}>
             Chat
@@ -687,11 +734,12 @@ export function App() {
               }}>
                 History
               </button>
+              <button className="tab" role="tab" aria-selected={sideTab === "uml"} onClick={() => setSideTab("uml")}>UML</button>
               <button className="collapse-btn" onClick={() => togglePanel("side")} title={`Collapse (${MOD}])`} aria-label="Collapse panel">
                 {MOD}]
               </button>
             </div>
-            {nodeLink && selection && (
+            {!umlOpen && nodeLink && selection && (
               <div className="node-link" aria-label="Selected node">
                 <div className="node-link-head">
                   <span className="mono truncate" title={selection.oid}>{selection.oid}</span>
@@ -704,7 +752,8 @@ export function App() {
               </div>
             )}
             <div className="pane-body">
-              {sideTab === "history" && (
+              {(sideTab === "uml" || umlOpen) && active && <ArchitecturePanel key={active.project} controller={architecture} current={umlOpen} dirty={umlDirty} tab={sideTab} onOpen={openUml} onClose={leaveUml} inspectorRef={setUmlInspector}/>}
+              {!umlOpen && sideTab === "history" && (
                 <HistoryPanel
                   versions={active ? history.versions : { state: "ready", data: [] }}
                   preview={history.preview?.sha ?? null}
@@ -724,7 +773,7 @@ export function App() {
                   onRetry={history.reload}
                 />
               )}
-              {sideTab === "comments" && (
+              {!umlOpen && sideTab === "comments" && (
                 <CommentsPanel
                   comments={active ? comments.comments : { state: "ready", data: [] }}
                   selection={selection}

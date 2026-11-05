@@ -11,6 +11,8 @@ import type { ElementInfo } from "../src/mcp/element.ts";
 import { createMcpServer } from "../src/mcp/server.ts";
 import { startServer } from "../src/server/app.ts";
 import { appendChat } from "../src/workspace/chat.ts";
+import { readArchitecture, writeArchitecture } from "../src/workspace/architecture.ts";
+import { createDiagram } from "../src/architecture/schema.ts";
 import { addComment } from "../src/workspace/comments.ts";
 import { designSystemDir } from "../src/workspace/design-systems.ts";
 import { designDir } from "../src/workspace/paths.ts";
@@ -65,12 +67,24 @@ describe("MCP tools", () => {
   test("lists the tools", async () => {
     const client = await connect();
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(["export_png", "get_comments", "get_design", "get_design_system", "get_element", "list_designs"]);
+    expect(tools.map((t) => t.name).sort()).toEqual(["export_png", "get_architecture", "get_comments", "get_design", "get_design_system", "get_element", "list_designs"]);
   });
 
   test("list_designs", async () => {
     const r = parsed(await (await connect()).callTool({ name: "list_designs", arguments: {} }));
     expect(r).toEqual({ projects: [{ id: "shop", name: "The Shop", designs: ["home"], decks: [], apps: [], designSystem: "brand", repo: null }] });
+  });
+
+  test("get_architecture reads the same saved graphs without enabling the feature", async () => {
+    const client = await connect();
+    try {
+      expect(parsed(await client.callTool({ name: "get_architecture", arguments: { project: "shop" } }))).toEqual({ revision: null, state: { version: 1, enabled: false, diagrams: [] } });
+      expect(await Bun.file(join(ws, "projects/shop/architecture.json")).exists()).toBe(false);
+      const first = await readArchitecture(ws, "shop");
+      const saved = await writeArchitecture(ws, "shop", first.revision, { ...first.state, enabled: true, diagrams: [createDiagram()] });
+      expect(parsed(await client.callTool({ name: "get_architecture", arguments: { project: "shop" } }))).toEqual(saved);
+      expect((await client.callTool({ name: "get_architecture", arguments: { project: "../shop" } })).isError).toBe(true);
+    } finally { await client.close(); }
   });
 
   test("get_design gives files, pages, frames and requests", async () => {

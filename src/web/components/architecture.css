@@ -1,0 +1,73 @@
+@import "../../../node_modules/@xyflow/react/dist/style.css";
+
+.uml-workspace { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--canvas); }
+.uml-canvas-header, .uml-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--line); background: var(--panel); }
+.uml-canvas-header strong { font-size: var(--text-heading); }
+.uml-save-state { margin-left: auto; color: var(--text-2); font-size: var(--text-sm); }
+.uml-toolbar { position: relative; z-index: 5; }
+.uml-toolbar details { position: relative; }
+.uml-toolbar summary { list-style: none; cursor: pointer; }
+.uml-shape-menu, .uml-actions { position: absolute; top: 100%; left: 0; z-index: 30; padding: var(--space-2); display: grid; gap: var(--space-1); min-width: 160px; border: 1px solid var(--line-2); background: var(--raised); border-radius: var(--radius-md); box-shadow: var(--shadow); }
+.uml-shape-menu .btn, .uml-actions .btn { justify-content: flex-start; }
+.uml-flow { flex: 1; min-height: 240px; position: relative; }
+.uml-flow .react-flow { --xy-background-color: var(--canvas); --xy-attribution-background-color: var(--panel); --xy-background-pattern-dots-color: var(--dot); --xy-node-boxshadow-selected: 0 0 0 1px var(--accent); }
+.uml-flow .react-flow__controls-button { background: var(--raised); color: var(--text); border-color: var(--line); fill: currentColor; }
+.uml-flow .react-flow__controls-button:hover { background: var(--active); }
+.uml-flow .react-flow__attribution { background: var(--panel); color: var(--text-3); }
+.uml-flow .react-flow__attribution a { color: inherit; }
+.uml-node { width: 100%; height: 100%; position: relative; box-sizing: border-box; padding: var(--space-2) var(--space-3); border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--raised); color: var(--text); display: flex; flex-direction: column; justify-content: center; gap: var(--space-1); overflow: hidden; }
+.uml-node strong, .uml-content, .uml-stereotype, .uml-reference-count { position: relative; overflow-wrap: anywhere; }
+.uml-content { white-space: pre-wrap; color: var(--text-2); }
+.uml-stereotype, .uml-reference-count { font-size: var(--text-meta); color: var(--text-2); }
+.uml-node--rounded { border-radius: var(--radius-xl, 18px); }
+.uml-node--ellipse { border-radius: 50%; text-align: center; padding: var(--space-4); }
+.uml-node--diamond { align-items: center; text-align: center; padding: var(--space-4); }
+.uml-diamond { position: absolute; inset: 0; width: 100%; height: 100%; }
+.uml-node--note { background: var(--warn-soft); border-color: var(--warn); border-radius: var(--radius-xs); justify-content: flex-start; }
+.uml-node--text { border: 0; padding: 0; }
+.uml-node--actor { align-items: center; border: 0; padding: 0; }
+.uml-actor { width: 48px; height: 58px; min-height: 30px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+.uml-node--group { justify-content: flex-start; border-style: dashed; background: color-mix(in srgb, var(--panel) 20%, transparent); overflow: visible; }
+.uml-node--group strong { font-size: var(--text-meta); color: var(--text-2); }
+.uml-node--class { padding: 0; justify-content: flex-start; gap: 0; }
+.uml-node--class > strong, .uml-node--class > span { padding: var(--space-1) var(--space-2); text-align: center; }
+.uml-node--class pre { margin: 0; padding: var(--space-2); border-top: 1px solid var(--line); flex: 1; white-space: pre-wrap; overflow: auto; font-family: var(--font-mono); font-size: inherit; }
+.uml-flow .react-flow__node.selected .uml-node { outline: 2px solid var(--accent); outline-offset: 2px; }
+.uml-flow .react-flow__handle { width: 8px; height: 8px; background: var(--panel); border-color: var(--accent); }
+.uml-flow .uml-bound-port { opacity: 0; pointer-events: none; }
+.uml-status { min-height: 28px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2); padding: var(--space-1) var(--space-3); border-top: 1px solid var(--line); background: var(--panel); color: var(--text-3); font: var(--text-meta) var(--font-mono); }
+.uml-notice { margin: 0; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--line); font-size: var(--text-sm); }
+.uml-project-panel { display: flex; flex-direction: column; min-height: 0; flex: 1; overflow: auto; }
+.uml-project-panel > .field-error { padding: var(--space-2); }
+.uml-empty { padding: var(--space-4); display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); color: var(--text-2); font-size: var(--text-md); }
+.uml-empty h2 { margin: 0; color: var(--text); font-size: var(--text-xl); }
+.uml-empty p { margin: 0; line-height: var(--leading); }
+.uml-empty-icon { color: var(--accent); font: 28px var(--font-mono); }
+.uml-panel-heading { display: flex; align-items: center; justify-content: space-between; padding: var(--space-3); font-size: var(--text-sm); }
+.uml-diagram-list { display: grid; gap: var(--space-1); padding: 0 var(--space-2); }
+.uml-diagram-row { position: relative; display: flex; gap: var(--space-1); align-items: center; }
+.uml-diagram-row details { flex: none; }
+.uml-diagram-row summary { padding: var(--space-2); cursor: pointer; list-style: none; }
+.uml-diagram-row .uml-actions { left: auto; right: 0; }
+.uml-diagram-choice { flex: 1; min-width: 0; justify-content: space-between; text-align: left; }
+.uml-diagram-choice.is-current { background: var(--accent-soft); }
+.uml-diagram-choice small { margin-left: var(--space-2); color: var(--text-3); white-space: nowrap; }
+.uml-add-diagram { display: grid; gap: var(--space-2); padding: var(--space-3); border-bottom: 1px solid var(--line); }
+.uml-add-diagram input { width: 100%; min-width: 0; padding: var(--space-2); border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--raised); }
+.uml-inspector { margin: 0; padding: 0; border: 0; min-width: 0; }
+.uml-properties { display: grid; gap: var(--space-3); padding: var(--space-3); }
+.uml-properties h3 { margin: var(--space-2) 0 0; color: var(--text-2); font-size: var(--text-meta); text-transform: uppercase; letter-spacing: .05em; }
+.uml-properties fieldset { margin: 0; padding: 0; border: 0; display: grid; gap: var(--space-3); min-width: 0; }
+.uml-properties input, .uml-properties textarea, .uml-properties select { min-width: 0; width: 100%; }
+.uml-properties input[type=checkbox] { width: auto; }
+.uml-properties textarea { min-height: 58px; }
+.uml-field-row { display: flex; gap: var(--space-2); align-items: flex-end; }
+.uml-field-row > * { flex: 1; min-width: 0; }
+.uml-check { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
+.uml-check input { accent-color: var(--accent); }
+.uml-colour { display: flex; gap: var(--space-2); align-items: center; }
+.uml-colour input[type=color] { width: 50px; min-height: 28px; padding: 0; border: 1px solid var(--line-2); background: var(--raised); }
+.uml-ui-reference, .uml-comment { padding: var(--space-2); border: 1px solid var(--line); border-radius: var(--radius-sm); overflow-wrap: anywhere; }
+.uml-ui-reference { display: flex; }
+.uml-ui-reference > .btn:first-child { flex: 1; min-width: 0; white-space: normal; text-align: left; }
+.uml-hint { margin: 0; padding: var(--space-2) var(--space-3); color: var(--text-3); font-size: var(--text-meta); }
