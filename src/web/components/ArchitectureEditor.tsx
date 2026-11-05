@@ -13,6 +13,7 @@ import { applyGraphChanges, attachment, flowEdges, flowNodes } from "../architec
 import { saveBlob } from "../export.ts";
 import { architectureCheckpoint, ArchitectureRequestError } from "../architecture.ts";
 import { ArchitectureHistory } from "./ArchitectureHistory.tsx";
+import { ArchitectureImageExport } from "./ArchitectureImageExport.tsx";
 import { ArchitectureNode, type FlowNode } from "./ArchitectureNode.tsx";
 import { ArchitectureEdge, type FlowEdge } from "./ArchitectureEdge.tsx";
 import { ArchitectureNodeInspector } from "./ArchitectureNodeInspector.tsx";
@@ -315,6 +316,7 @@ export function ArchitectureEditor({ project, diagram, busy, inspector, tab, des
       <button className="btn btn-ghost" disabled={!clipboard.current} onClick={() => paste(clipboard.current?.clip ?? null)}>Paste</button>
       <button className="btn btn-ghost" onClick={() => { flow?.fitView({ padding: 0.15 }).catch(showError); }}>Fit all</button>
       <button className="btn btn-ghost" disabled={!selectedNodes.length} onClick={fitSelection}>Fit selection</button>
+      <ArchitectureImageExport project={project} graph={graph} selected={selected} onNotice={setNotice}/>
       <button className="btn btn-secondary" onClick={() => { try { saveBlob(new Blob([diagramFile(graph)], { type: "application/json" }), `${graph.id}.doi-diagram.json`); } catch (error) { showError(error); } }}>Export JSON</button>
       <label className={`btn btn-secondary${busy ? " is-disabled" : ""}`}>Import JSON<input className="visually-hidden" type="file" accept=".json,application/json" disabled={busy} onChange={async event => { const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; try { if (file.size > MAX_DIAGRAM_FILE_BYTES) throw new Error("The diagram file exceeds 4 MB."); await onImport(readDiagramFile(await file.text())); } catch (error) { showError(error); } }}/></label>
     </div>

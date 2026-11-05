@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
-import { architectureSchema, architectureViewSchema, type Architecture, type ArchitectureView } from "../architecture/schema.ts";
+import { architectureSchema, architectureViewSchema, type Architecture, type ArchitectureView, type Diagram } from "../architecture/schema.ts";
 import type { Load } from "./api.ts";
 
 /** A failed UML request keeps its HTTP status: 409 means another write came first. */
@@ -76,4 +76,16 @@ export function useArchitecture(project: string | null) {
     } finally { controllers.current.delete(controller); }
   }, [project, load, token]);
   return { load: data, write, busy: save.token === token && save.state === "saving", error: save.token === token && save.state === "error" ? save.message : undefined, reload: () => setAttempt(n => n + 1) };
+}
+
+export interface ImageRequest { format: "png" | "pdf"; diagram: Diagram; theme: "dark" | "light"; background: boolean; ids?: string[]; scale: 1 | 2 }
+/** PNG or PDF from the server's sandboxed renderer. */
+export async function architectureImage(project: string, body: ImageRequest): Promise<Blob> {
+  const response = await fetch(`/api/projects/${project}/architecture/export`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  if (!response.ok) {
+    const data: unknown = await response.json().catch(() => null);
+    const message = typeof data === "object" && data !== null && "error" in data && typeof data.error === "string" ? data.error : `The export failed (${response.status}).`;
+    throw new ArchitectureRequestError(response.status, message);
+  }
+  return response.blob();
 }
