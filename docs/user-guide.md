@@ -277,7 +277,20 @@ Autosave does not stop you: you can continue to edit while a save runs, and the 
 
 doi records a version of the project's diagrams in its history when you select **Save diagram**, when you leave a diagram inside doi, and every 5 minutes while autosave runs. A browser reload or a closed tab keeps the autosaved edits, but records no version. Versions need git in the workspace: if git does not accept the UML file, doi says so once, and saves still work. The History tab lists the saved versions, newest first. **Restore** puts the open diagram back as it was in that version. The restore is an ordinary edit: **Undo** reverses it, and autosave stores it. Before a restore, doi saves your edits and records the current state as a version, so no saved state is lost.
 
-Image exports, graph handoff and MCP updates are not ready. `get_architecture` already reads the saved graphs through MCP.
+### Export an image
+
+Open **Export image** in the diagram toolbar.
+
+1. Choose the **Format**: SVG, PNG or PDF.
+2. Choose the **Scope**: the whole diagram, or the selected boxes. A selected group includes its boxes. Connectors between the exported boxes come too.
+3. Choose the **Colours**: dark or light. The default follows the app theme.
+4. Clear **Background** for a transparent SVG or PNG. A PDF without a background has a white page.
+5. For PNG, choose the **Size**: 1× or 2×.
+6. Select **Download**.
+
+The export uses the diagram as you see it, also before autosave stores it. SVG renders in the browser. PNG and PDF need Chromium for Playwright on the doi computer, the same as the design exports; without it, the export says how to install it. An image can be at most 16 000 px on its long side: export a selection, use 1× or use SVG for a larger diagram.
+
+Graph handoff and MCP updates are not ready. `get_architecture` already reads the saved graphs through MCP.
 
 **Important:** Run only one doi process for a workspace. The save lock for diagrams is inside one process. Two doi processes on the same workspace can both write a diagram, and the last write wins.
 
