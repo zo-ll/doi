@@ -31,7 +31,8 @@ async function withTools(run: (page: Page, saved: () => Promise<Diagram>) => Pro
     await page.getByRole("button", { name: /System overview/ }).click();
     await page.getByRole("group", { name: "Alpha", exact: true }).waitFor();
     const saved = async () => {
-      await page.getByRole("button", { name: "Save diagram", exact: true }).click();
+      const save = page.getByRole("button", { name: "Save diagram", exact: true });
+      if (await save.isEnabled()) await save.click();
       await page.waitForFunction(() => document.querySelector(".uml-save-state")?.textContent === "Saved");
       const diagram = (await readArchitecture(workspace, "sample")).state.diagrams[0];
       if (!diagram) throw new Error("No saved diagram");
@@ -129,7 +130,6 @@ test.skipIf(!hasBrowser)("copy, cut and paste use the system clipboard and new i
 
 test.skipIf(!hasBrowser)("a drag shows a guide and snaps to a sibling edge", async () => {
   await withTools(async (page, saved) => {
-    await page.getByRole("checkbox", { name: "Snap", exact: true }).uncheck();
     const frame = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const source = await box(page, "Gamma").boundingBox();
     if (!source) throw new Error("Missing box");
@@ -154,5 +154,80 @@ test.skipIf(!hasBrowser)("fit selection zooms to the selected box", async () => 
     const gamma = await box(page, "Gamma").boundingBox(), pane = await page.locator(".uml-flow").boundingBox();
     if (!gamma || !pane) throw new Error("Missing geometry");
     expect(Math.abs(gamma.x + gamma.width / 2 - (pane.x + pane.width / 2))).toBeLessThan(4);
+  });
+}, 30_000);
+
+test.skipIf(!hasBrowser)("Snap off turns guides off", async () => {
+  await withTools(async (page, saved) => {
+    await page.getByRole("checkbox", { name: "Snap", exact: true }).uncheck();
+    const frame = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const source = await box(page, "Gamma").boundingBox();
+    if (!source) throw new Error("Missing box");
+    await page.mouse.move(source.x + 20, source.y + 14); await page.mouse.down();
+    for (const dy of [1, 8, 16, 23, 23.5]) { await page.mouse.move(source.x + 20, source.y + 14 + dy); await frame(); }
+    expect(await page.getByTestId("uml-guide").count()).toBe(0);
+    await page.mouse.up();
+    const y = byName(await saved(), "Gamma").position.y;
+    expect(y).toBeGreaterThan(160);
+    expect(y).not.toBe(180);
+  });
+}, 30_000);
+
+test.skipIf(!hasBrowser)("locked boxes stay put through the arrange tools and cut", async () => {
+  await withTools(async (page, saved) => {
+    await box(page, "Alpha").click();
+    await arrange(page, "Lock selection");
+    expect(byName(await saved(), "Alpha").locked).toBe(true);
+    await arrange(page, "Bring to front");
+    await page.keyboard.press("Shift+ArrowRight");
+    await box(page, "Beta").click({ modifiers: ["Shift"] });
+    await arrange(page, "Align right");
+    await page.keyboard.press("Control+x");
+    await page.getByRole("alert").filter({ hasText: "Unlock the selected boxes before you cut them." }).waitFor();
+    let d = await saved();
+    expect(d.nodes.map(n => n.name)).toEqual(["Alpha", "Beta", "Gamma"]);
+    expect(byName(d, "Alpha").position).toEqual({ x: 40, y: 40 });
+    await page.keyboard.press("Escape");
+    await box(page, "Alpha").click();
+    await arrange(page, "Unlock selection");
+    await page.keyboard.press("ArrowRight");
+    d = await saved();
+    expect(byName(d, "Alpha")).toMatchObject({ locked: false, position: { x: 41, y: 40 } });
+  });
+}, 30_000);
+
+test.skipIf(!hasBrowser)("select all, delete, ungroup shortcut, undo and redo", async () => {
+  await withTools(async (page, saved) => {
+    await box(page, "Alpha").click();
+    await box(page, "Beta").click({ modifiers: ["Shift"] });
+    await page.keyboard.press("Control+g");
+    await page.waitForFunction(() => document.querySelectorAll(".uml-node--group").length === 1);
+    await page.keyboard.press("Control+Shift+g");
+    await page.waitForFunction(() => document.querySelectorAll(".uml-node--group").length === 0);
+    await page.keyboard.press("Control+z");
+    await page.waitForFunction(() => document.querySelectorAll(".uml-node--group").length === 1);
+    await page.keyboard.press("Control+Shift+z");
+    await page.waitForFunction(() => document.querySelectorAll(".uml-node--group").length === 0);
+    await page.keyboard.press("Control+a");
+    expect(await page.locator(".uml-status").innerText()).toContain("4 selected");
+    await page.keyboard.press("Delete");
+    const d = await saved();
+    expect(d.nodes).toEqual([]);
+    expect(d.edges).toEqual([]);
+  });
+}, 30_000);
+
+test.skipIf(!hasBrowser)("copy leaves a text selection and Ctrl+D without boxes to the app", async () => {
+  await withTools(async page => {
+    await box(page, "Alpha").click();
+    await page.evaluate(() => navigator.clipboard.writeText("before"));
+    const title = page.locator(".uml-canvas-header strong");
+    await title.selectText();
+    await page.keyboard.press("Control+c");
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("System overview");
+    await page.locator(".uml-flow .react-flow__pane").click({ position: { x: 20, y: 400 } });
+    expect(await page.locator(".uml-status").innerText()).toContain("0 selected");
+    await page.keyboard.press("Control+d");
+    await page.getByRole("dialog", { name: "Design systems", exact: true }).waitFor();
   });
 }, 30_000);

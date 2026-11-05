@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Background, ConnectionMode, Controls, ReactFlow, ViewportPortal, type Connection, type EdgeChange, type NodeChange, type ReactFlowInstance } from "@xyflow/react";
 import { createNode, shapeSchema, type Shape, type uiReferenceSchema } from "../../architecture/nodes.ts";
@@ -89,7 +89,7 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
     if (changes.some(change => change.type === "select")) setSelected(current => { const next = new Set(current); for (const change of changes) if (change.type === "select") { if (change.selected) next.add(change.id); else next.delete(change.id); } return next.size === current.size && [...next].every(id => current.has(id)) ? current : next; });
     // Guides apply to a pointer drag of one box, including the final position when the drag ends.
     const moving = changes.filter(c => c.type === "position" && c.position);
-    const single = moving.length === 1 && gesture.current && !changes.some(c => c.type === "dimensions") ? moving[0] : undefined;
+    const single = snap && moving.length === 1 && gesture.current && !changes.some(c => c.type === "dimensions") ? moving[0] : undefined;
     if (single?.type === "position" && single.position) {
       const node = graph.nodes.find(n => n.id === single.id);
       const snapped = snapToGuides(graph, single.id, single.position, 6 / (flow?.getZoom() ?? 1));
@@ -100,6 +100,7 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
   }
   function duplicate() { const result = duplicateItems(graph, selected); edit(() => result.graph); setSelected(result.ids); }
   function copy(cut: boolean): Clipboard | null {
+    if (cut && graph.nodes.some(n => selected.has(n.id) && n.locked)) { setNotice({ kind: "error", text: "Unlock the selected boxes before you cut them." }); return null; }
     const clip = copyItems(graph, selected);
     if (!clip) return null;
     clipboard.current = { clip, pastes: 0 };
@@ -153,7 +154,7 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
     const run = (action: () => void) => { event.preventDefault(); event.stopPropagation(); action(); };
     if (mod && key === "z") run(() => undo(event.shiftKey));
     else if (mod && key === "y") run(() => undo(true));
-    else if (mod && key === "d") run(duplicate);
+    else if (mod && key === "d" && selectedNodes.length) run(duplicate);
     else if (mod && key === "a") run(() => setSelected(new Set([...graph.nodes, ...graph.edges].map(item => item.id))));
     else if (mod && key === "g") run(event.shiftKey ? ungroup : group);
     else if (!mod && (key === "delete" || key === "backspace")) run(() => { edit(g => removeItems(g, selected)); setSelected(new Set()); });
@@ -161,6 +162,9 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
   }
   function onClipboard(event: ClipboardEvent) {
     if (editable(document.activeElement) || !event.clipboardData) return;
+    // A text selection belongs to the user: copy and cut leave it to the browser.
+    const text = window.getSelection();
+    if (event.type !== "paste" && text && !text.isCollapsed) return;
     if (event.type === "paste") {
       if (busy) return;
       const clip = readClipboard(event.clipboardData.getData("text/plain"));
@@ -172,7 +176,7 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
     if (clip) { event.preventDefault(); event.clipboardData.setData("text/plain", JSON.stringify(clip)); }
   }
   const handlers = useRef({ onKey, onClipboard });
-  handlers.current = { onKey, onClipboard };
+  useLayoutEffect(() => { handlers.current = { onKey, onClipboard }; });
   useEffect(() => {
     /**
      * Shortcuts act when the focus is in the editor or on the page body, never in a field or over a dialog.
