@@ -24,6 +24,7 @@ import { excludeClones } from "../github/gh.ts";
 import { handleMcp, MCP_PATH } from "../mcp/server.ts";
 import { getHistory, reopenVariants, restoreVersion } from "./history.ts";
 import { getLayout, putLayout } from "./layout.ts";
+import { getArchitecture, putArchitecture } from "./architecture.ts";
 import { createVariantHandlers } from "./variants.ts";
 import { DesignLocks } from "./locks.ts";
 import { checkRequest, HOSTNAME, PAGE_HEADERS } from "./security.ts";
@@ -244,6 +245,10 @@ export async function startServer(config: Config, options: { port?: number; deve
       "/api/projects/:project": {
         PATCH: (req) => patchProject(projectDeps, req, req.params),
         DELETE: (req) => deleteProject(projectDeps, req.params),
+      },
+      "/api/projects/:project/architecture": {
+        GET: (req) => getArchitecture(config.workspace, req.params.project),
+        PUT: (req) => putArchitecture(config.workspace, req.params.project, req),
       },
       "/api/projects/:project/designs": { POST: (req) => postDesign(projectDeps, req, req.params) },
       "/api/projects/:project/designs/:design": { PATCH: (req) => patchDesign(projectDeps, req, req.params) },
