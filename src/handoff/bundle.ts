@@ -11,7 +11,8 @@ import { activeDesignSystem } from "../workspace/design-systems.ts";
 import { readLayout } from "../workspace/layout.ts";
 import type { Frame } from "../workspace/frames.ts";
 import { designDir, designPages, listProjects } from "../workspace/paths.ts";
-import template from "./template-v0.md" with { type: "text" };
+import template from "./template-v1.md" with { type: "text" };
+import { architectureEntries, handoffArchitecture, handoffSection } from "./architecture.ts";
 
 /**
  * The handoff bundle (#49): a folder that any coding agent can read.
@@ -20,8 +21,9 @@ import template from "./template-v0.md" with { type: "text" };
  * - `design/`: the design's files, with the design system files they link (`exportFolder()`).
  * - `screenshots/`: one PNG of the whole page for each page and frame.
  * - `tokens.css`: the CSS custom properties of the design system, or else of the design.
+ * - `architecture/`: the project's UML diagrams as JSON and SVG, when the user enabled UML.
  */
-export const HANDOFF_TEMPLATE = { version: "v0", text: template } as const;
+export const HANDOFF_TEMPLATE = { version: "v1", text: template } as const;
 export const HANDOFF_FILE = "HANDOFF.md";
 export const MAX_HANDOFF = 100_000;
 /** One browser renders all screenshots; this keeps a bundle to a few minutes at most. */
@@ -213,13 +215,14 @@ export async function bundleTokens(workspace: string, project: string, design: s
 /** HANDOFF.md as the template makes it: the user edits it before the run. */
 export async function draftHandoff(workspace: string, project: string, design: string): Promise<string> {
   const pages = await pagesOf(workspace, project, design);
-  const [frames, chat, comments, tokens, projects, oids] = await Promise.all([
+  const [frames, chat, comments, tokens, projects, oids, architecture] = await Promise.all([
     readLayout(workspace, project, design),
     readChat(workspace, project, design),
     readComments(workspace, project, design),
     bundleTokens(workspace, project, design),
     listProjects(workspace),
     readDesignFiles(designDir(workspace, project, design)).then(designOids),
+    handoffArchitecture(workspace, project),
   ]);
 
   const asked = chat.flatMap((e) => (e.role === "user" ? [e] : []));
@@ -251,6 +254,7 @@ export async function draftHandoff(workspace: string, project: string, design: s
           })
           .join("\n")
       : "None.",
+    architecture: handoffSection(architecture),
   };
   // One pass: a value that has {{name}} in it stays as it is.
   return HANDOFF_TEMPLATE.text.replace(/\{\{(\w+)\}\}/g, (all, key: string) => values[key] ?? all);
@@ -300,12 +304,14 @@ export async function buildBundle(
   }
 
   const tokens = await bundleTokens(workspace, project, design);
+  const diagrams = await architectureEntries(await handoffArchitecture(workspace, project));
   return {
     files: [
       { path: HANDOFF_FILE, data: utf8.encode(handoff) },
       ...folder.files.map((f) => ({ path: `design/${f.path}`, data: f.data })),
       ...shots,
       ...(tokens ? [{ path: "tokens.css", data: utf8.encode(tokens.css) }] : []),
+      ...diagrams,
     ],
     missing: [...missing].sort(),
     warnings: [...warnings],
