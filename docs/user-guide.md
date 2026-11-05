@@ -241,9 +241,11 @@ The connector inspector has relationship presets, labels, markers, routes and at
 
 **Hide UML** keeps saved diagrams. **Show UML in this project** restores the area. Rename, duplicate and delete controls appear in each diagram's menu.
 
-**Export JSON** saves an editable diagram. **Import JSON** adds a diagram to the current project. If a save conflict occurs, export your edits before **Load latest**. You can then import that file as another diagram.
+**Export JSON** saves an editable diagram. **Import JSON** adds a diagram to the current project. If the project already has a diagram with the same name, the import adds " copy" to the name. If a save conflict occurs, export your edits before **Load latest**. You can then import that file as another diagram.
 
 The History tab currently shows session edits only. Persistent versions, image exports, graph handoff and MCP updates are not ready. `get_architecture` already reads the saved graphs through MCP.
+
+**Important:** Run only one doi process for a workspace. The save lock for diagrams is inside one process. Two doi processes on the same workspace can both write a diagram, and the last write wins.
 
 ## Comments, variants and history
 

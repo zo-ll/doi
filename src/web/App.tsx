@@ -107,6 +107,11 @@ export function App() {
   const [umlInspector, setUmlInspector] = useState<HTMLDivElement | null>(null);
   const architecture = useArchitecture(active?.project ?? null);
   const umlDiagram = architecture.load.state === "ready" && architecture.load.data.state.enabled ? architecture.load.data.state.diagrams.find(d => d.id === umlOpen) : undefined;
+  const umlMissing = umlOpen !== null && architecture.load.state === "ready" && !umlDiagram;
+  useEffect(() => {
+    if (!umlMissing) return;
+    setUmlOpen(null); setUmlDirty(false); setToast("The open diagram is no longer in this project.");
+  }, [umlMissing]);
   function leaveUml(): boolean {
     if (umlDirty && !window.confirm("Leave the diagram and discard unsaved edits?")) return false;
     setUmlOpen(null); setUmlDirty(false); return true;
@@ -572,7 +577,7 @@ export function App() {
             <ChatPanel
               key={active ? `${active.project}/${active.design}/${chatEpoch}` : ""}
               target={active}
-              readOnlyReason={umlOpen || sideTab === "uml" && architecture.busy ? "Chat edits the UI design. Use the UML tools for this diagram, or return to the UI design to send a request." : undefined}
+              readOnlyReason={umlOpen ? "Chat edits the UI design. Use the UML tools for this diagram, or return to the UI design to send a request." : undefined}
               selection={selection}
               tasks={tasks}
               onClearSelection={clearSelection}
@@ -625,7 +630,10 @@ export function App() {
         }} onImport={async graph => {
           if (architecture.load.state !== "ready") throw new Error("Load UML before importing.");
           if (umlDirty && !window.confirm("Discard unsaved edits and open the imported diagram?")) return;
-          const copy = { ...graph, id: crypto.randomUUID() };
+          const names = new Set(architecture.load.data.state.diagrams.map(d => d.name));
+          let name = graph.name;
+          for (let n = 1; names.has(name); n++) name = `${graph.name.slice(0, 190)} copy${n > 1 ? ` ${n}` : ""}`;
+          const copy = { ...graph, id: crypto.randomUUID(), name };
           await architecture.write({ ...architecture.load.data.state, diagrams: [...architecture.load.data.state.diagrams, copy] });
           setUmlDirty(false); setUmlOpen(copy.id);
         }} onReference={reference => {

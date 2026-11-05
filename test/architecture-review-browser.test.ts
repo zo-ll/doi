@@ -90,3 +90,55 @@ test.skipIf(!hasBrowser)("the open diagram row preserves dirty ownership and the
     expect(errors).toEqual([]);
   });
 }, 15000);
+
+test.skipIf(!hasBrowser)("an imported diagram with a used name gets a distinct name", async () => {
+  await withEditor(async (page, workspace) => {
+    const payload = JSON.stringify({ format: "doi-diagram", version: 1, diagram: { ...createDiagram(), nodes: [createNode("box", { x: 0, y: 0 }, "Imported")] } });
+    await page.getByLabel("Import JSON", { exact: true }).setInputFiles({ name: "same.json", mimeType: "application/json", buffer: Buffer.from(payload) });
+    await page.getByRole("group", { name: "Imported", exact: true }).waitFor();
+    expect((await readArchitecture(workspace, "sample")).state.diagrams.map(d => d.name)).toEqual(["System overview", "System overview copy"]);
+  });
+}, 15000);
+
+test.skipIf(!hasBrowser)("a pending save hides the resize and connect controls", async () => {
+  await withEditor(async (page, workspace) => {
+    const gate = Promise.withResolvers<void>();
+    await page.route("**/api/projects/sample/architecture", async route => { if (route.request().method() === "PUT") await gate.promise; await route.continue(); });
+    try {
+      expect(await page.locator(".react-flow__resize-control").count()).toBeGreaterThan(0);
+      await page.getByRole("textbox", { name: "Box name", exact: true }).fill("Pending name");
+      await page.getByRole("button", { name: "Save diagram", exact: true }).click();
+      await page.waitForFunction(() => document.querySelector(".uml-save-state")?.textContent === "Save…");
+      expect(await page.locator(".react-flow__resize-control").count()).toBe(0);
+      expect(await page.locator(".react-flow__handle.connectable").count()).toBe(0);
+      gate.resolve();
+      await page.waitForFunction(() => document.querySelector(".uml-save-state")?.textContent === "Saved");
+      await page.locator(".react-flow__resize-control").first().waitFor();
+      expect((await readArchitecture(workspace, "sample")).state.diagrams[0]?.nodes[0]?.name).toBe("Pending name");
+    } finally { gate.resolve(); }
+  });
+}, 15000);
+
+test.skipIf(!hasBrowser)("a diagram removed elsewhere closes the editor after Load latest", async () => {
+  await withEditor(async (page, workspace) => {
+    const { revision } = await readArchitecture(workspace, "sample");
+    await writeArchitecture(workspace, "sample", revision, { version: 1, enabled: true, diagrams: [{ ...createDiagram(), name: "Other diagram" }] });
+    await page.getByRole("button", { name: "Load latest", exact: true }).click();
+    await page.getByText("The open diagram is no longer in this project.").waitFor();
+    expect(await page.getByRole("region", { name: "UML editor", exact: true }).count()).toBe(0);
+    expect(await page.getByText("Load the UML diagram…").count()).toBe(0);
+  });
+}, 15000);
+
+test.skipIf(!hasBrowser)("a pending UML write from the panel does not block chat on the UI canvas", async () => {
+  await withEditor(async page => {
+    await page.getByRole("button", { name: "← Back to UI design", exact: true }).click();
+    const gate = Promise.withResolvers<void>();
+    await page.route("**/api/projects/sample/architecture", async route => { if (route.request().method() === "PUT") await gate.promise; await route.continue(); });
+    try {
+      await page.getByRole("button", { name: "Hide UML", exact: true }).click();
+      await page.getByRole("button", { name: "Hide UML", exact: true }).and(page.locator(":disabled")).waitFor();
+      expect(await page.getByRole("textbox", { name: "Message", exact: true }).isEnabled()).toBe(true);
+    } finally { gate.resolve(); }
+  });
+}, 15000);
