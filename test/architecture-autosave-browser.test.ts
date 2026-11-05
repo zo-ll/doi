@@ -79,3 +79,82 @@ test.skipIf(!hasBrowser)("autosave stores edits; Save, versions, restore, undo a
     expect(errors).toEqual([]);
   } finally { await browser.close(); app.stop(); await rm(workspace, { recursive: true, force: true }); }
 }, 45_000);
+
+async function withEditor(run: (page: import("playwright-core").Page, workspace: string, dialogs: string[]) => Promise<void>) {
+  const workspace = await mkdtemp(join(tmpdir(), "doi-uml-autosave-"));
+  const app = await startServer(parseConfig({ workspace }), { port: 0, development: false });
+  const browser = await chromium.launch();
+  try {
+    await writeArchitecture(workspace, "sample", null, { version: 1, enabled: true, diagrams: [{ ...createDiagram(), nodes: [createNode("box", { x: 80, y: 80 }, "Start")] }] });
+    const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+    await context.route("**/api/providers", route => route.fulfill({ json: [] }));
+    const page = await context.newPage(); page.setDefaultTimeout(5000);
+    const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+    const dialogs: string[] = []; page.on("dialog", dialog => { dialogs.push(dialog.message()); void dialog.dismiss(); });
+    await page.goto(`http://127.0.0.1:${app.server.port}/?project=sample&design=home`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("tab", { name: "UML", exact: true }).click();
+    await page.getByRole("button", { name: /System overview/ }).click();
+    await page.getByRole("group", { name: "Start", exact: true }).click();
+    await run(page, workspace, dialogs);
+    expect(errors).toEqual([]);
+  } finally { await browser.close(); app.stop(); await rm(workspace, { recursive: true, force: true }); }
+}
+const storedName = async (workspace: string) => (await readArchitecture(workspace, "sample")).state.diagrams[0]?.nodes[0]?.name;
+const savedState = (page: import("playwright-core").Page) => page.waitForFunction(() => document.querySelector(".uml-save-state")?.textContent === "Saved");
+
+test.skipIf(!hasBrowser)("an edit made while Back saves is saved too", async () => {
+  await withEditor(async (page, workspace, dialogs) => {
+    const gate = Promise.withResolvers<void>();
+    let puts = 0;
+    await page.route("**/api/projects/sample/architecture", async route => { if (route.request().method() === "PUT" && ++puts === 1) await gate.promise; await route.continue(); });
+    try {
+      const name = page.getByRole("textbox", { name: "Box name", exact: true });
+      await name.fill("First edit");
+      await page.getByRole("button", { name: "← Back to UI design", exact: true }).click();
+      await page.waitForFunction(() => document.querySelector(".uml-save-state")?.textContent === "Saving…");
+      await name.fill("Edit during Back");
+      gate.resolve();
+      await page.getByRole("region", { name: "UML editor", exact: true }).waitFor({ state: "detached" });
+      expect(await storedName(workspace)).toBe("Edit during Back");
+      expect(dialogs).toEqual([]);
+    } finally { gate.resolve(); }
+  });
+}, 30_000);
+
+test.skipIf(!hasBrowser)("a restore waits for the version of the current state, even when that record is slow", async () => {
+  await withEditor(async (page, workspace) => {
+    const name = page.getByRole("textbox", { name: "Box name", exact: true });
+    const fileAt = async (sha: string) => JSON.parse(await $`git show ${sha}:projects/sample/architecture.json`.cwd(workspace).text()).diagrams[0].nodes[0].name;
+    const log = async () => (await $`git log --format=%H -- projects/sample/architecture.json`.cwd(workspace).nothrow().quiet().text()).split("\n").filter(Boolean);
+    await name.fill("Version one");
+    await savedState(page);
+    await page.getByRole("button", { name: "Save diagram", exact: true }).click();
+    await page.getByText("Saved. doi recorded this version.").waitFor();
+    await name.fill("Saved two");
+    await savedState(page);
+    await page.route("**/api/projects/sample/architecture/checkpoint", async route => { await Bun.sleep(1500); await route.continue(); });
+    await page.getByRole("tab", { name: "History", exact: true }).click();
+    await page.getByRole("list", { name: "Saved versions", exact: true }).getByRole("button").first().click();
+    await page.getByText("Restored the saved version. Undo reverses it.").waitFor();
+    await savedState(page);
+    const shas = await log();
+    expect(shas).toHaveLength(2);
+    expect(await fileAt(shas[0] ?? "")).toBe("Saved two");
+    expect(await storedName(workspace)).toBe("Version one");
+    await page.keyboard.press("Control+s");
+    await page.getByText("Saved. doi recorded this version.").waitFor();
+    await page.keyboard.press("Control+s");
+    await page.getByText("Saved. No change to record.").waitFor();
+  });
+}, 30_000);
+
+test.skipIf(!hasBrowser)("a fixed value starts autosave again", async () => {
+  await withEditor(async (page, workspace) => {
+    const name = page.getByRole("textbox", { name: "Box name", exact: true });
+    await name.fill("");
+    await page.waitForFunction(() => document.querySelector(".uml-save-state")?.textContent === "Not saved");
+    await name.fill("Fixed");
+    await savedState(page);
+    expect(await storedName(workspace)).toBe("Fixed");
+  });
+}, 30_000);

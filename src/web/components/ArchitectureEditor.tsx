@@ -39,7 +39,7 @@ export function ArchitectureEditor({ project, diagram, busy, inspector, tab, des
   const clean = useRef(diagram), gesture = useRef<Diagram | null>(null), canvas = useRef<HTMLDivElement>(null), section = useRef<HTMLElement>(null);
   const clipboard = useRef<{ clip: Clipboard; pastes: number } | null>(null);
   const [pause, setPause] = useState<Pause>(null), [gesturing, setGesturing] = useState(false), [versions, setVersions] = useState(0);
-  const unrecorded = useRef(false), recorded = useRef(Date.now()), inflight = useRef<Promise<boolean> | null>(null);
+  const warned = useRef(false), unrecorded = useRef(false), recorded = useRef(Date.now()), inflight = useRef<Promise<boolean> | null>(null);
   const graph = doc.graph;
   const dirty = JSON.stringify(graph) !== JSON.stringify(clean.current);
   useEffect(() => { onDirty(dirty); }, [dirty, onDirty]);
@@ -79,11 +79,18 @@ export function ArchitectureEditor({ project, diagram, busy, inspector, tab, des
     console.debug("UML action failed:", error);
     setNotice({ kind: "error", text: architectureErrorMessage(error) });
   }
-  /** Commits the saved file as a version, once for each run of saves. `always`: the server decides; it commits only a changed file. */
-  function record(always = false) {
-    if (!unrecorded.current && !always) return;
+  /**
+   * Commits the saved file as a version, once for each run of saves. `always`: the server decides;
+   * it commits only a changed file. Resolves with the commit id, or null when nothing was recorded.
+   */
+  function record(always = false): Promise<string | null> {
+    if (!unrecorded.current && !always) return Promise.resolve(null);
     unrecorded.current = false; recorded.current = Date.now();
-    architectureCheckpoint(project, graph.name).then(sha => { if (sha) setVersions(n => n + 1); }, error => { unrecorded.current = true; console.debug("UML version not recorded:", error); });
+    return architectureCheckpoint(project, graph.name).then(({ sha, error }) => {
+      if (sha) setVersions(n => n + 1);
+      if (error && !warned.current) { warned.current = true; setNotice({ kind: "error", text: `doi could not record a version: ${error}` }); }
+      return sha;
+    }, error => { unrecorded.current = true; console.debug("UML version not recorded:", error); return null; });
   }
   /**
    * "now" is an explicit save: it also records a version. Returns true when the graph is saved.
@@ -92,7 +99,7 @@ export function ArchitectureEditor({ project, diagram, busy, inspector, tab, des
   async function save(kind: "auto" | "now"): Promise<boolean> {
     if (inflight.current) {
       await inflight.current;
-      await new Promise(resolve => setTimeout(resolve));
+      await afterRender();
       return latest.current.save(kind);
     }
     const run = write(kind);
@@ -110,26 +117,52 @@ export function ArchitectureEditor({ project, diagram, busy, inspector, tab, des
       clean.current = snapshot; unrecorded.current = true; setPause(null);
       setDoc(current => ({ ...current, graph: JSON.stringify(current.graph) === JSON.stringify(submitted) ? snapshot : current.graph }));
     }
-    if (kind === "now" || Date.now() - recorded.current > CHECKPOINT_MS) record();
-    if (kind === "now") setNotice({ kind: "status", text: "Saved. doi recorded this version." });
+    if (kind === "now") {
+      const sha = await record(true);
+      setNotice(current => current?.kind === "error" ? current : { kind: "status", text: sha ? "Saved. doi recorded this version." : "Saved. No change to record." });
+    } else if (Date.now() - recorded.current > CHECKPOINT_MS) void record();
     return true;
   }
   /** The inspector is a portal in the side panel: its fields belong to the editor too. */
   const inspectorRef = useRef(inspector);
   inspectorRef.current = inspector;
   const latest = useRef({ save, record, onBack });
-  useLayoutEffect(() => { latest.current = { save, record, onBack }; });
+  /** The state of the last committed render, for async flows that outlive their own render. */
+  const status = useRef({ dirty, pause });
+  const renders = useRef<(() => void)[]>([]);
+  useLayoutEffect(() => {
+    latest.current = { save, record, onBack };
+    status.current = { dirty, pause };
+    const waiting = renders.current; renders.current = [];
+    for (const resolve of waiting) resolve();
+  });
+  /** Resolves after the next committed render, or after 250 ms when no render comes. */
+  const afterRender = () => new Promise<void>(resolve => { renders.current.push(resolve); setTimeout(resolve, 250); });
   useEffect(() => {
     if (!dirty || busy || pause || gesturing) return;
     const timer = setTimeout(() => { void latest.current.save("auto"); }, AUTOSAVE_MS);
     return () => clearTimeout(timer);
   }, [graph, dirty, busy, pause, gesturing]);
-  useEffect(() => () => latest.current.record(), []);
-  /** Back saves the last edits first. An edit that cannot save goes to the app's discard question. */
+  useEffect(() => () => { void latest.current.record(); }, []);
+  /**
+   * Back saves the last edits first, also an edit made while that save runs. Only an edit that
+   * cannot save reaches the app's discard question.
+   */
   async function back() {
-    if (!dirty) { onBack(true); return; }
-    if (pause) { onBack(false); return; }
-    if (await save("auto")) latest.current.onBack(true);
+    for (let round = 0; round < 5; round++) {
+      const { dirty: unsaved, pause: paused } = status.current;
+      if (!unsaved) { latest.current.onBack(true); return; }
+      if (paused || !(await latest.current.save("auto"))) break;
+      await afterRender();
+    }
+    latest.current.onBack(false);
+  }
+  /** A restore saves the edits, records the current file, then replaces the diagram as an undoable edit. */
+  async function restore(restored: Diagram) {
+    if (!(await save("auto"))) return;
+    await record(true);
+    edit(g => ({ ...restored, id: g.id }));
+    setNotice({ kind: "status", text: "Restored the saved version. Undo reverses it." });
   }
   function add(shape: Shape) {
     if (graph.nodes.length >= 2000) return;
@@ -293,7 +326,7 @@ export function ArchitectureEditor({ project, diagram, busy, inspector, tab, des
     {inspector && createPortal(<fieldset className="uml-inspector">
       {tab === "uml" && (pickedNode ? <ArchitectureNodeInspector node={pickedNode} designs={designs} onChange={node => edit(g => ({ ...g, nodes: g.nodes.map(n => n.id === node.id ? node : n) }))} onReference={onReference}/> : pickedEdge ? <ArchitectureEdgeInspector edge={pickedEdge} onChange={edge => edit(g => ({ ...g, edges: g.edges.map(e => e.id === edge.id ? edge : e) }))}/> : <p className="uml-empty">Select a box or connector to edit its properties.</p>)}
       {tab === "comments" && <div className="uml-properties"><h3>Diagram comments</h3>{graph.comments.map(c => <article className="uml-comment" key={c.id}><strong>{c.status === "done" ? "Done" : "Open"} · {c.item}</strong><p>{c.text}</p><button className="btn btn-ghost" onClick={() => edit(g => ({ ...g, comments: g.comments.map(item => item.id === c.id ? { ...item, status: item.status === "open" ? "done" : "open" } : item) }))}>{c.status === "open" ? "Mark done" : "Reopen"}</button></article>)}<label className="field">Comment on the selected item<textarea className="textarea" maxLength={5000} value={comment} onChange={e => setComment(e.target.value)}/></label><button className="btn btn-secondary" disabled={selected.size !== 1 || !comment.trim()} onClick={() => { const item = [...selected][0]; if (item) { edit(g => ({ ...g, comments: [...g.comments, { id: crypto.randomUUID(), item, text: comment.trim(), status: "open", createdAt: new Date().toISOString() }] })); setComment(""); } }}>Add diagram comment</button></div>}
-      {tab === "history" && <ArchitectureHistory project={project} diagram={graph} refresh={versions} past={doc.past} onSessionRestore={snapshot => edit(() => snapshot)} onRestore={restored => { record(true); edit(g => ({ ...restored, id: g.id })); setNotice({ kind: "status", text: "Restored the saved version. Undo reverses it." }); }}/>}
+      {tab === "history" && <ArchitectureHistory project={project} diagram={graph} refresh={versions} past={doc.past} onSessionRestore={snapshot => edit(() => snapshot)} onRestore={restore}/>}
     </fieldset>, inspector)}
   </section>;
 }
