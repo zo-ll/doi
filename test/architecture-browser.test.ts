@@ -54,7 +54,7 @@ test.skipIf(!hasBrowser)("UML is optional, edits real graphs, preserves data and
     await page.getByRole("textbox", { name: "End label", exact: true }).fill("0..*");
     const save = page.getByRole("button", { name: "Save diagram", exact: true });
     await save.click();
-    await page.waitForFunction(() => [...document.querySelectorAll("button")].some(e => e.textContent?.trim() === "Save diagram" && e.disabled));
+    await page.waitForFunction(() => document.querySelector(".uml-save-state")?.textContent === "Saved");
     let stored = await readArchitecture(workspace, "sample");
     expect(stored.state.diagrams[0]?.nodes).toHaveLength(2);
     expect(stored.state.diagrams[0]?.edges[0]?.endMarker).toBe("triangle");
@@ -87,7 +87,7 @@ test.skipIf(!hasBrowser)("UML is optional, edits real graphs, preserves data and
     await page.getByRole("tab", { name: "Comments", exact: true }).click();
     await page.getByRole("textbox", { name: "Comment on the selected item", exact: true }).fill("Keep the UI link.");
     await page.getByRole("button", { name: "Add diagram comment", exact: true }).click();
-    await save.click(); await page.waitForFunction(() => [...document.querySelectorAll("button")].some(e => e.textContent?.trim() === "Save diagram" && e.disabled));
+    await save.click(); await page.waitForFunction(() => document.querySelector(".uml-save-state")?.textContent === "Saved");
     expect((await readArchitecture(workspace, "sample")).state.diagrams[0]?.comments[0]?.text).toBe("Keep the UI link.");
     await page.getByRole("tab", { name: "UML", exact: true }).click();
     await page.getByRole("button", { name: /↗ home \/ index.html/ }).click();
