@@ -78,6 +78,12 @@ export async function runExport(url: string, fallback: string, init?: RequestIni
   }
   const file = fileNameOf(res.headers.get("content-disposition"), fallback);
   const blob = await res.blob();
+  saveBlob(blob, file);
+  return { file, size: blob.size, ...parseReport(res.headers.get(REPORT_HEADER)) };
+}
+
+/** Saves an owned artifact without another server request. */
+export function saveBlob(blob: Blob, file: string): void {
   const href = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = href;
@@ -85,5 +91,4 @@ export async function runExport(url: string, fallback: string, init?: RequestIni
   a.click();
   // The click starts the download at once; the URL is not needed after that.
   setTimeout(() => URL.revokeObjectURL(href), 0);
-  return { file, size: blob.size, ...parseReport(res.headers.get(REPORT_HEADER)) };
 }
