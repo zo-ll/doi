@@ -23,6 +23,8 @@ export interface PngOptions {
   scale: number;
   /** The whole page height, not only the frame's viewport. */
   fullPage: boolean;
+  /** No white page behind a transparent document (a UML export without a background). */
+  transparent?: boolean;
 }
 
 /** True when a request may leave the render: data and blob URLs, and the font hosts over HTTPS. */
@@ -115,7 +117,7 @@ export function renderPngs(html: string, frames: Pick<Frame, "width" | "height">
     const out: Buffer[] = [];
     for (const frame of frames) {
       const page = await openPage(browser, html, frame, options.scale);
-      out.push(await page.screenshot({ type: "png", fullPage: options.fullPage }));
+      out.push(await page.screenshot({ type: "png", fullPage: options.fullPage, omitBackground: options.transparent ?? false }));
       await page.context().close();
     }
     return out;
