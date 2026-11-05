@@ -91,3 +91,61 @@ test.skipIf(!hasBrowser)("the editor's own autosave is not taken for an outside 
     expect((await readArchitecture(workspace, "sample")).state.diagrams[0]?.nodes[0]?.name).toBe("Three");
   });
 }, 45_000);
+
+test.skipIf(!hasBrowser)("a draft survives an outside removal and is saved before an outside hide closes the editor", async () => {
+  await withEditor(async (page, workspace) => {
+    await page.getByRole("group", { name: "Start", exact: true }).click();
+    const name = page.getByRole("textbox", { name: "Box name", exact: true });
+    await name.fill("Draft after removal");
+    const before = await readArchitecture(workspace, "sample");
+    await writeArchitecture(workspace, "sample", before.revision, { ...before.state, diagrams: [] });
+    await page.waitForFunction(async () => { const r = await fetch("/api/projects/sample/architecture"); const v = await r.json(); return v.state.diagrams[0]?.nodes[0]?.name === "Draft after removal"; });
+    expect(await page.getByRole("region", { name: "UML editor", exact: true }).count()).toBe(1);
+    expect(await name.inputValue()).toBe("Draft after removal");
+
+    await name.fill("Draft before hide");
+    const current = await readArchitecture(workspace, "sample");
+    await writeArchitecture(workspace, "sample", current.revision, { ...current.state, enabled: false });
+    await page.getByText("UML is hidden in this project. Your diagrams are kept.").waitFor();
+    const hidden = await readArchitecture(workspace, "sample");
+    expect(hidden.state.enabled).toBe(false);
+    expect(hidden.state.diagrams[0]?.nodes[0]?.name).toBe("Draft before hide");
+  });
+}, 45_000);
+
+test.skipIf(!hasBrowser)("a late answer of an older refresh does not replace a newer one", async () => {
+  await withEditor(async (page, workspace) => {
+    const gate = Promise.withResolvers<void>();
+    let gets = 0;
+    // Hold the answer, not the request: the late answer then carries the older file.
+    await page.route("**/api/projects/sample/architecture", async route => {
+      if (route.request().method() !== "GET") return route.continue();
+      const response = await route.fetch();
+      if (++gets === 1) await gate.promise;
+      await route.fulfill({ response });
+    });
+    try {
+      await rename(workspace, "First agent");
+      for (let i = 0; i < 40 && gets < 1; i++) await Bun.sleep(50);
+      await rename(workspace, "Second agent");
+      await page.getByRole("group", { name: "Second agent", exact: true }).waitFor();
+      gate.resolve();
+      await Bun.sleep(600);
+      expect(await page.getByRole("group", { name: "Second agent", exact: true }).count()).toBe(1);
+      expect(await page.getByRole("group", { name: "First agent", exact: true }).count()).toBe(0);
+      expect(gets).toBe(2);
+    } finally { gate.resolve(); }
+  });
+}, 45_000);
+
+test.skipIf(!hasBrowser)("a rename of the open diagram from the panel is not an outside change", async () => {
+  await withEditor(async page => {
+    page.on("dialog", dialog => void dialog.accept("Renamed in the panel"));
+    await page.locator('summary[aria-label="Actions for System overview"]').click();
+    await page.locator(".uml-diagram-row").getByRole("button", { name: "Rename", exact: true }).click();
+    await page.locator(".uml-canvas-header strong", { hasText: "Renamed in the panel" }).waitFor();
+    await page.waitForTimeout(600);
+    expect(await page.getByText("Updated from another window or an agent.").count()).toBe(0);
+    expect(await page.getByRole("button", { name: "Undo", exact: true }).isDisabled()).toBe(true);
+  });
+}, 45_000);

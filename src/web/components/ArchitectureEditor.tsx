@@ -25,8 +25,9 @@ type Document = { graph: Diagram; past: Diagram[]; future: Diagram[] };
 const AUTOSAVE_MS = 1000, CHECKPOINT_MS = 5 * 60 * 1000;
 type Pause = null | "conflict" | "invalid" | "failed";
 
-export function ArchitectureEditor({ project, diagram, busy, inspector, tab, designs, onSave, onBack, onDirty, onReload, onReference, onImport }: {
-  project: string; diagram: Diagram; busy: boolean; inspector: HTMLDivElement | null; tab: "uml" | "comments" | "history"; designs: string[];
+export function ArchitectureEditor({ project, diagram, own = false, busy, inspector, tab, designs, onSave, onBack, onDirty, onReload, onReference, onImport }: {
+  /** `own`: the current file revision comes from this app's own write (a panel rename), not from outside. */
+  project: string; diagram: Diagram; own?: boolean; busy: boolean; inspector: HTMLDivElement | null; tab: "uml" | "comments" | "history"; designs: string[];
   onSave: (graph: Diagram) => Promise<unknown>; onBack: (saved: boolean) => void; onDirty: (dirty: boolean) => void; onReload: () => void;
   onReference: (reference: Reference) => void; onImport: (graph: Diagram) => Promise<unknown>;
 }) {
@@ -58,6 +59,7 @@ export function ArchitectureEditor({ project, diagram, busy, inspector, tab, des
     if (incoming === JSON.stringify(clean.current) || incoming === submitting.current) return;
     if (JSON.stringify(doc.graph) === JSON.stringify(clean.current)) {
       clean.current = diagram;
+      if (own) { setDoc(current => ({ ...current, graph: diagram })); return; }
       setDoc(current => ({ graph: diagram, past: [...current.past, current.graph].slice(-80), future: [] }));
       setNotice({ kind: "status", text: "Updated from another window or an agent. Undo reverses it." });
       return;
