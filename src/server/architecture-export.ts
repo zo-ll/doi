@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { itemId } from "../architecture/nodes.ts";
 import { diagramSchema } from "../architecture/schema.ts";
-import { diagramSvg, imageText } from "../architecture/svg.ts";
+import { diagramSvg, imageText, MAX_IMAGE_PIXELS, MAX_IMAGE_SIDE } from "../architecture/svg.ts";
 import { diagramFontCss } from "../export/diagram-fonts.ts";
 import { ExportError } from "../export/html.ts";
 import { renderPdf, renderPngs } from "../export/render.ts";
@@ -11,8 +11,7 @@ import { failure, readBody } from "./architecture.ts";
 /** The renderers; tests can pass their own. */
 export interface DiagramRenderers { renderPngs: typeof renderPngs; renderPdf: typeof renderPdf }
 const RENDERERS: DiagramRenderers = { renderPngs, renderPdf };
-/** Chromium captures at most 16 384 device pixels on a side; the area bound keeps a capture near 256 MB of RGBA. */
-export const MAX_IMAGE_SIDE = 16_000, MAX_IMAGE_PIXELS = 64_000_000;
+
 
 const exportSchema = z.strictObject({
   format: z.enum(["svg", "png", "pdf"]),

@@ -67,7 +67,7 @@ describe("MCP tools", () => {
   test("lists the tools", async () => {
     const client = await connect();
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(["export_png", "get_architecture", "get_comments", "get_design", "get_design_system", "get_element", "list_designs"]);
+    expect(tools.map((t) => t.name).sort()).toEqual(["export_png", "get_architecture", "get_comments", "get_design", "get_design_system", "get_element", "list_designs", "render_architecture", "update_architecture"]);
   });
 
   test("list_designs", async () => {

@@ -19,6 +19,8 @@ export interface SvgOptions {
   fontCss?: string;
 }
 export interface DiagramImage { svg: string; width: number; height: number }
+/** Chromium captures at most 16 384 device pixels on a side; the area bound keeps a capture near 256 MB of RGBA. */
+export const MAX_IMAGE_SIDE = 16_000, MAX_IMAGE_PIXELS = 64_000_000;
 
 const PALETTES = {
   dark: { canvas: "#0e0e0d", panel: "#1a1a18", raised: "#222220", line: "#2a2926", line2: "#3b3a36", text: "#eceae4", text2: "#b4b0a7", warn: "#e3b04b", warnSoft: "#3b3020" },
