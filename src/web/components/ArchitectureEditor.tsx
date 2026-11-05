@@ -79,9 +79,9 @@ export function ArchitectureEditor({ project, diagram, busy, inspector, tab, des
     console.debug("UML action failed:", error);
     setNotice({ kind: "error", text: architectureErrorMessage(error) });
   }
-  /** Commits the saved file as a version, once for each run of saves. */
-  function record() {
-    if (!unrecorded.current) return;
+  /** Commits the saved file as a version, once for each run of saves. `always`: the server decides; it commits only a changed file. */
+  function record(always = false) {
+    if (!unrecorded.current && !always) return;
     unrecorded.current = false; recorded.current = Date.now();
     architectureCheckpoint(project, graph.name).then(sha => { if (sha) setVersions(n => n + 1); }, error => { unrecorded.current = true; console.debug("UML version not recorded:", error); });
   }
@@ -293,7 +293,7 @@ export function ArchitectureEditor({ project, diagram, busy, inspector, tab, des
     {inspector && createPortal(<fieldset className="uml-inspector">
       {tab === "uml" && (pickedNode ? <ArchitectureNodeInspector node={pickedNode} designs={designs} onChange={node => edit(g => ({ ...g, nodes: g.nodes.map(n => n.id === node.id ? node : n) }))} onReference={onReference}/> : pickedEdge ? <ArchitectureEdgeInspector edge={pickedEdge} onChange={edge => edit(g => ({ ...g, edges: g.edges.map(e => e.id === edge.id ? edge : e) }))}/> : <p className="uml-empty">Select a box or connector to edit its properties.</p>)}
       {tab === "comments" && <div className="uml-properties"><h3>Diagram comments</h3>{graph.comments.map(c => <article className="uml-comment" key={c.id}><strong>{c.status === "done" ? "Done" : "Open"} · {c.item}</strong><p>{c.text}</p><button className="btn btn-ghost" onClick={() => edit(g => ({ ...g, comments: g.comments.map(item => item.id === c.id ? { ...item, status: item.status === "open" ? "done" : "open" } : item) }))}>{c.status === "open" ? "Mark done" : "Reopen"}</button></article>)}<label className="field">Comment on the selected item<textarea className="textarea" maxLength={5000} value={comment} onChange={e => setComment(e.target.value)}/></label><button className="btn btn-secondary" disabled={selected.size !== 1 || !comment.trim()} onClick={() => { const item = [...selected][0]; if (item) { edit(g => ({ ...g, comments: [...g.comments, { id: crypto.randomUUID(), item, text: comment.trim(), status: "open", createdAt: new Date().toISOString() }] })); setComment(""); } }}>Add diagram comment</button></div>}
-      {tab === "history" && <ArchitectureHistory project={project} diagram={graph} refresh={versions} past={doc.past} onSessionRestore={snapshot => edit(() => snapshot)} onRestore={restored => { record(); edit(g => ({ ...restored, id: g.id })); setNotice({ kind: "status", text: "Restored the saved version. Undo reverses it." }); }}/>}
+      {tab === "history" && <ArchitectureHistory project={project} diagram={graph} refresh={versions} past={doc.past} onSessionRestore={snapshot => edit(() => snapshot)} onRestore={restored => { record(true); edit(g => ({ ...restored, id: g.id })); setNotice({ kind: "status", text: "Restored the saved version. Undo reverses it." }); }}/>}
     </fieldset>, inspector)}
   </section>;
 }

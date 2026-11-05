@@ -12,13 +12,15 @@ The reference uses doi's dark theme. The implementation must use the existing th
 
 ## First implementation status
 
-The app now has the optional right-panel entry, non-destructive hide/re-enable, diagram controls, shapes, class text, connections and property inspectors. The first editor uses explicit Save, not autosave. It also supplies session undo/redo, comments, UI references, editable JSON import/export and MCP `get_architecture`.
+The app now has the optional right-panel entry, non-destructive hide/re-enable, diagram controls, shapes, class text, connections and property inspectors. The editor autosaves about one second after the last edit, with the same revision check. It also supplies session undo/redo, comments, UI references, editable JSON import/export and MCP `get_architecture`.
 
 A real browser test checks opt-in without a file, box/class creation, a handle connection, inheritance, multiplicity, save/reload, undo after save, hide/re-enable, pointer resize/move, comments and a UI link. The test verifies the saved workspace state and confirms that no model request starts. Unit tests check every relationship preset, graph validation, atomic writes, stale saves, copy ids and JSON round trips.
 
 The arrange tools add system-clipboard copy, cut and paste with new ids, group and ungroup, bulk lock, draw order, align, distribute, drag guides, keyboard nudges and fit selection (U12–U15). Browser tests drive align, distribute, order, group, ungroup, lock, unlock, clipboard, guides, nudges, select all, delete, undo, redo and fit selection, and check the saved graph.
 
-Not complete: autosave, persistent version history, image exports, graph handoff, MCP graph writes/render and automatic shared-instance refresh. The diagram save lock holds for one doi process only; two processes on one workspace are not serialized. Some shape and lifecycle controls still need broader browser coverage. Do not close #145 for this first implementation.
+Autosave and persistent versions (U17–U19) are in: versions are git commits of `architecture.json`, recorded on Save diagram, on leave and every 5 minutes of autosave. The History tab restores the open diagram from a version as an undoable edit.
+
+Not complete: image exports, graph handoff, MCP graph writes/render and automatic shared-instance refresh. The diagram save lock holds for one doi process only; two processes on one workspace are not serialized. Some shape and lifecycle controls still need broader browser coverage. Do not close #145 for this first implementation.
 
 ## Feature contract
 

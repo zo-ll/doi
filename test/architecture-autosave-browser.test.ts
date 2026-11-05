@@ -57,6 +57,8 @@ test.skipIf(!hasBrowser)("autosave stores edits; Save, versions, restore, undo a
     await list.getByRole("listitem").nth(1).waitFor();
     await list.getByRole("listitem").nth(1).getByRole("button").click();
     await page.getByText("Restored the saved version. Undo reverses it.").waitFor();
+    // The state before the restore ("Second", saved by Ctrl+S) is already a version: no extra commit.
+    expect((await versions()).length).toBe(2);
     await page.waitForFunction(() => document.querySelector(".uml-save-state")?.textContent === "Saved");
     expect(await stored()).toBe("Autosaved");
     await page.getByRole("button", { name: "Undo", exact: true }).click();

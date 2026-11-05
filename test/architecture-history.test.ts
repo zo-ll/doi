@@ -52,3 +52,11 @@ test("version routes reject bad ids, unknown versions, bad labels and other orig
     expect((await fetch(base.replace("/sample/", "/missing/") + "/versions")).status).toBe(404);
   });
 });
+
+test("a checkpoint records a file that was saved before any version", async () => {
+  await withApp(async (base, workspace) => {
+    await Bun.write(join(workspace, "projects/sample/architecture.json"), JSON.stringify({ version: 1, enabled: true, diagrams: [createDiagram()] }));
+    const { sha } = await (await fetch(`${base}/checkpoint`, { method: "POST", headers: json, body: JSON.stringify({ label: "Before restore" }) })).json();
+    expect(sha).toMatch(/^[0-9a-f]{40}$/);
+  });
+});
