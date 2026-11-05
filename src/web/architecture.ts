@@ -1,18 +1,42 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { architectureViewSchema, type Architecture, type ArchitectureView } from "../architecture/schema.ts";
+import { z } from "zod";
+import { architectureSchema, architectureViewSchema, type Architecture, type ArchitectureView } from "../architecture/schema.ts";
 import type { Load } from "./api.ts";
 
-export async function architectureRequest(project: string, body?: ArchitectureView, signal?: AbortSignal): Promise<ArchitectureView> {
-  const response = await fetch(`/api/projects/${project}/architecture`, {
-    method: body ? "PUT" : "GET", signal,
-    ...(body ? { headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {}),
-  });
+/** A failed UML request keeps its HTTP status: 409 means another write came first. */
+export class ArchitectureRequestError extends Error {
+  constructor(readonly status: number, message: string) { super(message); }
+}
+async function request(path: string, init: RequestInit): Promise<unknown> {
+  const response = await fetch(path, init);
   const data: unknown = await response.json();
   if (!response.ok) {
     const message = typeof data === "object" && data !== null && "error" in data && typeof data.error === "string" ? data.error : `UML request failed (${response.status}).`;
-    throw new Error(message);
+    throw new ArchitectureRequestError(response.status, message);
   }
-  return architectureViewSchema.parse(data);
+  return data;
+}
+export async function architectureRequest(project: string, body?: ArchitectureView, signal?: AbortSignal): Promise<ArchitectureView> {
+  return architectureViewSchema.parse(await request(`/api/projects/${project}/architecture`, {
+    method: body ? "PUT" : "GET", signal,
+    ...(body ? { headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {}),
+  }));
+}
+
+const versionsSchema = z.object({ versions: z.array(z.object({ sha: z.string(), at: z.string(), message: z.string() })) });
+export type ArchitectureVersion = z.infer<typeof versionsSchema>["versions"][number];
+export async function architectureVersions(project: string, signal?: AbortSignal): Promise<ArchitectureVersion[]> {
+  return versionsSchema.parse(await request(`/api/projects/${project}/architecture/versions`, { signal })).versions;
+}
+export async function architectureVersion(project: string, sha: string, signal?: AbortSignal): Promise<Architecture> {
+  return z.object({ state: architectureSchema }).parse(await request(`/api/projects/${project}/architecture/versions/${encodeURIComponent(sha)}`, { signal })).state;
+}
+/** Records the saved file as a version. `keepalive` lets the request finish when the editor closes. */
+export async function architectureCheckpoint(project: string, label: string): Promise<string | null> {
+  const data = await request(`/api/projects/${project}/architecture/checkpoint`, {
+    method: "POST", keepalive: true, headers: { "content-type": "application/json" }, body: JSON.stringify({ label: label.slice(0, 200) }),
+  });
+  return z.object({ sha: z.string().nullable() }).parse(data).sha;
 }
 
 type WriteStatus = { state: "idle" } | { state: "saving" } | { state: "error"; message: string };
