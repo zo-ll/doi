@@ -32,11 +32,11 @@ export async function architectureVersion(project: string, sha: string, signal?:
   return z.object({ state: architectureSchema }).parse(await request(`/api/projects/${project}/architecture/versions/${encodeURIComponent(sha)}`, { signal })).state;
 }
 /** Records the saved file as a version. `keepalive` lets the request finish when the editor closes. */
-export async function architectureCheckpoint(project: string, label: string): Promise<string | null> {
+export async function architectureCheckpoint(project: string, label: string): Promise<{ sha: string | null; error?: string }> {
   const data = await request(`/api/projects/${project}/architecture/checkpoint`, {
     method: "POST", keepalive: true, headers: { "content-type": "application/json" }, body: JSON.stringify({ label: label.slice(0, 200) }),
   });
-  return z.object({ sha: z.string().nullable() }).parse(data).sha;
+  return z.object({ sha: z.string().nullable(), error: z.string().optional() }).parse(data);
 }
 
 type WriteStatus = { state: "idle" } | { state: "saving" } | { state: "error"; message: string };

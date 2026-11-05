@@ -60,3 +60,21 @@ test("a checkpoint records a file that was saved before any version", async () =
     expect(sha).toMatch(/^[0-9a-f]{40}$/);
   });
 });
+
+test("a corrupt or deleted version is an error; an ignored UML file reports why no version exists", async () => {
+  await withApp(async (base, workspace) => {
+    const file = join(workspace, "projects/sample/architecture.json");
+    await Bun.write(file, "{ broken");
+    await $`git add -- projects/sample/architecture.json && git -c user.name=t -c user.email=t@t commit -q -m corrupt`.cwd(workspace).quiet();
+    const corrupt = (await $`git rev-parse HEAD`.cwd(workspace).text()).trim();
+    expect((await fetch(`${base}/versions/${corrupt}`)).status).toBe(422);
+    await $`git rm -q -- projects/sample/architecture.json && git -c user.name=t -c user.email=t@t commit -q -m removed`.cwd(workspace).quiet();
+    const removed = (await $`git rev-parse HEAD`.cwd(workspace).text()).trim();
+    expect((await fetch(`${base}/versions/${removed}`)).status).toBe(404);
+    await Bun.write(join(workspace, ".gitignore"), "projects/sample/architecture.json\n");
+    await Bun.write(file, JSON.stringify({ version: 1, enabled: true, diagrams: [createDiagram()] }));
+    const ignored = await (await fetch(`${base}/checkpoint`, { method: "POST", headers: json, body: JSON.stringify({ label: "Ignored" }) })).json();
+    expect(ignored.sha).toBeNull();
+    expect(ignored.error).toContain("did not accept the UML file");
+  });
+});

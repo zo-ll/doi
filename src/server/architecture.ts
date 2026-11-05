@@ -60,6 +60,6 @@ export async function getArchitectureVersion(workspace: string, project: string,
 export async function postArchitectureCheckpoint(workspace: string, project: string, req: Request): Promise<Response> {
   try {
     const { label } = checkpointSchema.parse(await readBody(req));
-    return Response.json({ sha: await checkpointArchitecture(workspace, project, label) });
+    return Response.json(await checkpointArchitecture(workspace, project, label));
   } catch (error) { return failure(error); }
 }

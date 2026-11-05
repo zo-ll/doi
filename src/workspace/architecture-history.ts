@@ -32,15 +32,18 @@ export async function architectureAt(workspace: string, project: string, sha: st
   catch (cause) { throw new ArchitectureError(422, "This UML version is invalid and cannot be restored.", { cause }); }
 }
 
-/** Commits the saved file under the write lock. Returns the commit id, or null when nothing changed. */
-export async function checkpointArchitecture(workspace: string, project: string, label: string): Promise<string | null> {
+/**
+ * Commits the saved file under the write lock. `sha` is null when nothing changed; `error` says
+ * why git could not record the version (no git, an ignore rule), without git's own output.
+ */
+export async function checkpointArchitecture(workspace: string, project: string, label: string): Promise<{ sha: string | null; error?: string }> {
   const { root, path } = await located(workspace, project);
   return withFileLock(path, async () => {
-    if (!(await Bun.file(path).exists())) return null;
-    try { return await commitPaths(root, [path], `UML: ${label}`); }
+    if (!(await Bun.file(path).exists())) return { sha: null };
+    try { return { sha: await commitPaths(root, [path], `UML: ${label}`) }; }
     catch (error) {
       console.error("UML version not recorded:", error instanceof Error ? error.message : error);
-      return null;
+      return { sha: null, error: "the workspace history (git) did not accept the UML file. Saves still work." };
     }
   });
 }
