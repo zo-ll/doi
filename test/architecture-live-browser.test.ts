@@ -99,7 +99,8 @@ test.skipIf(!hasBrowser)("a draft survives an outside removal and is saved befor
     await name.fill("Draft after removal");
     const before = await readArchitecture(workspace, "sample");
     await writeArchitecture(workspace, "sample", before.revision, { ...before.state, diagrams: [] });
-    await page.waitForFunction(async () => { const r = await fetch("/api/projects/sample/architecture"); const v = await r.json(); return v.state.diagrams[0]?.nodes[0]?.name === "Draft after removal"; });
+    for (let i = 0; i < 60 && (await readArchitecture(workspace, "sample")).state.diagrams[0]?.nodes[0]?.name !== "Draft after removal"; i++) await Bun.sleep(100);
+    expect((await readArchitecture(workspace, "sample")).state.diagrams[0]?.nodes[0]?.name).toBe("Draft after removal");
     expect(await page.getByRole("region", { name: "UML editor", exact: true }).count()).toBe(1);
     expect(await name.inputValue()).toBe("Draft after removal");
 
@@ -147,5 +148,35 @@ test.skipIf(!hasBrowser)("a rename of the open diagram from the panel is not an 
     await page.waitForTimeout(600);
     expect(await page.getByText("Updated from another window or an agent.").count()).toBe(0);
     expect(await page.getByRole("button", { name: "Undo", exact: true }).isDisabled()).toBe(true);
+  });
+}, 45_000);
+
+test.skipIf(!hasBrowser)("Load latest discards a draft after the confirmation, also in a conflict", async () => {
+  await withEditor(async (page, workspace) => {
+    const answers: boolean[] = [];
+    page.on("dialog", dialog => void (answers.shift() ? dialog.accept() : dialog.dismiss()));
+    await page.getByRole("group", { name: "Start", exact: true }).click();
+    const name = page.getByRole("textbox", { name: "Box name", exact: true });
+    await name.fill("");
+    await page.waitForFunction(() => document.querySelector(".uml-save-state")?.textContent === "Not saved");
+    answers.push(false);
+    await page.getByRole("button", { name: "Load latest", exact: true }).click();
+    expect(await name.inputValue()).toBe("");
+    answers.push(true);
+    await page.getByRole("button", { name: "Load latest", exact: true }).click();
+    await page.waitForFunction(() => document.querySelector(".uml-save-state")?.textContent === "Saved");
+    await page.getByRole("group", { name: "Start", exact: true }).waitFor();
+
+    await page.getByRole("group", { name: "Start", exact: true }).click();
+    await name.fill("");
+    await page.waitForFunction(() => document.querySelector(".uml-save-state")?.textContent === "Not saved");
+    await rename(workspace, "Agent name");
+    await page.waitForFunction(() => document.querySelector(".uml-save-state")?.textContent === "Not saved: changed elsewhere");
+    answers.push(true);
+    await page.getByRole("button", { name: "Load latest", exact: true }).click();
+    await page.getByRole("group", { name: "Agent name", exact: true }).waitFor();
+    await page.waitForFunction(() => document.querySelector(".uml-save-state")?.textContent === "Saved");
+    expect(await page.getByText("The diagram changed elsewhere.").count()).toBe(0);
+    expect((await readArchitecture(workspace, "sample")).state.diagrams[0]?.nodes[0]?.name).toBe("Agent name");
   });
 }, 45_000);

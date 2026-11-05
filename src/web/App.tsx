@@ -642,7 +642,7 @@ export function App() {
           />
         )}
 
-        {umlOpen ? (umlDiagram ? <ArchitectureEditor key={`${active?.project}/${umlDiagram.id}`} project={active?.project ?? ""} diagram={umlDiagram} own={architecture.load.state === "ready" && architecture.load.data.revision === architecture.ownRevision.current} busy={architecture.busy} inspector={umlInspector} tab={sideTab} designs={activeProject?.designs ?? []} onDirty={setUmlDirty} onBack={saved => leaveUml(saved)} onReload={() => { if (!umlDirty || window.confirm("Discard unsaved edits and load the latest diagram?")) architecture.reload(); }} onSave={graph => {
+        {umlOpen ? (umlDiagram ? <ArchitectureEditor key={`${active?.project}/${umlDiagram.id}`} project={active?.project ?? ""} diagram={umlDiagram} own={architecture.load.state === "ready" && architecture.load.data.revision === architecture.ownRevision.current} busy={architecture.busy} inspector={umlInspector} tab={sideTab} designs={activeProject?.designs ?? []} onDirty={setUmlDirty} onBack={saved => leaveUml(saved)} onReload={() => { if (!umlDirty || window.confirm("Discard unsaved edits and load the latest diagram?")) { setUmlDirty(false); architecture.reload(); } }} onSave={graph => {
           if (architecture.load.state !== "ready") return Promise.reject(new Error("Load UML before saving."));
           const { diagrams } = architecture.load.data.state;
           // A draft of a diagram that was removed elsewhere comes back with this save.
