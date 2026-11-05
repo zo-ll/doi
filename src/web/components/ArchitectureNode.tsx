@@ -1,9 +1,10 @@
 import { Handle, NodeResizer, Position, type Node, type NodeProps } from "@xyflow/react";
 import type { DiagramNode, Side } from "../../architecture/nodes.ts";
-export type FlowNode = Node<{ item: DiagramNode }, "uml">;
+export interface ConnectionPort { id: string; side: Side; offset: number; bound: boolean }
+export type FlowNode = Node<{ item: DiagramNode; ports: ConnectionPort[] }, "uml">;
 const positions: Readonly<Record<Side, Position>> = { top: Position.Top, right: Position.Right, bottom: Position.Bottom, left: Position.Left };
 
-export function ArchitectureNode({ id, data: { item }, selected }: NodeProps<FlowNode>) {
+export function ArchitectureNode({ id, data: { item, ports }, selected }: NodeProps<FlowNode>) {
   return <>
     <NodeResizer nodeId={id} isVisible={!!selected && !item.locked} minWidth={32} minHeight={32} maxWidth={4096} maxHeight={4096} color="var(--accent)" />
     <article className={`uml-node uml-node--${item.shape}`} aria-label={item.name} style={{
@@ -17,7 +18,6 @@ export function ArchitectureNode({ id, data: { item }, selected }: NodeProps<Flo
       {item.shape === "class" && <><pre>{item.attributes || " "}</pre><pre>{item.operations || " "}</pre></>}
       {item.references.length > 0 && <span className="uml-reference-count">↗ {item.references.length} UI link{item.references.length === 1 ? "" : "s"}</span>}
     </article>
-    {item.shape !== "group" && Object.entries(positions).map(([side, position]) =>
-      <Handle key={side} id={side} type="source" position={position} isConnectable={!item.locked} aria-label={`Connect ${side} of ${item.name}`} />)}
+    {ports.map(port => <Handle key={port.id} id={port.id} type="source" position={positions[port.side]} isConnectable={!item.locked && !port.bound} className={port.bound ? "uml-bound-port" : undefined} style={port.side === "left" || port.side === "right" ? { top: `${port.offset * 100}%` } : { left: `${port.offset * 100}%` }} aria-label={`Connect ${port.side} of ${item.name}`} />)}
   </>;
 }
