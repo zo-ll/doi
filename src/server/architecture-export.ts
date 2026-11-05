@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { itemId } from "../architecture/nodes.ts";
 import { diagramSchema } from "../architecture/schema.ts";
-import { diagramSvg } from "../architecture/svg.ts";
+import { diagramSvg, imageText, MAX_IMAGE_PIXELS, MAX_IMAGE_SIDE } from "../architecture/svg.ts";
 import { diagramFontCss } from "../export/diagram-fonts.ts";
 import { ExportError } from "../export/html.ts";
 import { renderPdf, renderPngs } from "../export/render.ts";
@@ -11,8 +11,7 @@ import { failure, readBody } from "./architecture.ts";
 /** The renderers; tests can pass their own. */
 export interface DiagramRenderers { renderPngs: typeof renderPngs; renderPdf: typeof renderPdf }
 const RENDERERS: DiagramRenderers = { renderPngs, renderPdf };
-/** Chromium captures at most 16 384 device pixels on a side; the area bound keeps a capture near 256 MB of RGBA. */
-export const MAX_IMAGE_SIDE = 16_000, MAX_IMAGE_PIXELS = 64_000_000;
+
 
 const exportSchema = z.strictObject({
   format: z.enum(["svg", "png", "pdf"]),
@@ -40,7 +39,8 @@ export async function postArchitectureExport(workspace: string, project: string,
   try {
     await architecturePath(workspace, project);
     const body = exportSchema.parse(await readBody(req));
-    const image = diagramSvg(body.diagram, { theme: body.theme, background: body.background, ids: body.ids ? new Set(body.ids) : undefined, fontCss: await diagramFontCss(JSON.stringify(body.diagram)) });
+    const ids = body.ids ? new Set(body.ids) : undefined;
+    const image = diagramSvg(body.diagram, { theme: body.theme, background: body.background, ids, fontCss: await diagramFontCss(imageText(body.diagram, ids)) });
     if ("error" in image) throw new ArchitectureError(400, image.error);
     if (body.format === "svg") return new Response(image.svg, { headers: { "content-type": "image/svg+xml; charset=utf-8", "content-disposition": `attachment; filename="${imageName(body.diagram.name, "svg")}"` } });
     const scale = body.format === "png" ? body.scale : 1;

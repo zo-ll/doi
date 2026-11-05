@@ -8,7 +8,12 @@ import { readDesignFiles } from "../generation/context.ts";
 import { designOids } from "../generation/oids.ts";
 import { readElement, type ElementInfo } from "./element.ts";
 import { readChat } from "../workspace/chat.ts";
-import { readArchitecture } from "../workspace/architecture.ts";
+import { ArchitectureError, readArchitecture, writeArchitecture } from "../workspace/architecture.ts";
+import { checkpointArchitecture } from "../workspace/architecture-history.ts";
+import { diagramSchema } from "../architecture/schema.ts";
+import { diagramSvg, imageText, MAX_IMAGE_PIXELS, MAX_IMAGE_SIDE } from "../architecture/svg.ts";
+import { architectureErrorMessage } from "../architecture/errors.ts";
+import { diagramFontCss } from "../export/diagram-fonts.ts";
 import { readComments } from "../workspace/comments.ts";
 import { activeDesignSystem, designSystemDir } from "../workspace/design-systems.ts";
 import { designFrames, isApp } from "../workspace/layout.ts";
@@ -17,7 +22,8 @@ import { assertName, designDir, listProjects } from "../workspace/paths.ts";
 /**
  * The doi MCP server (#54): any coding agent with an MCP client reads the designs through it.
  * It is served by the doi server at `/mcp` (Streamable HTTP, stateless), so it needs no setup
- * per agent. All tools only read, except that `export_png` renders a page.
+ * per agent. The tools read, except two: `export_png` and `render_architecture` render, and
+ * `update_architecture` writes one UML diagram with the editor's validation and revision check.
  */
 export const MCP_PATH = "/mcp";
 const MAX_REQUESTS = 20;
@@ -65,6 +71,14 @@ async function checkDesign(workspace: string, project: string, design: string): 
 }
 
 const projectArg = z.string().describe("The project id from list_designs.");
+
+/** The project's UML, which the user must have enabled; a bad project name is a tool error. */
+async function readUml(workspace: string, project: string) {
+  assertName("project", project);
+  const view = await readArchitecture(workspace, project);
+  if (!view.state.enabled) throw new ToolError("UML is not enabled in this project. Ask the user to add UML in doi (right panel → UML).");
+  return view;
+}
 const designArg = z.string().describe("The design id from list_designs.");
 
 export function createMcpServer(deps: McpDeps): McpServer {
@@ -88,6 +102,79 @@ export function createMcpServer(deps: McpDeps): McpServer {
       annotations: { readOnlyHint: true },
     },
     ({ project }) => tool(async () => json(await readArchitecture(workspace, project))),
+  );
+
+  server.registerTool(
+    "render_architecture",
+    {
+      description: "Renders one UML diagram of a project as a PNG, as doi's image export draws it. Use it to see the diagram.",
+      inputSchema: {
+        project: projectArg,
+        diagram: z.string().optional().describe("The diagram id or name from get_architecture. Default: the first diagram."),
+        theme: z.enum(["dark", "light"]).optional().describe("The colours. Default: light."),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    ({ project, diagram, theme }) =>
+      tool(async () => {
+        const { state } = await readUml(workspace, project);
+        const chosen = diagram ? state.diagrams.find(d => d.id === diagram || d.name === diagram) : state.diagrams[0];
+        if (!chosen) throw new ToolError(diagram ? `Diagram "${diagram}" not found. Diagrams: ${state.diagrams.map(d => `${d.name} (${d.id})`).join(", ")}.` : "The project has no UML diagram.");
+        const image = diagramSvg(chosen, { theme: theme ?? "light", background: true, fontCss: await diagramFontCss(imageText(chosen)) });
+        if ("error" in image) throw new ToolError(image.error);
+        if (Math.max(image.width, image.height) > MAX_IMAGE_SIDE || image.width * image.height > MAX_IMAGE_PIXELS) throw new ToolError(`The diagram is ${image.width} × ${image.height} px, larger than an image can be. Read it with get_architecture.`);
+        const html = `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0}svg{display:block}</style></head><body>${image.svg}</body></html>`;
+        let png: Buffer;
+        try {
+          [png] = (await (deps.render ?? renderPngs)(html, [image], { scale: 1, fullPage: false })) as [Buffer];
+        } catch (e) {
+          throw renderError(e);
+        }
+        return {
+          content: [
+            { type: "image", data: png.toString("base64"), mimeType: "image/png" },
+            { type: "text", text: `${chosen.name} (${chosen.id}): ${chosen.nodes.length} boxes, ${chosen.edges.length} connectors, ${image.width} × ${image.height}.` },
+          ],
+        };
+      }),
+  );
+
+  server.registerTool(
+    "update_architecture",
+    {
+      description:
+        "Creates or replaces one UML diagram of a project. Send the whole diagram in the get_architecture format, with the revision that get_architecture gave. " +
+        "doi checks it as its editor does: unique ids, connectors between existing boxes, groups without cycles, limits. A changed revision means that someone else saved first: " +
+        "call get_architecture again and merge. Keep the ids of items that stay, so comments and UI links stay attached. UML must be enabled in the project (the user does this in doi). " +
+        "The open editor in doi shows the change at once. doi records the change as a version.",
+      inputSchema: {
+        project: projectArg,
+        revision: z.string().nullable().describe("The revision from get_architecture."),
+        diagram: z.unknown().describe("One diagram: { id, name, nodes, edges, comments }, as get_architecture returns it."),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+    },
+    ({ project, revision, diagram }) =>
+      tool(async () => {
+        const parsed = diagramSchema.safeParse(diagram);
+        if (!parsed.success) throw new ToolError(`The diagram is invalid. ${architectureErrorMessage(parsed.error)}`);
+        const current = await readUml(workspace, project);
+        const exists = current.state.diagrams.some(d => d.id === parsed.data.id);
+        const diagrams = exists ? current.state.diagrams.map(d => d.id === parsed.data.id ? parsed.data : d) : [...current.state.diagrams, parsed.data];
+        let saved;
+        try {
+          saved = await writeArchitecture(workspace, project, revision, { ...current.state, diagrams });
+        } catch (e) {
+          if (e instanceof ArchitectureError) throw new ToolError(e.status === 409 ? "The UML changed since that revision. Call get_architecture again, merge your change and send the new revision." : e.message);
+          if (e instanceof z.ZodError) {
+            if (e.issues.some(issue => issue.path.length === 1 && issue.path[0] === "diagrams")) throw new ToolError("A project can have at most 50 UML diagrams. Replace a diagram instead of adding one.");
+            throw new ToolError(`The UML is invalid. ${architectureErrorMessage(e)}`);
+          }
+          throw new ToolError(`The UML could not be saved: ${e instanceof Error ? e.message : String(e)}`);
+        }
+        const version = await checkpointArchitecture(workspace, project, `agent: ${parsed.data.name}`);
+        return json({ revision: saved.revision, diagram: parsed.data.id, created: !exists, version: version.sha });
+      }),
   );
 
   server.registerTool(

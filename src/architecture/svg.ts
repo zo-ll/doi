@@ -19,6 +19,8 @@ export interface SvgOptions {
   fontCss?: string;
 }
 export interface DiagramImage { svg: string; width: number; height: number }
+/** Chromium captures at most 16 384 device pixels on a side; the area bound keeps a capture near 256 MB of RGBA. */
+export const MAX_IMAGE_SIDE = 16_000, MAX_IMAGE_PIXELS = 64_000_000;
 
 const PALETTES = {
   dark: { canvas: "#0e0e0d", panel: "#1a1a18", raised: "#222220", line: "#2a2926", line2: "#3b3a36", text: "#eceae4", text2: "#b4b0a7", warn: "#e3b04b", warnSoft: "#3b3020" },
@@ -184,7 +186,7 @@ export function labelWidth(text: string): number {
   let width = 0;
   for (const char of text) {
     const code = char.codePointAt(0) ?? 0;
-    width += code >= 0x2e80 ? 12.5 : /[MWmw@%]/.test(char) ? 12 : /[A-Z0-9#&]/.test(char) ? 8.5 : /[ilj.,:;'|!()\[\] ]/.test(char) ? 4 : 7;
+    width += code >= 0x2e80 ? 12.5 : /[MWmwШЩЖЮШмшщжюΩΣ@%]/u.test(char) ? 12 : /[\p{Lu}\p{Nd}#&]/u.test(char) ? 8.5 : /[ilj.,:;'|!()\[\] ]/.test(char) ? 4 : 7;
   }
   return Math.ceil(width);
 }
@@ -193,6 +195,12 @@ const labelBox = (text: string, at: Point): Rect => { const width = labelWidth(t
 function labelSvg(text: string, at: Point, palette: Palette): string {
   const { width, height } = labelBox(text, at);
   return `<rect x="${num(at.x - width / 2)}" y="${num(at.y - height / 2)}" width="${num(width)}" height="${height}" rx="3" fill="${palette.panel}"/><text x="${num(at.x)}" y="${num(at.y)}" font-size="12" font-family="${escape(FONT)}" fill="${palette.text}" text-anchor="middle" dominant-baseline="central">${escape(text)}</text>`;
+}
+
+/** The text that an image of `graph` draws: the font subsets follow it, not comments or ids. */
+export function imageText(graph: Diagram, ids?: ReadonlySet<string>): string {
+  const { nodes, edges } = scope(graph, ids);
+  return [graph.name, ...nodes.flatMap(n => [n.name, n.stereotype, n.content, n.attributes, n.operations]), ...edges.flatMap(e => [e.label, e.startLabel, e.endLabel])].join("\n");
 }
 
 export function diagramSvg(graph: Diagram, options: SvgOptions): DiagramImage | { error: string } {
@@ -240,7 +248,9 @@ export function diagramSvg(graph: Diagram, options: SvgOptions): DiagramImage | 
   const groups = shapes.filter((_, i) => drawn[i]?.shape === "group"), boxes = shapes.filter((_, i) => drawn[i]?.shape !== "group");
   const hollow = (marker: Marker) => marker === "triangle" || marker === "diamond" || marker === "circle";
   /** The unit vector from a connector end out along its line: the side's normal, or toward the nearest bend point. */
-  const outward = (at: Point, side: Side, toward: Point | undefined): Point => {
+  const outward = (at: Point, side: Side, toward: Point | undefined, self?: "start" | "end"): Point => {
+    // A self connector leaves to the right and comes back from the left (`edgeRoute`), whatever its sides.
+    if (self && !toward) return { x: self === "start" ? 1 : -1, y: 0 };
     if (toward) { const dx = toward.x - at.x, dy = toward.y - at.y, length = Math.hypot(dx, dy) || 1; return { x: dx / length, y: dy / length }; }
     return side === "left" ? { x: -1, y: 0 } : side === "right" ? { x: 1, y: 0 } : side === "top" ? { x: 0, y: -1 } : { x: 0, y: 1 };
   };
@@ -253,8 +263,8 @@ export function diagramSvg(graph: Diagram, options: SvgOptions): DiagramImage | 
     const line = `fill="none" stroke="${escape(colour)}" stroke-width="${num(edge.width)}"${dash}`;
     // Without a background, a hollow marker shows what is behind it: a mask hides the line under it.
     const holes = options.background ? [] : [
-      ...(hollow(edge.startMarker) ? [[source, outward(source, edge.sourceSide, edge.points[0])] as const] : []),
-      ...(hollow(edge.endMarker) ? [[target, outward(target, edge.targetSide, edge.points.at(-1))] as const] : []),
+      ...(hollow(edge.startMarker) ? [[source, outward(source, edge.sourceSide, edge.points[0], edge.source === edge.target ? "start" : undefined)] as const] : []),
+      ...(hollow(edge.endMarker) ? [[target, outward(target, edge.targetSide, edge.points.at(-1), edge.source === edge.target ? "end" : undefined)] as const] : []),
     ];
     if (!holes.length) return `<g data-id="${escape(edge.id)}"><path d="${escape(path)}" ${line}${start}${end}/>${text}</g>`;
     defs.push(`<mask id="k${index}" maskUnits="userSpaceOnUse" x="${left}" y="${top}" width="${width}" height="${height}"><rect x="${left}" y="${top}" width="${width}" height="${height}" fill="#fff"/>${holes.map(([tip, n]) => `<circle cx="${num(tip.x + n.x * 6)}" cy="${num(tip.y + n.y * 6)}" r="6" fill="#000"/>`).join("")}</mask>`);

@@ -60,7 +60,8 @@ describe("HANDOFF.md draft", () => {
     expect(md).toContain("- On `hero`: Bigger `title`\n- On `gone`: Old element (This element is not in the design now.)\n");
     expect(md).not.toContain("Done one");
     expect(md).not.toMatch(/\{\{(?!design\}\} red)\w+\}\}/);
-    expect(HANDOFF_TEMPLATE.version).toBe("v0");
+    expect(HANDOFF_TEMPLATE.version).toBe("v1");
+
   });
 
   test("a line break in the project name or a frame label cannot start a Markdown block", async () => {
@@ -216,7 +217,7 @@ describe("handoff routes", () => {
     const res = await getHandoff(ws, params);
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.template).toBe("v0");
+    expect(body.template).toBe("v1");
     expect(body.markdown).toStartWith("# Handoff: home");
   });
 
@@ -240,4 +241,72 @@ describe("handoff routes", () => {
     expect((await postBundle(ws, post({}), params, fakeRender)).status).toBe(400);
     expect((await postBundle(ws, new Request("http://127.0.0.1/x", { method: "POST", body: "nope" }), params, fakeRender)).status).toBe(400);
   });
+});
+
+describe("UML in the handoff", () => {
+  async function withUml() {
+    const { writeArchitecture } = await import("../src/workspace/architecture.ts");
+    const { createDiagram } = await import("../src/architecture/schema.ts");
+    const { createNode } = await import("../src/architecture/nodes.ts");
+    const { createEdge } = await import("../src/architecture/edges.ts");
+    const web = createNode("box", { x: 0, y: 0 }, "Web app");
+    web.references.push({ design: "home", page: "index.html", node: "hero" });
+    const api = createNode("box", { x: 300, y: 0 }, "API");
+    const diagram = { ...createDiagram(), name: "System `map`", nodes: [web, api], edges: [{ ...createEdge(web.id, api.id), label: "calls" }],
+      comments: [{ id: "c1", item: api.id, text: "Use REST", status: "open" as const, createdAt: at }, { id: "c2", item: web.id, text: "Done", status: "done" as const, createdAt: at }] };
+    await writeArchitecture(ws, "shop", null, { version: 1, enabled: true, diagrams: [diagram, { ...createDiagram(), name: "System `map`" }] });
+    return { web, api };
+  }
+
+  test("the draft lists the diagram files and the open diagram comments", async () => {
+    const { api } = await withUml();
+    const md = await draftHandoff(ws, "shop", "home");
+    expect(md).toContain("- `architecture/architecture.json`: all diagrams");
+    expect(md).toContain('- `architecture/System-map.svg`: the diagram "System `map`" as an image.');
+    expect(md).not.toContain("System-map-2.svg");
+    expect(md).toContain('- The diagram "System `map`" is empty: it has no image.');
+    expect(md).toContain(`- In "System \`map\`", on \`API\` (\`${api.id}\`): Use REST`);
+    expect(md).not.toContain("Done");
+  });
+
+  test("the bundle carries the JSON and one SVG for each diagram", async () => {
+    await withUml();
+    const bundle = await buildBundle(ws, "shop", "home", "# Go", fakeRender);
+    const files = new Map(bundle.files.map(f => [f.path, f.data]));
+    expect(JSON.parse(text(files.get("architecture/architecture.json")!)).diagrams).toHaveLength(2);
+    const svg = text(files.get("architecture/System-map.svg")!);
+    expect(svg).toStartWith("<svg");
+    expect(svg).toContain("Web app");
+    expect(svg).toContain("@font-face");
+    expect(files.has("architecture/System-map-2.svg")).toBe(false);
+  });
+
+  test("the agent prompt adds the UML step only when the project has UML", async () => {
+    const { agentPrompt } = await import("../src/handoff/prompt.ts");
+    const without = await agentPrompt(ws, "shop", "home", "http://x/mcp");
+    expect(without).not.toContain("{{");
+    expect(without).toContain("pictures show the result that you must match.\n5. Read this repository");
+    await withUml();
+    const withUmlText = await agentPrompt(ws, "shop", "home", "http://x/mcp");
+    expect(withUmlText).toContain('4. Call `export_png` for each page in each frame. The pictures show the result that you must match.\n   The project also has UML diagrams of its architecture: "System `map`", "System `map`". Call the doi tools `get_architecture` for the project and `render_architecture` for each diagram.');
+
+  });
+});
+
+test("a corrupt UML file does not stop the handoff", async () => {
+  await Bun.write(join(ws, "projects", "shop", "architecture.json"), '{"not json"');
+  const md = await draftHandoff(ws, "shop", "home");
+  expect(md).toContain("## Architecture\n\nThe project's UML file is invalid. Fix it in doi; this bundle has no diagrams.");
+  const { agentPrompt } = await import("../src/handoff/prompt.ts");
+  expect(await agentPrompt(ws, "shop", "home", "http://x/mcp")).toContain("The project's UML file is invalid");
+  const bundle = await buildBundle(ws, "shop", "home", "# Go", fakeRender);
+  expect(bundle.files.some(f => f.path.startsWith("architecture/"))).toBe(false);
+});
+
+test("a project without UML gets the v0 handoff text", async () => {
+  const md = await draftHandoff(ws, "shop", "home");
+  expect(md).not.toContain("## Architecture");
+  const { agentPrompt } = await import("../src/handoff/prompt.ts");
+  const prompt = await agentPrompt(ws, "shop", "home", "http://x/mcp");
+  expect(prompt).not.toContain("architecture");
 });

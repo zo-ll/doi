@@ -59,6 +59,24 @@ export function useArchitecture(project: string | null) {
     return () => { controller.abort(); for (const request of controllers.current) request.abort(); controllers.current.clear(); };
   }, [project, token, attempt]);
   const data: Load<ArchitectureView> = load.token === token ? load.data : { state: "loading" };
+  /**
+   * Reads the file again without the loading state, so an open editor stays. After a change from
+   * an agent or another window. A write in progress gets its own answer; the refresh then waits.
+   */
+  const queued = useRef(false), sequence = useRef(0);
+  /** The revision of this app's last write: the editor does not take it for an outside change. */
+  const ownRevision = useRef<string | null>(null);
+  const refresh = useCallback(async () => {
+    if (!project || load.token !== token || load.data.state !== "ready") return;
+    if (controllers.current.size) { queued.current = true; return; }
+    // Only the latest refresh may apply: an older answer that arrives late must not replace a newer one.
+    const mine = ++sequence.current;
+    try {
+      const next = await architectureRequest(project);
+      if (live.current !== token || controllers.current.size || mine !== sequence.current) return;
+      setLoad(current => current.token === token && current.data.state === "ready" && current.data.data.revision === next.revision ? current : { token, data: { state: "ready", data: next } });
+    } catch (error) { console.debug("UML refresh failed:", error); }
+  }, [project, load, token]);
   const write = useCallback(async (state: Architecture): Promise<ArchitectureView> => {
     if (!project || load.token !== token || load.data.state !== "ready") throw new Error("Load the project before you save UML.");
     if (controllers.current.size) throw new Error("A UML save is already active.");
@@ -67,15 +85,22 @@ export function useArchitecture(project: string | null) {
     try {
       const next = await architectureRequest(project, { revision: load.data.data.revision, state }, controller.signal);
       if (live.current !== token) throw new DOMException("The project changed.", "AbortError");
+      sequence.current++;
+      ownRevision.current = next.revision;
       setLoad({ token, data: { state: "ready", data: next } });
       setSave({ token, state: "idle" });
       return next;
     } catch (error) {
       if (live.current === token) setSave({ token, state: "error", message: error instanceof Error ? error.message : String(error) });
       throw error;
-    } finally { controllers.current.delete(controller); }
+    } finally {
+      controllers.current.delete(controller);
+      if (queued.current && !controllers.current.size) { queued.current = false; setTimeout(() => void refreshRef.current(), 0); }
+    }
   }, [project, load, token]);
-  return { load: data, write, busy: save.token === token && save.state === "saving", error: save.token === token && save.state === "error" ? save.message : undefined, reload: () => setAttempt(n => n + 1) };
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  return { load: data, write, busy: save.token === token && save.state === "saving", error: save.token === token && save.state === "error" ? save.message : undefined, reload: () => setAttempt(n => n + 1), refresh, ownRevision };
 }
 
 export interface ImageRequest { format: "svg" | "png" | "pdf"; diagram: Diagram; theme: "dark" | "light"; background: boolean; ids?: string[]; scale: 1 | 2 }

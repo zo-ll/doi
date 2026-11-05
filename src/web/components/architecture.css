@@ -82,3 +82,4 @@
 .uml-versions small { color: var(--text-2); font-size: var(--text-meta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .uml-export-menu { min-width: 220px; }
 .uml-export-menu .field { display: grid; gap: var(--space-1); font-size: var(--text-sm); }
+.uml-contrast { margin: 0; font-size: var(--text-meta); color: var(--text-2); }

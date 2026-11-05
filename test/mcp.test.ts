@@ -67,7 +67,7 @@ describe("MCP tools", () => {
   test("lists the tools", async () => {
     const client = await connect();
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(["export_png", "get_architecture", "get_comments", "get_design", "get_design_system", "get_element", "list_designs"]);
+    expect(tools.map((t) => t.name).sort()).toEqual(["export_png", "get_architecture", "get_comments", "get_design", "get_design_system", "get_element", "list_designs", "render_architecture", "update_architecture"]);
   });
 
   test("list_designs", async () => {
@@ -318,7 +318,7 @@ describe("agent prompt", () => {
     try {
       const res = await fetch(`http://127.0.0.1:${app.server.port}/api/projects/shop/designs/home/handoff/prompt`);
       const body = (await res.json()) as { prompt: string; template: string; url: string };
-      expect(body.template).toBe("v0");
+      expect(body.template).toBe("v1");
       expect(body.url).toBe(`http://127.0.0.1:${app.server.port}/mcp`);
       expect(body.prompt).toContain(`- URL: http://127.0.0.1:${app.server.port}/mcp`);
     } finally {

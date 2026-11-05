@@ -106,7 +106,18 @@ export function App() {
   const [umlDirty, setUmlDirty] = useState(false);
   const [umlInspector, setUmlInspector] = useState<HTMLDivElement | null>(null);
   const architecture = useArchitecture(active?.project ?? null);
-  const umlDiagram = architecture.load.state === "ready" && architecture.load.data.state.enabled ? architecture.load.data.state.diagrams.find(d => d.id === umlOpen) : undefined;
+  /** The event listener lives as long as the app: it reads the current refresh through a ref. */
+  const architectureRefresh = useRef(architecture.refresh);
+  architectureRefresh.current = architecture.refresh;
+  const savedDiagram = architecture.load.state === "ready" && architecture.load.data.state.enabled ? architecture.load.data.state.diagrams.find(d => d.id === umlOpen) : undefined;
+  /**
+   * An outside removal or hide of the open diagram must not drop an unsaved draft: while the editor
+   * has one, it keeps the last diagram, and its save puts the diagram back. Without a draft it closes.
+   */
+  const lastDiagram = useRef(savedDiagram);
+  if (savedDiagram) lastDiagram.current = savedDiagram;
+  else if (umlOpen === null || lastDiagram.current?.id !== umlOpen) lastDiagram.current = undefined;
+  const umlDiagram = savedDiagram ?? (umlDirty ? lastDiagram.current : undefined);
   const umlMissing = umlOpen === null ? null : !active ? "project" : architecture.load.state !== "ready" || umlDiagram ? null : architecture.load.data.state.enabled ? "diagram" : "hidden";
   useEffect(() => {
     if (!umlMissing) return;
@@ -172,6 +183,10 @@ export function App() {
       setRevision((n) => n + 1);
       // The old rect may not match the new layout. A canvas edit keeps its element selected.
       if (Date.now() > keepSelectionUntil.current) setSelection(null);
+    });
+    events.addEventListener("architecture-changed", (e) => {
+      const change = JSON.parse((e as MessageEvent<string>).data) as { project: string };
+      if (activeRef.current?.project === change.project) void architectureRefresh.current();
     });
     return () => events.close();
   }, []);
@@ -627,9 +642,11 @@ export function App() {
           />
         )}
 
-        {umlOpen ? (umlDiagram ? <ArchitectureEditor key={`${active?.project}/${umlDiagram.id}`} project={active?.project ?? ""} diagram={umlDiagram} busy={architecture.busy} inspector={umlInspector} tab={sideTab} designs={activeProject?.designs ?? []} onDirty={setUmlDirty} onBack={saved => leaveUml(saved)} onReload={() => { if (!umlDirty || window.confirm("Discard unsaved edits and load the latest diagram?")) architecture.reload(); }} onSave={graph => {
+        {umlOpen ? (umlDiagram ? <ArchitectureEditor key={`${active?.project}/${umlDiagram.id}`} project={active?.project ?? ""} diagram={umlDiagram} own={architecture.load.state === "ready" && architecture.load.data.revision === architecture.ownRevision.current} busy={architecture.busy} inspector={umlInspector} tab={sideTab} designs={activeProject?.designs ?? []} onDirty={setUmlDirty} onBack={saved => leaveUml(saved)} onReload={() => { if (!umlDirty || window.confirm("Discard unsaved edits and load the latest diagram?")) { setUmlDirty(false); architecture.reload(); } }} onSave={graph => {
           if (architecture.load.state !== "ready") return Promise.reject(new Error("Load UML before saving."));
-          return architecture.write({ ...architecture.load.data.state, diagrams: architecture.load.data.state.diagrams.map(d => d.id === graph.id ? graph : d) });
+          const { diagrams } = architecture.load.data.state;
+          // A draft of a diagram that was removed elsewhere comes back with this save.
+          return architecture.write({ ...architecture.load.data.state, diagrams: diagrams.some(d => d.id === graph.id) ? diagrams.map(d => d.id === graph.id ? graph : d) : [...diagrams, graph] });
         }} onImport={async graph => {
           if (architecture.load.state !== "ready") throw new Error("Load UML before importing.");
           if (umlDirty && !window.confirm("Discard unsaved edits and open the imported diagram?")) return;

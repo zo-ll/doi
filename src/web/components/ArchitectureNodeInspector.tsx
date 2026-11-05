@@ -2,6 +2,7 @@ import { useState } from "react";
 import { shapeSchema, uiReferenceSchema, type DiagramNode } from "../../architecture/nodes.ts";
 import type { z } from "zod";
 import { ColourField, NumberField, TextField } from "./ArchitectureFields.tsx";
+import { contrastRatio } from "../../architecture/contrast.ts";
 type Reference = z.infer<typeof uiReferenceSchema>;
 export function ArchitectureNodeInspector({ node, designs, onChange, onReference }: {
   node: DiagramNode; designs: string[]; onChange: (node: DiagramNode) => void; onReference: (reference: Reference) => void;
@@ -11,6 +12,7 @@ export function ArchitectureNodeInspector({ node, designs, onChange, onReference
   const [oid, setOid] = useState("");
   const [error, setError] = useState("");
   const patch = (next: Partial<DiagramNode>) => onChange({ ...node, ...next });
+  const contrast = contrastRatio(node.style.text, node.style.fill);
   return <div className="uml-properties">
     <h3>Selected box</h3>
     <label className="uml-check"><input type="checkbox" checked={node.locked} onChange={e => patch({ locked: e.target.checked })}/>Locked</label>
@@ -22,7 +24,8 @@ export function ArchitectureNodeInspector({ node, designs, onChange, onReference
       <div className="uml-field-row"><NumberField label="X" value={node.position.x} onChange={x => patch({ position: { ...node.position, x } })}/><NumberField label="Y" value={node.position.y} onChange={y => patch({ position: { ...node.position, y } })}/></div>
       <div className="uml-field-row"><NumberField label="Width" min={32} max={4096} value={node.size.width} onChange={width => patch({ size: { ...node.size, width } })}/><NumberField label="Height" min={32} max={4096} value={node.size.height} onChange={height => patch({ size: { ...node.size, height } })}/></div>
       <div className="uml-field-row"><ColourField label="Fill" value={node.style.fill} fallback="#222220" onChange={fill => patch({ style: { ...node.style, fill } })}/><ColourField label="Border" value={node.style.stroke} fallback="#8f8b82" onChange={stroke => patch({ style: { ...node.style, stroke } })}/></div>
-      <NumberField label="Text size" min={10} max={48} value={node.style.fontSize} onChange={fontSize => patch({ style: { ...node.style, fontSize } })}/>
+      <div className="uml-field-row"><ColourField label="Text colour" value={node.style.text} fallback="#eceae4" onChange={text => patch({ style: { ...node.style, text } })}/><NumberField label="Text size" min={10} max={48} value={node.style.fontSize} onChange={fontSize => patch({ style: { ...node.style, fontSize } })}/></div>
+      {contrast !== null && <p className={`uml-contrast${contrast < 4.5 ? " field-error" : ""}`} role="status">Contrast {contrast.toFixed(1)}:1{contrast < 4.5 ? ": too low for small text (4.5:1 needed)" : ""}</p>}
     </fieldset>
     <h3>Related UI designs</h3>
     {node.references.map((reference, i) => <div className="uml-ui-reference" key={`${reference.design}/${reference.page}/${reference.node}/${i}`}>

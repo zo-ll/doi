@@ -10,6 +10,8 @@ export interface DesignChange {
 export interface DesignWatcher {
   /** Calls `listener` for each changed design. Returns a function that removes it. */
   subscribe(listener: (change: DesignChange) => void): () => void;
+  /** Calls `listener` with the project when its UML file changes (an agent, another window, the app itself). */
+  subscribeArchitecture(listener: (project: string) => void): () => void;
   /** Holds the changes of a design while a turn runs on it; `release` sends them as one. */
   hold(change: DesignChange): void;
   release(change: DesignChange): void;
@@ -30,6 +32,12 @@ export function designOf(relativePath: string): DesignChange | null {
   return { project: project!, design: design! };
 }
 
+/** "p/architecture.json" → "p". A temporary file of the atomic write does not count; its rename does. */
+export function architectureOf(relativePath: string): string | null {
+  const parts = relativePath.split(/[\\/]/);
+  return parts.length === 2 && parts[1] === "architecture.json" && NAME.test(parts[0] ?? "") ? parts[0]! : null;
+}
+
 /**
  * Watches workspace/projects. Many changes to one design within `debounceMs` give one event,
  * so a turn that writes several files reloads its frames once.
@@ -38,6 +46,8 @@ export function watchDesigns(workspace: string, debounceMs = 100): DesignWatcher
   const root = join(workspace, "projects");
   mkdirSync(root, { recursive: true });
   const listeners = new Set<(change: DesignChange) => void>();
+  const umlListeners = new Set<(project: string) => void>();
+  const umlTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   const held = new Map<string, number>(); // key → hold count
   const pending = new Set<string>(); // changed while held
@@ -64,8 +74,14 @@ export function watchDesigns(workspace: string, debounceMs = 100): DesignWatcher
 
   const watcher: FSWatcher = watch(root, { recursive: true }, (_event, filename) => {
     if (!filename) return;
-    const change = designOf(String(filename).split(sep).join("/"));
+    const path = String(filename).split(sep).join("/");
+    const change = designOf(path);
     if (change) schedule(keyOf(change));
+    const project = architectureOf(path);
+    if (project) {
+      clearTimeout(umlTimers.get(project));
+      umlTimers.set(project, setTimeout(() => { umlTimers.delete(project); for (const listener of umlListeners) listener(project); }, debounceMs));
+    }
   });
   // A watch error (the folder was removed) must not crash the server; reloads stop until a restart.
   watcher.on("error", (e) => console.error("Design watcher stopped:", e));
@@ -74,6 +90,10 @@ export function watchDesigns(workspace: string, debounceMs = 100): DesignWatcher
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
+    },
+    subscribeArchitecture(listener) {
+      umlListeners.add(listener);
+      return () => umlListeners.delete(listener);
     },
     hold(change) {
       const key = keyOf(change);
@@ -91,15 +111,16 @@ export function watchDesigns(workspace: string, debounceMs = 100): DesignWatcher
     },
     close() {
       watcher.close();
-      for (const t of timers.values()) clearTimeout(t);
+      for (const t of [...timers.values(), ...umlTimers.values()]) clearTimeout(t);
       listeners.clear();
+      umlListeners.clear();
     },
   };
 }
 
-/** GET /api/events: design changes as server-sent events, until the client goes away. */
+/** GET /api/events: design and UML changes as server-sent events, until the client goes away. */
 export function designEvents(watcher: DesignWatcher, req: Request, server?: Pick<Bun.Server<unknown>, "timeout">): Response {
-  let unsubscribe = () => {};
+  let unsubscribe = () => {}, unsubscribeUml = () => {};
   const stream = new ReadableStream<string>({
     start(controller) {
       // A comment line, so the client sees the stream open at once.
@@ -111,8 +132,16 @@ export function designEvents(watcher: DesignWatcher, req: Request, server?: Pick
           unsubscribe();
         }
       });
+      unsubscribeUml = watcher.subscribeArchitecture((project) => {
+        try {
+          controller.enqueue(`event: architecture-changed\ndata: ${JSON.stringify({ project })}\n\n`);
+        } catch {
+          unsubscribeUml();
+        }
+      });
       req.signal.addEventListener("abort", () => {
         unsubscribe();
+        unsubscribeUml();
         try {
           controller.close();
         } catch {
@@ -122,6 +151,7 @@ export function designEvents(watcher: DesignWatcher, req: Request, server?: Pick
     },
     cancel() {
       unsubscribe();
+      unsubscribeUml();
     },
   });
   // The stream stays open while the app is open.

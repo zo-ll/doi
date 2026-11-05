@@ -3,7 +3,7 @@ import { createDiagram, diagramSchema, type Diagram } from "../src/architecture/
 import { createNode, type DiagramNode } from "../src/architecture/nodes.ts";
 import { applyRelationship, createEdge } from "../src/architecture/edges.ts";
 import { groupItems } from "../src/architecture/layout.ts";
-import { diagramSvg, labelWidth, wrap, type DiagramImage } from "../src/architecture/svg.ts";
+import { diagramSvg, imageText, labelWidth, wrap, type DiagramImage } from "../src/architecture/svg.ts";
 
 function sample(): { graph: Diagram; web: DiagramNode; api: DiagramNode; db: DiagramNode } {
   const web = createNode("box", { x: 0, y: 0 }, "Web app");
@@ -153,4 +153,17 @@ test("without a background, a mask hides the line under hollow markers and the m
   expect(clear.match(/<mask id="k\d+"/g)).toHaveLength(1);
   expect(clear).toMatch(/<path d="[^"]+" fill="none" stroke="none" marker-start="url\(#m\d+\)"\/>|<path d="[^"]+" fill="none" stroke="none" marker-end="url\(#m\d+\)"\/>/);
   expect(image(diagramSvg(graph, { theme: "light", background: true })).svg).not.toContain("<mask");
+});
+
+test("non-Latin capitals, the self-connector mask and the drawn text", () => {
+  expect(labelWidth("Ж".repeat(48))).toBeGreaterThanOrEqual(370);
+  expect(labelWidth("ΑΒΓΔ".repeat(12))).toBeGreaterThanOrEqual(393);
+  const box = createNode("box", { x: 0, y: 0 }, "Self");
+  const loop = { ...createEdge(box.id, box.id), sourceSide: "left" as const, startMarker: "diamond" as const, endMarker: "triangle" as const };
+  const graph = diagramSchema.parse({ ...createDiagram(), nodes: [box], edges: [loop], comments: [{ id: "c1", item: box.id, text: "Комментарий", status: "open", createdAt: new Date().toISOString() }] });
+  const svg = image(diagramSvg(graph, { theme: "dark", background: false })).svg;
+  // The start tip is at the left side (x 0); the line leaves to the right, so the hole is at x 6.
+  expect(svg).toContain('<circle cx="6" cy="45" r="6" fill="#000"/>');
+  expect(imageText(graph)).toContain("Self");
+  expect(imageText(graph)).not.toContain("Комментарий");
 });

@@ -8,9 +8,9 @@ The editor supports free-form diagrams, not mandatory UML categories or a compil
 
 The reference uses doi's dark theme. The implementation must use the existing theme tokens, not a separate theme preference. Existing HTML designs keep their own colours.
 
-**The first edit path now works. The complete feature contract remains open.** A wireframe control does not prove that its action works.
+**The feature contract (U01–U26) is implemented.** Each requirement has an automated check that drives the real app or its API (see "Checks for each requirement"). A wireframe control does not prove that its action works: the checks drive the real app.
 
-## First implementation status
+## Implementation status
 
 The app now has the optional right-panel entry, non-destructive hide/re-enable, diagram controls, shapes, class text, connections and property inspectors. The editor autosaves about one second after the last edit, with the same revision check. It also supplies session undo/redo, comments, UI references, editable JSON import/export and MCP `get_architecture`.
 
@@ -22,7 +22,9 @@ Autosave and persistent versions (U17–U19) are in: versions are git commits of
 
 Image export (U22) is in: SVG, PNG and PDF of the whole diagram or the selection, dark or light colours, with or without a background. `src/architecture/svg.ts` renders the SVG; PNG and PDF go through the sandboxed Chromium of the design exports.
 
-Not complete: graph handoff, MCP graph writes/render and automatic shared-instance refresh. The diagram save lock holds for one doi process only; two processes on one workspace are not serialized. Some shape and lifecycle controls still need broader browser coverage. Do not close #145 for this first implementation.
+Agent access, the shared instance and the handoff (U23–U25) are in. MCP `render_architecture` draws a diagram with the export renderer; `update_architecture` writes one diagram with the editor's schema and revision check, only when the user enabled UML, and records a version. The file watcher sends `architecture-changed` on `/api/events`: an open editor without local edits shows the change at once (Undo reverses it); with local edits, autosave stops with the conflict message. The agent prompt (v1) and the handoff bundle (template v1, `architecture/`) include the diagrams. A browser test drives every shape and the diagram lifecycle (new, rename, duplicate, delete with confirmation).
+
+Known limits: the diagram save lock holds for one doi process only; two processes on one workspace are not serialized. A browser reload or a closed tab records no version (the autosaved file stays). Text outside the embedded IBM Plex subsets uses a system font in exports, as in the app.
 
 ## Feature contract
 
@@ -54,6 +56,37 @@ Not complete: graph handoff, MCP graph writes/render and automatic shared-instan
 | U24 | Shared instance | Human edits reach the agent on its next read. Agent edits reach the visible canvas without a manual reload. |
 | U25 | Handoff | Include the graph, images, comments and UI references through the existing agent-neutral handoff. |
 | U26 | Access and regressions | Check keyboard access, focus and errors. Existing pages, mobile apps and slides must still work. |
+
+## Checks for each requirement
+
+| Id | Automated check (in `test/`) |
+| --- | --- |
+| U01 | `architecture-browser` (opt-in without a file, hide/re-enable), `architecture-store` |
+| U02 | `architecture-lifecycle-browser` (new, rename, duplicate, delete with confirmation) |
+| U03 | `architecture-lifecycle-browser` (all nine shapes) |
+| U04 | `architecture-browser` (stereotype, attributes, operations), `architecture-svg` |
+| U05 | `architecture-controls-browser` "U05" (fill, border, text colour, text size, contrast readout) |
+| U06 | `architecture-browser` (pointer move and resize, saved and reloaded), `architecture-tools-browser` (keyboard) |
+| U07 | `architecture-browser` (handle connection), `architecture-controls-browser` "U07" (pointer reconnect, attachment after a resize) |
+| U08 | `architecture-controls-browser` "U08" (route, bend point), `architecture-routing` |
+| U09 | `architecture-edges` (every preset), `architecture-browser` (inheritance) |
+| U10 | `architecture-controls-browser` "U10" (line style, markers, reverse direction) |
+| U11 | `architecture-controls-browser` "U11" (centre, start and end labels) |
+| U12 | `architecture-tools-browser` (selection, clipboard, cut, paste, delete), `architecture-layout` |
+| U13 | `architecture-tools-browser` (group, ungroup, lock, order), `architecture-layout` |
+| U14 | `architecture-tools-browser` (align, distribute, guides, nudges, snap), `architecture-layout` |
+| U15 | `architecture-controls-browser` "U15" (zoom, pan, fit all), `architecture-tools-browser` (fit selection) |
+| U16 | `architecture-tools-browser` (undo, redo, focus scope), `architecture-browser` (undo after save) |
+| U17 | `architecture-autosave-browser`, `architecture-browser` (reload), `architecture-store` |
+| U18 | `architecture-review-browser` (409 and invalid values), `architecture-autosave-browser`, `architecture-live-browser` |
+| U19 | `architecture-browser` (comment), `architecture-autosave-browser` (versions, restore), `architecture-history` |
+| U20 | `architecture-browser` (link and open), `architecture-review-browser` (cross-design page) |
+| U21 | `architecture-interchange`, `architecture-review-browser` (import names, bad ids) |
+| U22 | `architecture-image-browser`, `architecture-export`, `architecture-svg` |
+| U23 | `mcp-architecture` (render, update, revision, limits), `mcp` |
+| U24 | `architecture-live-browser` (MCP over HTTP, undo, dirty conflict, removal, hide, refresh order, own rename) |
+| U25 | `handoff` "UML in the handoff", corrupt file, project without UML |
+| U26 | `architecture-review-browser` (field rules, aria), `architecture-tools-browser` (keyboard scope), full suite for pages, apps and slides |
 
 ## Reference and checks
 
