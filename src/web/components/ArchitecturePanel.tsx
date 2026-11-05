@@ -54,7 +54,7 @@ export function ArchitecturePanel({ controller, current, dirty, tab, onOpen, onC
           </div></details>
         </div>)}</div>
         <div className="uml-add-diagram"><input aria-label="New diagram name" maxLength={200} value={name} onChange={e => setName(e.target.value)} disabled={blocked}/><button className="btn btn-secondary" onClick={add} disabled={blocked || !name.trim() || state.diagrams.length >= 50}>New diagram</button></div>
-        {dirty && <p className="uml-hint">Save your edits before diagram changes.</p>}
+        {dirty && <p className="uml-hint">Wait for the save before diagram changes.</p>}
       </>}
     </>}
     {current && <div className="uml-inspector-host" ref={inspectorRef}/>}

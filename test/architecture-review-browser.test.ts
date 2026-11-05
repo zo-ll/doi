@@ -75,19 +75,24 @@ test.skipIf(!hasBrowser)("a cross-design UI link keeps its page while the target
   });
 }, 15000);
 
-test.skipIf(!hasBrowser)("the open diagram row preserves dirty ownership and the leave warning", async () => {
+test.skipIf(!hasBrowser)("the open diagram row keeps edits; Back asks before it drops an edit that cannot save", async () => {
   await withEditor(async (page, workspace) => {
     const dialogs: string[] = [], errors: string[] = [];
     page.on("dialog", dialog => { dialogs.push(dialog.message()); dialog.accept().catch(error => errors.push(String(error))); });
-    await page.getByRole("textbox", { name: "Box name", exact: true }).fill("Unsaved name");
+    const name = page.getByRole("textbox", { name: "Box name", exact: true });
+    await name.fill("Unsaved name");
     await page.getByRole("button", { name: /System overview/ }).click();
     expect(dialogs).toEqual([]);
-    expect(await page.getByRole("textbox", { name: "Box name", exact: true }).inputValue()).toBe("Unsaved name");
-    expect(await page.getByRole("button", { name: "Hide UML", exact: true }).isDisabled()).toBe(true);
+    expect(await name.inputValue()).toBe("Unsaved name");
+    await page.waitForFunction(() => document.querySelector(".uml-save-state")?.textContent === "Saved");
+    expect((await readArchitecture(workspace, "sample")).state.diagrams[0]?.nodes[0]?.name).toBe("Unsaved name");
+    await name.fill("");
+    await page.waitForFunction(() => document.querySelector(".uml-save-state")?.textContent === "Not saved");
     await page.getByRole("button", { name: "← Back to UI design", exact: true }).click();
+    await page.getByRole("region", { name: "UML editor", exact: true }).waitFor({ state: "detached" });
     expect(dialogs).toHaveLength(1);
     expect(dialogs[0]).toContain("discard unsaved edits");
-    expect((await readArchitecture(workspace, "sample")).state.diagrams[0]?.nodes[0]?.name).toBe("Saved name");
+    expect((await readArchitecture(workspace, "sample")).state.diagrams[0]?.nodes[0]?.name).toBe("Unsaved name");
     expect(errors).toEqual([]);
   });
 }, 15000);
@@ -101,21 +106,22 @@ test.skipIf(!hasBrowser)("an imported diagram with a used name gets a distinct n
   });
 }, 15000);
 
-test.skipIf(!hasBrowser)("a pending save hides the resize and connect controls", async () => {
+test.skipIf(!hasBrowser)("edits continue during a pending save and the next autosave stores them", async () => {
   await withEditor(async (page, workspace) => {
     const gate = Promise.withResolvers<void>();
-    await page.route("**/api/projects/sample/architecture", async route => { if (route.request().method() === "PUT") await gate.promise; await route.continue(); });
+    let puts = 0;
+    await page.route("**/api/projects/sample/architecture", async route => { if (route.request().method() === "PUT" && ++puts === 1) await gate.promise; await route.continue(); });
     try {
+      const name = page.getByRole("textbox", { name: "Box name", exact: true });
+      await name.fill("First edit");
+      await page.waitForFunction(() => document.querySelector(".uml-save-state")?.textContent === "Saving…");
       expect(await page.locator(".react-flow__resize-control").count()).toBeGreaterThan(0);
-      await page.getByRole("textbox", { name: "Box name", exact: true }).fill("Pending name");
-      await page.getByRole("button", { name: "Save diagram", exact: true }).click();
-      await page.waitForFunction(() => document.querySelector(".uml-save-state")?.textContent === "Save…");
-      expect(await page.locator(".react-flow__resize-control").count()).toBe(0);
-      expect(await page.locator(".react-flow__handle.connectable").count()).toBe(0);
+      expect(await name.isEditable()).toBe(true);
+      await name.fill("Second edit");
       gate.resolve();
       await page.waitForFunction(() => document.querySelector(".uml-save-state")?.textContent === "Saved");
-      await page.locator(".react-flow__resize-control").first().waitFor();
-      expect((await readArchitecture(workspace, "sample")).state.diagrams[0]?.nodes[0]?.name).toBe("Pending name");
+      expect((await readArchitecture(workspace, "sample")).state.diagrams[0]?.nodes[0]?.name).toBe("Second edit");
+      expect(puts).toBe(2);
     } finally { gate.resolve(); }
   });
 }, 15000);
@@ -166,7 +172,7 @@ test.skipIf(!hasBrowser)("other diagram rows are disabled while a save is pendin
     try {
       await page.getByRole("textbox", { name: "Box name", exact: true }).fill("Pending name");
       await page.getByRole("button", { name: "Save diagram", exact: true }).click();
-      await page.waitForFunction(() => document.querySelector(".uml-save-state")?.textContent === "Save…");
+      await page.waitForFunction(() => document.querySelector(".uml-save-state")?.textContent === "Saving…");
       expect(await page.getByRole("button", { name: /Second diagram/ }).isDisabled()).toBe(true);
       gate.resolve();
       await page.waitForFunction(() => document.querySelector(".uml-save-state")?.textContent === "Saved");
@@ -175,17 +181,21 @@ test.skipIf(!hasBrowser)("other diagram rows are disabled while a save is pendin
   });
 }, 15000);
 
-test.skipIf(!hasBrowser)("a stale save is refused and keeps the local edit", async () => {
+test.skipIf(!hasBrowser)("a stale save pauses autosave and keeps the local edit", async () => {
   await withEditor(async (page, workspace) => {
     const { revision, state } = await readArchitecture(workspace, "sample");
     const [diagram] = state.diagrams;
     if (!diagram) throw new Error("The diagram is missing.");
     await writeArchitecture(workspace, "sample", revision, { ...state, diagrams: [{ ...diagram, nodes: diagram.nodes.map(n => ({ ...n, name: "Other write" })) }] });
+    let puts = 0;
+    page.on("request", request => { if (request.method() === "PUT" && request.url().endsWith("/architecture")) puts++; });
     await page.getByRole("textbox", { name: "Box name", exact: true }).fill("Stale write");
-    await page.getByRole("button", { name: "Save diagram", exact: true }).click();
     await page.getByRole("region", { name: "UML editor", exact: true }).getByRole("alert").filter({ hasText: "changed elsewhere" }).waitFor();
-    expect(await page.getByRole("textbox", { name: "Box name", exact: true }).inputValue()).toBe("Stale write");
-    expect(await page.locator(".uml-save-state").innerText()).toBe("Unsaved changes");
+    expect(await page.locator(".uml-save-state").innerText()).toBe("Not saved: changed elsewhere");
+    await page.getByRole("textbox", { name: "Box name", exact: true }).fill("Stale write 2");
+    await page.waitForTimeout(1500);
+    expect(puts).toBe(1);
+    expect(await page.getByRole("textbox", { name: "Box name", exact: true }).inputValue()).toBe("Stale write 2");
     expect((await readArchitecture(workspace, "sample")).state.diagrams[0]?.nodes[0]?.name).toBe("Other write");
   });
 }, 15000);

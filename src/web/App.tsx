@@ -114,8 +114,9 @@ export function App() {
     if (umlMissing === "hidden") setToast("UML is hidden in this project. Your diagrams are kept.");
     if (umlMissing === "diagram") setToast("The open diagram is no longer in this project.");
   }, [umlMissing]);
-  function leaveUml(): boolean {
-    if (umlDirty && !window.confirm("Leave the diagram and discard unsaved edits?")) return false;
+  /** `saved`: the editor saved its last edits just now, so the dirty flag of this render is stale. */
+  function leaveUml(saved = false): boolean {
+    if (umlDirty && !saved && !window.confirm("Leave the diagram and discard unsaved edits?")) return false;
     setUmlOpen(null); setUmlDirty(false); return true;
   }
   function openUml(id: string) {
@@ -626,7 +627,7 @@ export function App() {
           />
         )}
 
-        {umlOpen ? (umlDiagram ? <ArchitectureEditor key={`${active?.project}/${umlDiagram.id}`} diagram={umlDiagram} busy={architecture.busy} inspector={umlInspector} tab={sideTab} designs={activeProject?.designs ?? []} onDirty={setUmlDirty} onBack={leaveUml} onReload={() => { if (!umlDirty || window.confirm("Discard unsaved edits and load the latest diagram?")) architecture.reload(); }} onSave={graph => {
+        {umlOpen ? (umlDiagram ? <ArchitectureEditor key={`${active?.project}/${umlDiagram.id}`} project={active?.project ?? ""} diagram={umlDiagram} busy={architecture.busy} inspector={umlInspector} tab={sideTab} designs={activeProject?.designs ?? []} onDirty={setUmlDirty} onBack={saved => leaveUml(saved)} onReload={() => { if (!umlDirty || window.confirm("Discard unsaved edits and load the latest diagram?")) architecture.reload(); }} onSave={graph => {
           if (architecture.load.state !== "ready") return Promise.reject(new Error("Load UML before saving."));
           return architecture.write({ ...architecture.load.data.state, diagrams: architecture.load.data.state.diagrams.map(d => d.id === graph.id ? graph : d) });
         }} onImport={async graph => {
@@ -641,7 +642,7 @@ export function App() {
         }} onReference={reference => {
           if (!active || !activeProject?.designs.includes(reference.design)) { setToast("The linked UI design no longer exists."); return; }
           if (open({ project: active.project, design: reference.design })) { setPage(reference.page); setSelection(reference.node ? { oid: reference.node } : null); }
-        }}/> : <section className="uml-workspace"><button className="btn" onClick={leaveUml}>Back to UI design</button><p className="uml-empty">{architecture.load.state === "error" ? architecture.load.message : "Load the UML diagram…"}</p></section>) : <Canvas
+        }}/> : <section className="uml-workspace"><button className="btn" onClick={() => leaveUml()}>Back to UI design</button><p className="uml-empty">{architecture.load.state === "error" ? architecture.load.message : "Load the UML diagram…"}</p></section>) : <Canvas
           active={active}
           page={page}
           revision={revision}
@@ -752,7 +753,7 @@ export function App() {
               </div>
             )}
             <div className="pane-body">
-              {(sideTab === "uml" || umlOpen) && active && <ArchitecturePanel key={active.project} controller={architecture} current={umlOpen} dirty={umlDirty} tab={sideTab} onOpen={openUml} onClose={leaveUml} inspectorRef={setUmlInspector}/>}
+              {(sideTab === "uml" || umlOpen) && active && <ArchitecturePanel key={active.project} controller={architecture} current={umlOpen} dirty={umlDirty} tab={sideTab} onOpen={openUml} onClose={() => leaveUml()} inspectorRef={setUmlInspector}/>}
               {!umlOpen && sideTab === "history" && (
                 <HistoryPanel
                   versions={active ? history.versions : { state: "ready", data: [] }}

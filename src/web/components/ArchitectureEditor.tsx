@@ -7,10 +7,12 @@ import { createEdge } from "../../architecture/edges.ts";
 import { diagramSchema, type Diagram } from "../../architecture/schema.ts";
 import { architectureErrorMessage } from "../../architecture/errors.ts";
 import { duplicateItems, removeItems } from "../../architecture/edit.ts";
-import { absolutePosition, alignItems, movableNodes, copyItems, distributeItems, groupItems, nudgeItems, pasteItems, readClipboard, reorderItems, snapToGuides, ungroupItems, type AlignMode, type Clipboard, type Guide, type OrderMode } from "../../architecture/layout.ts";
+import { absolutePosition, alignItems, copyItems, distributeItems, groupItems, movableNodes, nudgeItems, pasteItems, readClipboard, reorderItems, snapToGuides, ungroupItems, type AlignMode, type Clipboard, type Guide, type OrderMode } from "../../architecture/layout.ts";
 import { diagramFile, MAX_DIAGRAM_FILE_BYTES, readDiagramFile } from "../../architecture/interchange.ts";
 import { applyGraphChanges, attachment, flowEdges, flowNodes } from "../architecture-flow.ts";
 import { saveBlob } from "../export.ts";
+import { architectureCheckpoint, ArchitectureRequestError } from "../architecture.ts";
+import { ArchitectureHistory } from "./ArchitectureHistory.tsx";
 import { ArchitectureNode, type FlowNode } from "./ArchitectureNode.tsx";
 import { ArchitectureEdge, type FlowEdge } from "./ArchitectureEdge.tsx";
 import { ArchitectureNodeInspector } from "./ArchitectureNodeInspector.tsx";
@@ -18,10 +20,13 @@ import { ArchitectureEdgeInspector } from "./ArchitectureEdgeInspector.tsx";
 const nodeTypes = { uml: ArchitectureNode }, edgeTypes = { uml: ArchitectureEdge };
 type Reference = z.infer<typeof uiReferenceSchema>;
 type Document = { graph: Diagram; past: Diagram[]; future: Diagram[] };
+/** Autosave waits for a pause in the edits. A version is recorded at most this often during autosave. */
+const AUTOSAVE_MS = 1000, CHECKPOINT_MS = 5 * 60 * 1000;
+type Pause = null | "conflict" | "invalid" | "failed";
 
-export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onSave, onBack, onDirty, onReload, onReference, onImport }: {
-  diagram: Diagram; busy: boolean; inspector: HTMLDivElement | null; tab: "uml" | "comments" | "history"; designs: string[];
-  onSave: (graph: Diagram) => Promise<unknown>; onBack: () => void; onDirty: (dirty: boolean) => void; onReload: () => void;
+export function ArchitectureEditor({ project, diagram, busy, inspector, tab, designs, onSave, onBack, onDirty, onReload, onReference, onImport }: {
+  project: string; diagram: Diagram; busy: boolean; inspector: HTMLDivElement | null; tab: "uml" | "comments" | "history"; designs: string[];
+  onSave: (graph: Diagram) => Promise<unknown>; onBack: (saved: boolean) => void; onDirty: (dirty: boolean) => void; onReload: () => void;
   onReference: (reference: Reference) => void; onImport: (graph: Diagram) => Promise<unknown>;
 }) {
   const [doc, setDoc] = useState<Document>({ graph: diagram, past: [], future: [] });
@@ -33,6 +38,8 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
   const [guides, setGuides] = useState<{ origin: { x: number; y: number }; lines: Guide[] }>({ origin: { x: 0, y: 0 }, lines: [] });
   const clean = useRef(diagram), gesture = useRef<Diagram | null>(null), canvas = useRef<HTMLDivElement>(null), section = useRef<HTMLElement>(null);
   const clipboard = useRef<{ clip: Clipboard; pastes: number } | null>(null);
+  const [pause, setPause] = useState<Pause>(null), [gesturing, setGesturing] = useState(false), [versions, setVersions] = useState(0);
+  const warned = useRef(false), unrecorded = useRef(false), recorded = useRef(Date.now()), inflight = useRef<Promise<boolean> | null>(null);
   const graph = doc.graph;
   const dirty = JSON.stringify(graph) !== JSON.stringify(clean.current);
   useEffect(() => { onDirty(dirty); }, [dirty, onDirty]);
@@ -50,16 +57,19 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
     window.addEventListener("beforeunload", warn); return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
+  /** A new edit retries a save that failed for its values or the network; a conflict needs Load latest. */
+  const resume = () => setPause(current => current === "conflict" ? current : null);
   function edit(change: (graph: Diagram) => Diagram) {
-    setNotice(null);
+    setNotice(null); resume();
     setDoc(current => { const next = change(current.graph); return JSON.stringify(next) === JSON.stringify(current.graph) ? current : { graph: next, past: gesture.current ? current.past : [...current.past, current.graph].slice(-80), future: [] }; });
   }
-  function beginGesture() { gesture.current = graph; }
+  function beginGesture() { gesture.current = graph; setGesturing(true); }
   function endGesture() {
-    const before = gesture.current; gesture.current = null;
+    const before = gesture.current; gesture.current = null; setGesturing(false);
     if (before) setDoc(current => JSON.stringify(current.graph) === JSON.stringify(before) ? current : { ...current, past: [...current.past, before].slice(-80), future: [] });
   }
   function undo(redo = false) {
+    resume();
     setDoc(current => {
       const stack = redo ? current.future : current.past, next = stack.at(-1);
       return !next ? current : redo ? { graph: next, past: [...current.past, current.graph], future: stack.slice(0, -1) } : { graph: next, past: stack.slice(0, -1), future: [...current.future, current.graph] };
@@ -69,9 +79,90 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
     console.debug("UML action failed:", error);
     setNotice({ kind: "error", text: architectureErrorMessage(error) });
   }
-  async function save() {
-    try { const submitted = graph, snapshot = diagramSchema.parse(submitted); await onSave(snapshot); clean.current = snapshot; setDoc(current => ({ ...current, graph: JSON.stringify(current.graph) === JSON.stringify(submitted) ? snapshot : current.graph })); setNotice({ kind: "status", text: "Saved this version." }); }
-    catch (error) { showError(error); }
+  /**
+   * Commits the saved file as a version, once for each run of saves. `always`: the server decides;
+   * it commits only a changed file. Resolves with the commit id, or null when nothing was recorded.
+   */
+  function record(always = false): Promise<string | null> {
+    if (!unrecorded.current && !always) return Promise.resolve(null);
+    unrecorded.current = false; recorded.current = Date.now();
+    return architectureCheckpoint(project, graph.name).then(({ sha, error }) => {
+      if (sha) setVersions(n => n + 1);
+      if (error && !warned.current) { warned.current = true; setNotice({ kind: "error", text: `doi could not record a version: ${error}` }); }
+      return sha;
+    }, error => { unrecorded.current = true; console.debug("UML version not recorded:", error); return null; });
+  }
+  /**
+   * "now" is an explicit save: it also records a version. Returns true when the graph is saved.
+   * One save at a time: a second call waits for the first, then saves the state of the next render.
+   */
+  async function save(kind: "auto" | "now"): Promise<boolean> {
+    if (inflight.current) {
+      await inflight.current;
+      await afterRender();
+      return latest.current.save(kind);
+    }
+    const run = write(kind);
+    inflight.current = run;
+    try { return await run; } finally { inflight.current = null; }
+  }
+  async function write(kind: "auto" | "now"): Promise<boolean> {
+    const submitted = graph;
+    let snapshot: Diagram;
+    try { snapshot = diagramSchema.parse(submitted); }
+    catch (error) { setPause("invalid"); showError(error); return false; }
+    if (JSON.stringify(snapshot) !== JSON.stringify(clean.current)) {
+      try { await onSave(snapshot); }
+      catch (error) { setPause(error instanceof ArchitectureRequestError && error.status === 409 ? "conflict" : "failed"); showError(error); return false; }
+      clean.current = snapshot; unrecorded.current = true; setPause(null);
+      setDoc(current => ({ ...current, graph: JSON.stringify(current.graph) === JSON.stringify(submitted) ? snapshot : current.graph }));
+    }
+    if (kind === "now") {
+      const sha = await record(true);
+      setNotice(current => current?.kind === "error" ? current : { kind: "status", text: sha ? "Saved. doi recorded this version." : "Saved. No change to record." });
+    } else if (Date.now() - recorded.current > CHECKPOINT_MS) void record();
+    return true;
+  }
+  /** The inspector is a portal in the side panel: its fields belong to the editor too. */
+  const inspectorRef = useRef(inspector);
+  inspectorRef.current = inspector;
+  const latest = useRef({ save, record, onBack });
+  /** The state of the last committed render, for async flows that outlive their own render. */
+  const status = useRef({ dirty, pause });
+  const renders = useRef<(() => void)[]>([]);
+  useLayoutEffect(() => {
+    latest.current = { save, record, onBack };
+    status.current = { dirty, pause };
+    const waiting = renders.current; renders.current = [];
+    for (const resolve of waiting) resolve();
+  });
+  /** Resolves after the next committed render, or after 250 ms when no render comes. */
+  const afterRender = () => new Promise<void>(resolve => { renders.current.push(resolve); setTimeout(resolve, 250); });
+  useEffect(() => {
+    if (!dirty || busy || pause || gesturing) return;
+    const timer = setTimeout(() => { void latest.current.save("auto"); }, AUTOSAVE_MS);
+    return () => clearTimeout(timer);
+  }, [graph, dirty, busy, pause, gesturing]);
+  useEffect(() => () => { void latest.current.record(); }, []);
+  /**
+   * Back saves the last edits first, also an edit made while that save runs. Only an edit that
+   * cannot save reaches the app's discard question.
+   */
+  async function back() {
+    for (let round = 0; round < 5; round++) {
+      const { dirty: unsaved, pause: paused } = status.current;
+      if (!unsaved) { latest.current.onBack(true); return; }
+      if (paused || !(await latest.current.save("auto"))) break;
+      await afterRender();
+    }
+    latest.current.onBack(false);
+  }
+  /** A restore saves the edits, records the current file, then replaces the diagram as an undoable edit. */
+  async function restore(restored: Diagram) {
+    if (!(await save("auto"))) return;
+    await record(true);
+    edit(g => ({ ...restored, id: g.id }));
+    setNotice({ kind: "status", text: "Restored the saved version. Undo reverses it." });
   }
   function add(shape: Shape) {
     if (graph.nodes.length >= 2000) return;
@@ -101,7 +192,7 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
   function duplicate() { const result = duplicateItems(graph, selected); edit(() => result.graph); setSelected(result.ids); }
   function copy(cut: boolean): Clipboard | null {
     const clip = copyItems(graph, selected);
-    if (!clip) { setNotice({ kind: "error", text: "Select one or more boxes to copy." }); return null; }
+    if (!clip) { setNotice({ kind: "error", text: `Select one or more boxes to ${cut ? "cut" : "copy"}.` }); return null; }
     if (cut && clip.nodes.some(n => n.locked)) { setNotice({ kind: "error", text: "Unlock the selected boxes and the boxes in the selected groups before you cut them." }); return null; }
     clipboard.current = { clip, pastes: 0 };
     if (cut) { const ids = new Set([...clip.nodes.map(n => n.id), ...selected]); edit(g => removeItems(g, ids)); setSelected(new Set()); }
@@ -131,7 +222,7 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
     const ids = [...selected].filter(id => graph.nodes.some(n => n.id === id));
     if (ids.length) flow?.fitView({ nodes: ids.map(id => ({ id })), padding: 0.3, maxZoom: 1.5 }).catch(showError);
   }
-  const nodes = useMemo(() => flowNodes(graph, selected).map(node => ({ ...node, draggable: !busy && node.draggable, data: { ...node.data, busy, onGesture: (active: boolean) => active ? beginGesture() : endGesture() } })), [graph, selected, busy]);
+  const nodes = useMemo(() => flowNodes(graph, selected).map(node => ({ ...node, data: { ...node.data, onGesture: (active: boolean) => active ? beginGesture() : endGesture() } })), [graph, selected]);
   const edges = useMemo(() => flowEdges(graph, selected), [graph, selected]);
   const pickedNode = selected.size === 1 ? graph.nodes.find(n => selected.has(n.id)) : undefined;
   const pickedEdge = selected.size === 1 ? graph.edges.find(e => selected.has(e.id)) : undefined;
@@ -143,8 +234,8 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
   const arrangeable = movableNodes(graph, selected).length;
   function onKey(event: KeyboardEvent) {
     const mod = event.ctrlKey || event.metaKey, key = event.key.toLowerCase();
-    if (mod && key === "s") { event.preventDefault(); if (!busy) save(); return; }
-    if (busy || editable(document.activeElement)) return;
+    if (mod && key === "s") { event.preventDefault(); if (!busy) void save("now"); return; }
+    if (editable(document.activeElement)) return;
     const step = arrows[event.key];
     if (step && !mod && !event.altKey) {
       if (!selectedNodes.length) return;
@@ -172,12 +263,11 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
     const text = window.getSelection();
     if (event.type !== "paste" && text && !text.isCollapsed) return;
     if (event.type === "paste") {
-      if (busy) return;
       const clip = readClipboard(event.clipboardData.getData("text/plain"));
       if (clip) { event.preventDefault(); paste(clip); }
       return;
     }
-    if (!selected.size || event.type === "cut" && busy) return;
+    if (!selected.size) return;
     const clip = copy(event.type === "cut");
     if (clip) { event.preventDefault(); event.clipboardData.setData("text/plain", JSON.stringify(clip)); }
   }
@@ -190,7 +280,7 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
      */
     const inScope = () => {
       const focus = document.activeElement;
-      return !document.querySelector('[aria-modal="true"]') && (!focus || focus === document.body || !!section.current?.contains(focus));
+      return !document.querySelector('[aria-modal="true"]') && (!focus || focus === document.body || !!section.current?.contains(focus) || !!inspectorRef.current?.contains(focus));
     };
     const key = (event: KeyboardEvent) => { if (typeof event.key === "string" && inScope()) handlers.current.onKey(event); };
     const clip = (event: ClipboardEvent) => { if (inScope()) handlers.current.onClipboard(event); };
@@ -199,29 +289,29 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
     return () => { document.removeEventListener("keydown", key, true); for (const type of ["copy", "cut", "paste"] as const) document.removeEventListener(type, clip); };
   }, []);
   return <section className="uml-workspace" aria-label="UML editor" ref={section}>
-    <header className="uml-canvas-header"><button className="btn btn-ghost" onClick={onBack} disabled={busy}>← Back to UI design</button><strong>{graph.name}</strong><span className="chip">UML</span><span className="uml-save-state" role="status">{busy ? "Save…" : dirty ? "Unsaved changes" : "Saved"}</span><button className="btn btn-primary" disabled={busy || !dirty} onClick={save}>Save diagram</button><button className="btn btn-ghost" disabled={busy} onClick={onReload}>Load latest</button></header>
+    <header className="uml-canvas-header"><button className="btn btn-ghost" onClick={() => void back()} disabled={busy}>← Back to UI design</button><strong>{graph.name}</strong><span className="chip">UML</span><span className={`uml-save-state${pause ? " field-error" : ""}`} role="status">{busy ? "Saving…" : pause === "conflict" ? "Not saved: changed elsewhere" : pause ? "Not saved" : dirty ? "Unsaved changes" : "Saved"}</span><button className="btn btn-primary" disabled={busy} title="Save now and record a version (Ctrl/⌘S)" onClick={() => void save("now")}>Save diagram</button><button className="btn btn-ghost" disabled={busy} onClick={onReload}>Load latest</button></header>
     <div className="uml-toolbar" aria-label="Diagram tools">
-      <details><summary className="btn btn-secondary">+ Shape</summary><div className="uml-shape-menu">{shapeSchema.options.map(shape => <button className="btn" key={shape} disabled={busy || graph.nodes.length >= 2000} onClick={event => { add(shape); event.currentTarget.closest("details")?.removeAttribute("open"); }}>Add {shape}</button>)}</div></details>
-      <button className="btn btn-secondary" disabled={busy || selectedNodes.length !== 2 || graph.edges.length >= 4000} onClick={() => { const [a, b] = selectedNodes; if (a && b) connect({ source: a.id, target: b.id, sourceHandle: "right", targetHandle: "left" }); }}>Connect selected</button>
-      <button className="btn btn-ghost" onClick={() => undo()} disabled={busy || !doc.past.length}>Undo</button><button className="btn btn-ghost" onClick={() => undo(true)} disabled={busy || !doc.future.length}>Redo</button>
-      <button className="btn btn-ghost" onClick={duplicate} disabled={busy || !selectedNodes.length}>Duplicate</button><button className="btn btn-ghost" disabled={busy || !selected.size} onClick={() => { edit(g => removeItems(g, selected)); setSelected(new Set()); }}>Delete selected</button>
+      <details><summary className="btn btn-secondary">+ Shape</summary><div className="uml-shape-menu">{shapeSchema.options.map(shape => <button className="btn" key={shape} disabled={graph.nodes.length >= 2000} onClick={event => { add(shape); event.currentTarget.closest("details")?.removeAttribute("open"); }}>Add {shape}</button>)}</div></details>
+      <button className="btn btn-secondary" disabled={selectedNodes.length !== 2 || graph.edges.length >= 4000} onClick={() => { const [a, b] = selectedNodes; if (a && b) connect({ source: a.id, target: b.id, sourceHandle: "right", targetHandle: "left" }); }}>Connect selected</button>
+      <button className="btn btn-ghost" onClick={() => undo()} disabled={!doc.past.length}>Undo</button><button className="btn btn-ghost" onClick={() => undo(true)} disabled={!doc.future.length}>Redo</button>
+      <button className="btn btn-ghost" onClick={duplicate} disabled={!selectedNodes.length}>Duplicate</button><button className="btn btn-ghost" disabled={!selected.size} onClick={() => { edit(g => removeItems(g, selected)); setSelected(new Set()); }}>Delete selected</button>
       <label className="uml-check"><input type="checkbox" checked={grid} onChange={e => setGrid(e.target.checked)}/>Grid</label><label className="uml-check"><input type="checkbox" checked={snap} onChange={e => setSnap(e.target.checked)}/>Snap</label>
       <details className="uml-menu"><summary className="btn btn-secondary">Arrange</summary><div className="uml-shape-menu" role="group" aria-label="Arrange" onClick={event => { if (event.target instanceof HTMLButtonElement) event.currentTarget.closest("details")?.removeAttribute("open"); }}>
         <span className="uml-menu-label">Align</span>
-        {([["left", "Align left"], ["centre", "Align centres"], ["right", "Align right"], ["top", "Align top"], ["middle", "Align middles"], ["bottom", "Align bottom"]] as const).map(([mode, label]) => <button className="btn" key={mode} disabled={busy || arrangeable < 2} onClick={() => align(mode)}>{label}</button>)}
+        {([["left", "Align left"], ["centre", "Align centres"], ["right", "Align right"], ["top", "Align top"], ["middle", "Align middles"], ["bottom", "Align bottom"]] as const).map(([mode, label]) => <button className="btn" key={mode} disabled={arrangeable < 2} onClick={() => align(mode)}>{label}</button>)}
         <span className="uml-menu-label">Distribute</span>
-        <button className="btn" disabled={busy || arrangeable < 3} onClick={() => arrange(g => distributeItems(g, selected, "horizontal"))}>Distribute horizontally</button>
-        <button className="btn" disabled={busy || arrangeable < 3} onClick={() => arrange(g => distributeItems(g, selected, "vertical"))}>Distribute vertically</button>
+        <button className="btn" disabled={arrangeable < 3} onClick={() => arrange(g => distributeItems(g, selected, "horizontal"))}>Distribute horizontally</button>
+        <button className="btn" disabled={arrangeable < 3} onClick={() => arrange(g => distributeItems(g, selected, "vertical"))}>Distribute vertically</button>
         <span className="uml-menu-label">Order</span>
-        {([["front", "Bring to front"], ["forward", "Bring forward"], ["backward", "Send backward"], ["back", "Send to back"]] as const).map(([mode, label]) => <button className="btn" key={mode} disabled={busy || !selectedNodes.length} onClick={() => order(mode)}>{label}</button>)}
+        {([["front", "Bring to front"], ["forward", "Bring forward"], ["backward", "Send backward"], ["back", "Send to back"]] as const).map(([mode, label]) => <button className="btn" key={mode} disabled={!selectedNodes.some(n => !n.locked)} onClick={() => order(mode)}>{label}</button>)}
         <span className="uml-menu-label">Group</span>
-        <button className="btn" disabled={busy || !selectedNodes.length} onClick={group}>Group selection</button>
-        <button className="btn" disabled={busy || !selectedGroups.length} onClick={ungroup}>Ungroup</button>
-        <button className="btn" disabled={busy || !selected.size} onClick={() => lock(true)}>Lock selection</button>
-        <button className="btn" disabled={busy || !selected.size} onClick={() => lock(false)}>Unlock selection</button>
+        <button className="btn" disabled={!selectedNodes.length} onClick={group}>Group selection</button>
+        <button className="btn" disabled={!selectedGroups.length} onClick={ungroup}>Ungroup</button>
+        <button className="btn" disabled={!selected.size} onClick={() => lock(true)}>Lock selection</button>
+        <button className="btn" disabled={!selected.size} onClick={() => lock(false)}>Unlock selection</button>
       </div></details>
       <button className="btn btn-ghost" disabled={!selected.size} onClick={() => copy(false)}>Copy</button>
-      <button className="btn btn-ghost" disabled={busy || !clipboard.current} onClick={() => paste(clipboard.current?.clip ?? null)}>Paste</button>
+      <button className="btn btn-ghost" disabled={!clipboard.current} onClick={() => paste(clipboard.current?.clip ?? null)}>Paste</button>
       <button className="btn btn-ghost" onClick={() => { flow?.fitView({ padding: 0.15 }).catch(showError); }}>Fit all</button>
       <button className="btn btn-ghost" disabled={!selectedNodes.length} onClick={fitSelection}>Fit selection</button>
       <button className="btn btn-secondary" onClick={() => { try { saveBlob(new Blob([diagramFile(graph)], { type: "application/json" }), `${graph.id}.doi-diagram.json`); } catch (error) { showError(error); } }}>Export JSON</button>
@@ -233,10 +323,10 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
       <ViewportPortal>{guides.lines.map(line => <div key={`${line.axis}${line.at}`} className={`uml-guide uml-guide--${line.axis}`} data-testid="uml-guide" style={line.axis === "x" ? { left: guides.origin.x + line.at } : { top: guides.origin.y + line.at }}/>)}</ViewportPortal>
     </ReactFlow></div>
     <footer className="uml-status">{graph.nodes.length} boxes · {graph.edges.length} connectors · {selected.size} selected<span>Drag handles to connect · Shift-click to select several · Arrows nudge (Shift: 16 px) · Ctrl/⌘C, X, V copy · Ctrl/⌘G group, Shift ungroups · Ctrl/⌘S to save</span></footer>
-    {inspector && createPortal(<fieldset className="uml-inspector" disabled={busy}>
+    {inspector && createPortal(<fieldset className="uml-inspector">
       {tab === "uml" && (pickedNode ? <ArchitectureNodeInspector node={pickedNode} designs={designs} onChange={node => edit(g => ({ ...g, nodes: g.nodes.map(n => n.id === node.id ? node : n) }))} onReference={onReference}/> : pickedEdge ? <ArchitectureEdgeInspector edge={pickedEdge} onChange={edge => edit(g => ({ ...g, edges: g.edges.map(e => e.id === edge.id ? edge : e) }))}/> : <p className="uml-empty">Select a box or connector to edit its properties.</p>)}
       {tab === "comments" && <div className="uml-properties"><h3>Diagram comments</h3>{graph.comments.map(c => <article className="uml-comment" key={c.id}><strong>{c.status === "done" ? "Done" : "Open"} · {c.item}</strong><p>{c.text}</p><button className="btn btn-ghost" onClick={() => edit(g => ({ ...g, comments: g.comments.map(item => item.id === c.id ? { ...item, status: item.status === "open" ? "done" : "open" } : item) }))}>{c.status === "open" ? "Mark done" : "Reopen"}</button></article>)}<label className="field">Comment on the selected item<textarea className="textarea" maxLength={5000} value={comment} onChange={e => setComment(e.target.value)}/></label><button className="btn btn-secondary" disabled={selected.size !== 1 || !comment.trim()} onClick={() => { const item = [...selected][0]; if (item) { edit(g => ({ ...g, comments: [...g.comments, { id: crypto.randomUUID(), item, text: comment.trim(), status: "open", createdAt: new Date().toISOString() }] })); setComment(""); } }}>Add diagram comment</button></div>}
-      {tab === "history" && <div className="uml-properties"><h3>Session history</h3><p>Undo and redo cover this session. Persistent version history is not connected yet.</p>{doc.past.toReversed().map((snapshot, index) => <button key={index} className="btn btn-ghost" onClick={() => edit(() => snapshot)}>Restore session edit {doc.past.length - index} · {snapshot.nodes.length} boxes</button>)}</div>}
+      {tab === "history" && <ArchitectureHistory project={project} diagram={graph} refresh={versions} past={doc.past} onSessionRestore={snapshot => edit(() => snapshot)} onRestore={restore}/>}
     </fieldset>, inspector)}
   </section>;
 }

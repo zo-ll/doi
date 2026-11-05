@@ -173,12 +173,12 @@ export interface Version {
 const SHA = /^[0-9a-f]{7,40}$/;
 export const isSha = (s: string) => SHA.test(s);
 
-/** The versions of a design, newest first. A design that was renamed starts at the rename. */
-export function designLog(workspace: string, project: string, design: string, limit = 200): Promise<Version[]> {
+/** The commits that changed a path, newest first. Empty without git or without a commit. */
+function logFor(workspace: string, pathspec: string, limit: number): Promise<Version[]> {
   return serial(async () => {
     let out: string;
     try {
-      out = await git(workspace, ["log", `-${limit}`, "--format=%H%x1f%aI%x1f%s", "--", designDir(workspace, project, design)]);
+      out = await git(workspace, ["log", `-${limit}`, "--format=%H%x1f%aI%x1f%s", "--", pathspec]);
     } catch {
       return []; // a repo without commits
     }
@@ -192,7 +192,26 @@ export function designLog(workspace: string, project: string, design: string, li
   });
 }
 
+/** The versions of a design, newest first. A design that was renamed starts at the rename. */
+export function designLog(workspace: string, project: string, design: string, limit = 200): Promise<Version[]> {
+  return logFor(workspace, designDir(workspace, project, design), limit);
+}
+
 const relPath = (workspace: string, path: string) => relative(workspace, path).split(sep).join("/");
+
+/** The commits that changed one file, newest first. Empty without git or without a commit. */
+export function fileLog(workspace: string, path: string, limit = 100): Promise<Version[]> {
+  return logFor(workspace, relPath(workspace, path), limit);
+}
+
+/** One file as it was at a commit, or null when the commit or the file is missing. */
+export function fileAt(workspace: string, path: string, sha: string): Promise<string | null> {
+  if (!isSha(sha)) return Promise.reject(new Error("Invalid commit id."));
+  return serial(async () => {
+    const result = await $`git show ${`${sha}:${relPath(workspace, path)}`}`.cwd(workspace).quiet().nothrow();
+    return result.exitCode === 0 ? result.stdout.toString() : null;
+  });
+}
 
 /** The page files of a design at a commit (no hidden files), as paths in the design folder. */
 export async function designFilesAt(workspace: string, project: string, design: string, sha: string): Promise<string[]> {

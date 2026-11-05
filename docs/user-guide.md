@@ -227,7 +227,7 @@ Tweaks (T) shows controls for the CSS variables of the design, for example color
 
 UML is optional for each project. The first editor supports real boxes, class compartments, connectors, properties and UI links. It uses the app's current theme.
 
-**Important:** UML does not autosave yet. Save the diagram before you leave.
+UML saves your edits automatically, about one second after you stop. The header shows the state: **Saving…**, **Saved**, **Unsaved changes** or **Not saved**.
 
 1. Open a project.
 2. Select **UML** in the right panel.
@@ -235,7 +235,7 @@ UML is optional for each project. The first editor supports real boxes, class co
 4. Use **+ Shape** to add an item.
 5. Drag between the handles to connect two items.
 6. Select an item to edit its properties in the right panel.
-7. Select **Save diagram**, or press Ctrl/⌘S.
+7. Optional: select **Save diagram**, or press Ctrl/⌘S, to save at once and record a version.
 
 The connector inspector has relationship presets, labels, markers, routes and attachment controls. A box can link to a UI design, page or node. **Back to UI design** returns to the normal design canvas. Chat sends UI requests only; the composer is disabled while a UML diagram owns the canvas.
 
@@ -267,7 +267,17 @@ When **Snap** is on and you drag one box, a line shows where an edge or the cent
 
 **Export JSON** saves an editable diagram. **Import JSON** adds a diagram to the current project. If the project already has a diagram with the same name, the import adds " copy" to the name. If a save conflict occurs, export your edits before **Load latest**. You can then import that file as another diagram.
 
-The History tab currently shows session edits only. Persistent versions, image exports, graph handoff and MCP updates are not ready. `get_architecture` already reads the saved graphs through MCP.
+### Autosave and versions
+
+Autosave does not stop you: you can continue to edit while a save runs, and the next autosave stores those edits.
+
+- **Not saved: changed elsewhere**: another window or an agent saved the diagram first. Autosave stops and keeps your edits. Export JSON to keep a copy, then select **Load latest**.
+- **Not saved**: a value breaks a rule, for example an empty box name. The notice names the field. Autosave starts again after your next edit.
+- **← Back to UI design** saves the last edits first. If they cannot be saved, doi asks before it discards them.
+
+doi records a version of the project's diagrams in its history when you select **Save diagram**, when you leave a diagram inside doi, and every 5 minutes while autosave runs. A browser reload or a closed tab keeps the autosaved edits, but records no version. Versions need git in the workspace: if git does not accept the UML file, doi says so once, and saves still work. The History tab lists the saved versions, newest first. **Restore** puts the open diagram back as it was in that version. The restore is an ordinary edit: **Undo** reverses it, and autosave stores it. Before a restore, doi saves your edits and records the current state as a version, so no saved state is lost.
+
+Image exports, graph handoff and MCP updates are not ready. `get_architecture` already reads the saved graphs through MCP.
 
 **Important:** Run only one doi process for a workspace. The save lock for diagrams is inside one process. Two doi processes on the same workspace can both write a diagram, and the last write wins.
 
