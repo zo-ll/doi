@@ -111,6 +111,7 @@ export function App() {
     setUmlOpen(null); setUmlDirty(false); return true;
   }
   function openUml(id: string) {
+    if (id === umlOpen) return;
     if (running) { setToast("Wait for the current design request before opening UML."); return; }
     if (umlDirty && !window.confirm("Open another diagram and discard unsaved edits?")) return;
     setSelection(null); setUmlDirty(false); setUmlOpen(id); setSideTab("uml");
