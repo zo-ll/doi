@@ -81,16 +81,17 @@ export function ArchitectureEditor({ project, diagram, busy, inspector, tab, des
   }
   /**
    * Commits the saved file as a version, once for each run of saves. `always`: the server decides;
-   * it commits only a changed file. Resolves with the commit id, or null when nothing was recorded.
+   * it commits only a changed file. Resolves with the commit id (null when nothing was recorded)
+   * and `failed` when the server could not record a version.
    */
-  function record(always = false): Promise<string | null> {
-    if (!unrecorded.current && !always) return Promise.resolve(null);
+  function record(always = false): Promise<{ sha: string | null; failed: boolean }> {
+    if (!unrecorded.current && !always) return Promise.resolve({ sha: null, failed: false });
     unrecorded.current = false; recorded.current = Date.now();
     return architectureCheckpoint(project, graph.name).then(({ sha, error }) => {
       if (sha) setVersions(n => n + 1);
       if (error && !warned.current) { warned.current = true; setNotice({ kind: "error", text: `doi could not record a version: ${error}` }); }
-      return sha;
-    }, error => { unrecorded.current = true; console.debug("UML version not recorded:", error); return null; });
+      return { sha, failed: !!error };
+    }, error => { unrecorded.current = true; console.debug("UML version not recorded:", error); return { sha: null, failed: true }; });
   }
   /**
    * "now" is an explicit save: it also records a version. Returns true when the graph is saved.
@@ -118,8 +119,8 @@ export function ArchitectureEditor({ project, diagram, busy, inspector, tab, des
       setDoc(current => ({ ...current, graph: JSON.stringify(current.graph) === JSON.stringify(submitted) ? snapshot : current.graph }));
     }
     if (kind === "now") {
-      const sha = await record(true);
-      setNotice(current => current?.kind === "error" ? current : { kind: "status", text: sha ? "Saved. doi recorded this version." : "Saved. No change to record." });
+      const { sha, failed } = await record(true);
+      setNotice(current => current?.kind === "error" ? current : { kind: "status", text: failed ? "Saved. The version was not recorded." : sha ? "Saved. doi recorded this version." : "Saved. No change to record." });
     } else if (Date.now() - recorded.current > CHECKPOINT_MS) void record();
     return true;
   }

@@ -158,3 +158,19 @@ test.skipIf(!hasBrowser)("a fixed value starts autosave again", async () => {
     expect(await storedName(workspace)).toBe("Fixed");
   });
 }, 30_000);
+
+test.skipIf(!hasBrowser)("a version that git refuses is never reported as no change", async () => {
+  await withEditor(async (page, workspace) => {
+    await Bun.write(join(workspace, ".gitignore"), "projects/sample/architecture.json\n");
+    const name = page.getByRole("textbox", { name: "Box name", exact: true });
+    await name.fill("One");
+    await savedState(page);
+    await page.keyboard.press("Control+s");
+    await page.getByText("doi could not record a version: the workspace history (git) did not accept the UML file. Saves still work.").waitFor();
+    await name.fill("Two");
+    await savedState(page);
+    await page.keyboard.press("Control+s");
+    await page.getByText("Saved. The version was not recorded.").waitFor();
+    expect(await storedName(workspace)).toBe("Two");
+  });
+}, 30_000);
