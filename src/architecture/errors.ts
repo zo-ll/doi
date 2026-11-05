@@ -4,6 +4,8 @@ const groups: Readonly<Record<string, string>> = { nodes: "Box", edges: "Connect
 const fields: Readonly<Record<string, string>> = {
   endLabel: "end label", startLabel: "start label", label: "label", endMarker: "end marker", startMarker: "start marker",
   fontSize: "text size", fill: "fill colour", stroke: "border colour", text: "text colour", colour: "line colour", parent: "group",
+  sourceSide: "start side", targetSide: "end side", sourceOffset: "start offset", targetOffset: "end offset", points: "bend points",
+  nodes: "boxes", edges: "connectors", comments: "comments", references: "UI links", diagrams: "diagrams",
 };
 function fieldName(path: PropertyKey[]): string {
   const parts: string[] = [];

@@ -28,3 +28,11 @@ test("invalid JSON and imported duplicate ids remain readable", () => {
   expect(architectureErrorMessage(new SyntaxError("raw engine error"))).toBe("The diagram file must contain valid JSON.");
   expect(architectureErrorMessage(new Error("The diagram changed elsewhere."))).toBe("The diagram changed elsewhere.");
 });
+test("group and connector paths use plain field names", () => {
+  const tooMany = diagramSchema.safeParse({ ...createDiagram(), nodes: Array.from({ length: 2001 }, () => createNode("box", { x: 0, y: 0 })) });
+  if (tooMany.success) throw new Error("The node limit passed validation.");
+  expect(architectureErrorMessage(tooMany.error)).toBe("Diagram boxes: Use at most 2000 items.");
+  const edge = edgeSchema.safeParse({ ...createEdge("a", "b"), sourceOffset: 2 });
+  if (edge.success) throw new Error("The offset passed validation.");
+  expect(architectureErrorMessage(edge.error)).toStartWith("Diagram start offset: ");
+});
