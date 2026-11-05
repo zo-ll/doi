@@ -2,7 +2,9 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-11-03. The TypeScript refactor and two browser fixes are on `refactor/typescript-boundaries`. A real browser drive found an open Usage gap for unpicked variants. `CI=1 bun test`: 529 pass, no skips or failures. `bun check`: no errors. The Linux binary build and smoke test pass. Section 6 has the scope and evidence.
+Last update: 2026-11-05. The optional UML wireframe is saved in the local `doi-uml/home` design. The user must review it before feature implementation. UML is optional for each project, with access from the right panel. Issue #145 remains open. Section 6 has the artifact and evidence.
+
+PR #147 merged the TypeScript refactor and two browser fixes into `main` at `e95e541`. All 529 tests passed, with no skips or failures. The type check, Linux binary build and smoke test passed. The Usage gap for unpicked variants remains open.
 
 Earlier state: #72 closed (the user tested OpenCode Go with a real key), #130 (narrow windows) and #131 (Settings model list, Codex catalog) merged. The user needs no other providers for now. Tests: 501 pass, 3 skip (CI only). M1, M2, M3 and M4 have no open issues. The M1 gate is done (the user, 2026-11-02); the M4 gate is still open. `bun check`: no errors.
 
@@ -128,6 +130,14 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 - CLI backends (`editsFiles: true`) change the files in `GenerateRequest.cwd` themselves. Their `edit`/`write` events only report the change. **The edit applier must skip them.**
 
 ## 6. State and next steps
+
+**2026-11-05: optional UML wireframe.** The user requested an optional architecture area for each project, with access from the right panel. Nontechnical users can continue with UI designs without UML. The local artifact is `doi UML / home` (`doi-uml/home` in MCP). `index.html` shows the optional state; `canvas.html` shows six boxes and labelled arrows; `linked-ui.html` shows the return to the UI design. The three pages share `styles.css`.
+
+doi used the requested `claude-code:claude-opus-5-5` model through its normal chat. The design commit is `1a77e8c` in the workspace repo. The browser pass verified opt-in, linked UI, return navigation, the ZIP export and a 1100 × 760 layout. MCP returned the design files, two element inspections, three PNGs and the saved comment. The normal Hand off dialog supplied a prompt. Evidence: `/tmp/doi-uml-wireframe.15gqXJ/`.
+
+Only the wireframe exists; no architecture editor code changed. Small diagram labels at 1100 px need review before implementation. An open comment on `box-web-app` asks for readable labels through zoom and pan, and preserves the optional scope. Issue #145 records the new project requirements. The original projects, config, credentials and logins remain intact.
+
+The dev server remains at `http://127.0.0.1:4317/`. The visible Chrome uses a fresh profile and loopback CDP port 9222. It reports the centre 1920 × 1200 display as current. The desktop does not expose a reliable internal-display marker; the user must confirm that this is the laptop screen. Keep the browser and server available for the user.
 
 **2026-11-03: critic corrections before merge.** The critic reviewed all 19 files at `a62bea0` and requested changes. The report is `~/.local/state/spawn-critic/review.uYPW6Mub/REPORT.md`. Three focused commits address its findings: `9ca8824` limits the stderr drain after process exit; `659b4d3` reports config errors with their file and field; `5a8f7d5` documents and tests unknown provider ids. A real descendant process reproduced the stderr delay before the fix. The corrected reader finishes after a bounded drain and releases its stream lock. The CLI now exits with code 2 and a short config error instead of a stack trace.
 
