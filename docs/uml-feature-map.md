@@ -8,7 +8,15 @@ The editor supports free-form diagrams, not mandatory UML categories or a compil
 
 The reference uses doi's dark theme. The implementation must use the existing theme tokens, not a separate theme preference. Existing HTML designs keep their own colours.
 
-**These are requirements, not completed application features.** A wireframe control does not prove that its action works.
+**The first edit path now works. The complete feature contract remains open.** A wireframe control does not prove that its action works.
+
+## First implementation status
+
+The app now has the optional right-panel entry, non-destructive hide/re-enable, diagram controls, shapes, class text, connections and property inspectors. The first editor uses explicit Save, not autosave. It also supplies session undo/redo, comments, UI references, editable JSON import/export and MCP `get_architecture`.
+
+A real browser test checks opt-in without a file, box/class creation, a handle connection, inheritance, multiplicity, save/reload, undo after save, hide/re-enable, pointer resize/move, comments and a UI link. The test verifies the saved workspace state and confirms that no model request starts. Unit tests check every relationship preset, graph validation, atomic writes, stale saves, copy ids and JSON round trips.
+
+Not complete: autosave, persistent version history, operating-system clipboard, group/ungroup and layer tools, alignment/distribution, guides, fit selection, image exports, graph handoff, MCP graph writes/render and automatic shared-instance refresh. Some shape and lifecycle controls still need broader browser coverage. Do not close #145 for this first implementation.
 
 ## Feature contract
 
@@ -51,7 +59,7 @@ Evidence: `/tmp/doi-uml-wireframe.15gqXJ/`. The wireframe pass checks real links
 
 ## Canvas library evaluation
 
-Metadata and upstream documents were checked on 2026-11-05. No new runtime dependency is installed yet.
+Metadata and upstream documents were checked on 2026-11-05. The first editor now uses `@xyflow/react` 12.12.1. The browser test, Bun build and Linux binary smoke test pass. No framework or compiler option changed.
 
 | Candidate | Licence and compatibility | Fit and cost |
 | --- | --- | --- |
@@ -65,7 +73,7 @@ Primary sources:
 - [Excalidraw package features](https://github.com/excalidraw/excalidraw#features), [package metadata](https://registry.npmjs.org/@excalidraw/excalidraw/latest).
 - [tldraw licence](https://github.com/tldraw/tldraw/blob/main/LICENSE.md), [package metadata](https://registry.npmjs.org/tldraw/latest).
 
-Use React Flow as the initial candidate. Check its Bun build and binary bundle before adoption. Keep the graph schema independent of renderer types. A library demo does not prove the complete feature contract.
+The schema remains independent of renderer types. The canvas adapter owns the renderer types. A library demo does not prove the complete feature contract.
 
 ## Small implementation units
 

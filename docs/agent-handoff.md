@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-11-05. The user approved the initial UML layout and requested dark mode plus the complete editor controls. The local `doi-uml/home` reference now has six dark states. Thirty browser checks pass. `docs/uml-feature-map.md` defines 26 implementation requirements. No production editor code changed; issue #145 remains open. Section 6 has the artifact and evidence.
+Last update: 2026-11-05. The first real UML edit path is on `feature/optional-uml`. It has an optional panel, editable graphs, conflict-safe Save, session undo, comments, UI links, JSON import/export and MCP reads. All 550 tests pass; type checks and the Linux binary smoke test pass. The full 26-part contract remains open in #145. Section 6 records the scope and remaining work.
 
 PR #147 merged the TypeScript refactor and two browser fixes into `main` at `e95e541`. All 529 tests passed, with no skips or failures. The type check, Linux binary build and smoke test passed. The Usage gap for unpicked variants remains open.
 
@@ -130,6 +130,16 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 - CLI backends (`editsFiles: true`) change the files in `GenerateRequest.cwd` themselves. Their `edit`/`write` events only report the change. **The edit applier must skip them.**
 
 ## 6. State and next steps
+
+**2026-11-05: first real UML editor.** The implementation branch is `feature/optional-uml`, above the three design-note commits. The existing dark reference remains in `doi-uml/home`. The new app feature uses the normal right-panel UML tab and a separate versioned `projects/<project>/architecture.json` file. A read or tab selection creates no file. Explicit enable creates the first diagram; Hide keeps all saved diagrams.
+
+The implementation has strict node/edge/graph schemas, atomic revision-checked writes, a 4 MB request/file limit and guarded GET/PUT routes. The graph schema has no renderer types. The MIT canvas runtime supplies pointer interactions. Custom nodes, class compartments, relationship presets, endpoint labels, route controls, attachment offsets and UI links are real. Chat cannot start HTML requests while UML owns the canvas.
+
+The initial save is manual. Session undo/redo, diagram comments and editable JSON import/export work. `get_architecture` reads the actual saved graphs through the existing MCP server. Not complete: autosave, persistent version history, clipboard, group/layer and alignment tools, image exports, graph handoff, MCP writes/render and automatic refresh from another editor. The feature map and user guide state these limits. Keep #145 open.
+
+The real browser pass created `UML Build Check / System overview`. It contains Web app, API service with class text, an inheritance connector labelled `uses API`, endpoint labels `1` and `0..*`, and one saved comment. Pointer resize produced 268 × 202; a pointer move preserved its connection. MCP read the same two boxes, one connector and one comment. No model call ran for this implementation pass. The original modified files retain their hashes.
+
+The browser test found and fixed a resize feedback loop, stale dynamic handle bounds and an undo reset after Save. The automated browser case passed three consecutive runs. The full CI-mode suite gives 550 pass, no failures or skips. `bun check` checks 204 files. The actual Linux binary build and smoke test pass. Evidence: `/tmp/doi-uml-implementation/`. Independent review and CI must approve the exact head before merge.
 
 **2026-11-05: dark UML reference and feature contract.** The user approved the initial layout, then requested dark mode and the tools for a complete UML editor. The existing doi theme control now selects dark mode in the visible Chrome profile. A second normal chat request used `claude-code:claude-opus-5-5`. Workspace commit `d38856d` contains six dark reference pages: `index.html`, `canvas.html`, `linked-ui.html`, `connector.html`, `selection.html` and `output.html`. The last three illustrate connector properties, multiple selection, and export/history/conflict controls.
 

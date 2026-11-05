@@ -13,13 +13,14 @@ doi runs on your computer only. The server listens on `127.0.0.1`. Your designs,
 3. [Providers and models](#providers-and-models)
 4. [Make a design](#make-a-design)
 5. [Edit on the canvas](#edit-on-the-canvas)
-6. [Comments, variants and history](#comments-variants-and-history)
-7. [Design systems](#design-systems)
-8. [Export](#export)
-9. [Hand off to a coding agent (MCP)](#hand-off-to-a-coding-agent-mcp)
-10. [The workspace](#the-workspace)
-11. [Shortcuts](#shortcuts)
-12. [Troubleshooting](#troubleshooting)
+6. [Optional UML](#optional-uml)
+7. [Comments, variants and history](#comments-variants-and-history)
+8. [Design systems](#design-systems)
+9. [Export](#export)
+10. [Hand off to a coding agent (MCP)](#hand-off-to-a-coding-agent-mcp)
+11. [The workspace](#the-workspace)
+12. [Shortcuts](#shortcuts)
+13. [Troubleshooting](#troubleshooting)
 
 ## Install
 
@@ -222,6 +223,28 @@ Under the link, the CSS block shows the CSS rules that match the element, each w
 
 Tweaks (T) shows controls for the CSS variables of the design, for example colors and sizes. The canvas changes live. "Save as version" writes the values.
 
+## Optional UML
+
+UML is optional for each project. The first editor supports real boxes, class compartments, connectors, properties and UI links. It uses the app's current theme.
+
+**Important:** UML does not autosave yet. Save the diagram before you leave.
+
+1. Open a project.
+2. Select **UML** in the right panel.
+3. Select **Add UML to this project**.
+4. Use **+ Shape** to add an item.
+5. Drag between the handles to connect two items.
+6. Select an item to edit its properties in the right panel.
+7. Select **Save diagram**, or press Ctrl/⌘S.
+
+The connector inspector has relationship presets, labels, markers, routes and attachment controls. A box can link to a UI design, page or node. **Back to UI design** returns to the normal design canvas. Chat sends UI requests only; the composer is disabled while a UML diagram owns the canvas.
+
+**Hide UML** keeps saved diagrams. **Show UML in this project** restores the area. Rename, duplicate and delete controls appear in each diagram's menu.
+
+**Export JSON** saves an editable diagram. **Import JSON** adds a diagram to the current project. If a save conflict occurs, export your edits before **Load latest**. You can then import that file as another diagram.
+
+The History tab currently shows session edits only. Persistent versions, image exports, graph handoff and MCP updates are not ready. `get_architecture` already reads the saved graphs through MCP.
+
 ## Comments, variants and history
 
 ### Comments
@@ -306,6 +329,7 @@ The agent reads the design from doi while it works. Keep doi running until the a
 | --- | --- |
 | `list_designs` | The projects and their designs |
 | `get_design` | The files of a design, its pages, frames, design system name and the last requests |
+| `get_architecture` | The optional UML state, saved diagrams, stable item ids, UI references and current revision of a project |
 | `get_design_system` | The tokens, components and rules of the design system of a project |
 | `get_comments` | The open comments of a design (with `all`: the done comments too) |
 | `get_element` | One element by its `data-oid`, as the browser renders it in one frame: HTML, box, computed styles, matching CSS rules, ancestors and children |
