@@ -275,7 +275,7 @@ Autosave does not stop you: you can continue to edit while a save runs, and the 
 - **Not saved**: a value breaks a rule, for example an empty box name. The notice names the field. Autosave starts again after your next edit.
 - **← Back to UI design** saves the last edits first. If they cannot be saved, doi asks before it discards them.
 
-doi records a version of the project's diagrams in its history when you select **Save diagram**, when you leave a diagram, and every 5 minutes while autosave runs. The History tab lists the saved versions, newest first. **Restore** puts the open diagram back as it was in that version. The restore is an ordinary edit: **Undo** reverses it, and autosave stores it. Before a restore, doi records the current state as a version, so no saved state is lost.
+doi records a version of the project's diagrams in its history when you select **Save diagram**, when you leave a diagram inside doi, and every 5 minutes while autosave runs. A browser reload or a closed tab keeps the autosaved edits, but records no version. Versions need git in the workspace: if git does not accept the UML file, doi says so once, and saves still work. The History tab lists the saved versions, newest first. **Restore** puts the open diagram back as it was in that version. The restore is an ordinary edit: **Undo** reverses it, and autosave stores it. Before a restore, doi saves your edits and records the current state as a version, so no saved state is lost.
 
 Image exports, graph handoff and MCP updates are not ready. `get_architecture` already reads the saved graphs through MCP.
 
