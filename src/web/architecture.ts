@@ -78,8 +78,8 @@ export function useArchitecture(project: string | null) {
   return { load: data, write, busy: save.token === token && save.state === "saving", error: save.token === token && save.state === "error" ? save.message : undefined, reload: () => setAttempt(n => n + 1) };
 }
 
-export interface ImageRequest { format: "png" | "pdf"; diagram: Diagram; theme: "dark" | "light"; background: boolean; ids?: string[]; scale: 1 | 2 }
-/** PNG or PDF from the server's sandboxed renderer. */
+export interface ImageRequest { format: "svg" | "png" | "pdf"; diagram: Diagram; theme: "dark" | "light"; background: boolean; ids?: string[]; scale: 1 | 2 }
+/** SVG, PNG or PDF from the server; PNG and PDF use its sandboxed renderer. */
 export async function architectureImage(project: string, body: ImageRequest): Promise<Blob> {
   const response = await fetch(`/api/projects/${project}/architecture/export`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   if (!response.ok) {

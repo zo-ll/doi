@@ -66,6 +66,12 @@ test.skipIf(!hasBrowser)("the Export image menu downloads SVG, PNG and PDF of th
     const pdf = await download(page, "Download PDF");
     expect(new TextDecoder().decode(pdf.bytes.slice(0, 5))).toBe("%PDF-");
     await page.getByText("Exported the selection as PDF.").waitFor();
+    // An empty selection resets the scope; a new selection does not bring it back.
+    await page.keyboard.press("Escape");
+    await page.locator(".uml-flow .react-flow__pane").click({ position: { x: 30, y: 500 } });
+    await page.getByRole("group", { name: "Web app", exact: true }).click();
+    await open();
+    expect(await menu.getByRole("combobox", { name: "Scope", exact: true }).inputValue()).toBe("all");
     expect(errors).toEqual([]);
   } finally { await browser.close(); app.stop(); await rm(workspace, { recursive: true, force: true }); }
 }, 60_000);

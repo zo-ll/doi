@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Diagram } from "../../architecture/schema.ts";
-import { diagramSvg, type ExportTheme } from "../../architecture/svg.ts";
+import type { ExportTheme } from "../../architecture/svg.ts";
 import { architectureErrorMessage } from "../../architecture/errors.ts";
 import { architectureImage } from "../architecture.ts";
 import { saveBlob } from "../export.ts";
@@ -14,7 +14,7 @@ function appTheme(): ExportTheme {
 }
 const fileName = (name: string, format: Format) => `${name.normalize("NFKD").replace(/[^\w.-]+/g, "-").replace(/^[-.]+|[-.]+$/g, "").slice(0, 80) || "diagram"}.${format}`;
 
-/** SVG renders in the browser; PNG and PDF come from the server. Both use the same SVG. */
+/** The server renders every format from one SVG with the app fonts embedded. */
 export function ArchitectureImageExport({ project, graph, selected, onNotice }: {
   project: string; graph: Diagram; selected: ReadonlySet<string>; onNotice: (notice: { kind: "status" | "error"; text: string }) => void;
 }) {
@@ -26,18 +26,14 @@ export function ArchitectureImageExport({ project, graph, selected, onNotice }: 
   const [pending, setPending] = useState(false);
   const boxes = graph.nodes.filter(n => selected.has(n.id)).map(n => n.id);
   const useSelection = scope === "selection" && boxes.length > 0;
+  // An empty selection resets the choice, so a later selection does not bring it back.
+  useEffect(() => { if (!boxes.length) setScope("all"); }, [boxes.length]);
   async function download() {
     const ids = useSelection ? new Set(boxes) : undefined;
     setPending(true);
     try {
-      if (format === "svg") {
-        const image = diagramSvg(graph, { theme, background, ids });
-        if ("error" in image) { onNotice({ kind: "error", text: image.error }); return; }
-        saveBlob(new Blob([image.svg], { type: "image/svg+xml" }), fileName(graph.name, "svg"));
-      } else {
-        const blob = await architectureImage(project, { format, diagram: graph, theme, background, ids: ids ? [...ids] : undefined, scale });
-        saveBlob(blob, fileName(graph.name, format));
-      }
+      const blob = await architectureImage(project, { format, diagram: graph, theme, background, ids: ids ? [...ids] : undefined, scale });
+      saveBlob(blob, fileName(graph.name, format));
       onNotice({ kind: "status", text: `Exported ${useSelection ? "the selection" : "the diagram"} as ${format.toUpperCase()}.` });
     } catch (error) { onNotice({ kind: "error", text: architectureErrorMessage(error) }); }
     finally { setPending(false); }
