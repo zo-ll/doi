@@ -95,3 +95,28 @@ describe("designEvents", () => {
     expect((await reader.read()).done).toBe(true);
   });
 });
+
+describe("UML file changes", () => {
+  test("architectureOf maps only the project's UML file", async () => {
+    const { architectureOf } = await import("../src/workspace/watch.ts");
+    expect(architectureOf("p/architecture.json")).toBe("p");
+    expect(architectureOf("p/architecture.json.1234.tmp")).toBeNull();
+    expect(architectureOf("p/designs/d/architecture.json")).toBeNull();
+    expect(architectureOf("../architecture.json")).toBeNull();
+  });
+  test("an atomic UML write gives one event for its project, also on the event stream", async () => {
+    const { ws } = await setup();
+    const projects: string[] = [];
+    watcher!.subscribeArchitecture(project => projects.push(project));
+    const controller = new AbortController();
+    const reader = designEvents(watcher!, new Request("http://x/api/events", { signal: controller.signal })).body!.getReader() as ReadableStreamDefaultReader<string | Uint8Array>;
+    const { writeArchitecture } = await import("../src/workspace/architecture.ts");
+    await writeArchitecture(ws, "p", null, { version: 1, enabled: true, diagrams: [] });
+    await Bun.sleep(400);
+    expect(projects).toEqual(["p"]);
+    let text = "";
+    while (!text.includes("architecture-changed")) { const { value } = await reader.read(); text += typeof value === "string" ? value : new TextDecoder().decode(value); }
+    expect(text).toContain('event: architecture-changed\ndata: {"project":"p"}');
+    controller.abort();
+  });
+});
