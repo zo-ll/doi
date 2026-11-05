@@ -40,7 +40,7 @@ export async function postArchitectureExport(workspace: string, project: string,
   try {
     await architecturePath(workspace, project);
     const body = exportSchema.parse(await readBody(req));
-    const image = diagramSvg(body.diagram, { theme: body.theme, background: body.background, ids: body.ids ? new Set(body.ids) : undefined, fontCss: await diagramFontCss() });
+    const image = diagramSvg(body.diagram, { theme: body.theme, background: body.background, ids: body.ids ? new Set(body.ids) : undefined, fontCss: await diagramFontCss(JSON.stringify(body.diagram)) });
     if ("error" in image) throw new ArchitectureError(400, image.error);
     if (body.format === "svg") return new Response(image.svg, { headers: { "content-type": "image/svg+xml; charset=utf-8", "content-disposition": `attachment; filename="${imageName(body.diagram.name, "svg")}"` } });
     const scale = body.format === "png" ? body.scale : 1;

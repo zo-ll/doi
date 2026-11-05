@@ -133,3 +133,14 @@ test.skipIf(!hasBrowser)("a PDF page has the image size", async () => {
     expect((pdf.match(/\/Type\s*\/Page\b/g) ?? []).length).toBe(1);
   });
 }, 60_000);
+
+test("an export embeds the font subsets that its text needs", async () => {
+  const { diagramFontCss, fontSubsets } = await import("../src/export/diagram-fonts.ts");
+  expect([...fontSubsets("Web app")]).toEqual(["latin"]);
+  expect([...fontSubsets("Сервер Ωμέγα Tiếng")].toSorted()).toEqual(["cyrillic", "greek", "latin", "vietnamese"]);
+  const latin = await diagramFontCss("Web app"), mixed = await diagramFontCss("Сервер Ωμέγα");
+  expect(latin.match(/@font-face/g)).toHaveLength(3);
+  // Cyrillic: sans 400, sans 600, mono 400; Greek: sans 400 and 600 (IBM Plex Mono has no Greek).
+  expect(mixed.match(/@font-face/g)).toHaveLength(8);
+  expect(mixed).toContain("unicode-range:U+370-377");
+});
