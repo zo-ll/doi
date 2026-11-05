@@ -5,6 +5,7 @@ import { createNode, shapeSchema, type Shape, type uiReferenceSchema } from "../
 import type { z } from "zod";
 import { createEdge } from "../../architecture/edges.ts";
 import { diagramSchema, type Diagram } from "../../architecture/schema.ts";
+import { architectureErrorMessage } from "../../architecture/errors.ts";
 import { duplicateItems, removeItems } from "../../architecture/edit.ts";
 import { diagramFile, MAX_DIAGRAM_FILE_BYTES, readDiagramFile } from "../../architecture/interchange.ts";
 import { applyGraphChanges, attachment, flowEdges, flowNodes } from "../architecture-flow.ts";
@@ -57,9 +58,13 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
       return !next ? current : redo ? { graph: next, past: [...current.past, current.graph], future: stack.slice(0, -1) } : { graph: next, past: stack.slice(0, -1), future: [...current.future, current.graph] };
     });
   }
+  function showError(error: unknown) {
+    console.debug("UML action failed:", error);
+    setNotice({ kind: "error", text: architectureErrorMessage(error) });
+  }
   async function save() {
     try { const submitted = graph, snapshot = diagramSchema.parse(submitted); await onSave(snapshot); clean.current = snapshot; setDoc(current => ({ ...current, graph: JSON.stringify(current.graph) === JSON.stringify(submitted) ? snapshot : current.graph })); setNotice({ kind: "status", text: "Saved this version." }); }
-    catch (error) { setNotice({ kind: "error", text: error instanceof Error ? error.message : String(error) }); }
+    catch (error) { showError(error); }
   }
   function add(shape: Shape) {
     if (graph.nodes.length >= 2000) return;
@@ -100,9 +105,9 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
       <button className="btn btn-ghost" onClick={() => undo()} disabled={busy || !doc.past.length}>Undo</button><button className="btn btn-ghost" onClick={() => undo(true)} disabled={busy || !doc.future.length}>Redo</button>
       <button className="btn btn-ghost" onClick={duplicate} disabled={busy || !selectedNodes.length}>Duplicate</button><button className="btn btn-ghost" disabled={busy || !selected.size} onClick={() => { edit(g => removeItems(g, selected)); setSelected(new Set()); }}>Delete selected</button>
       <label className="uml-check"><input type="checkbox" checked={grid} onChange={e => setGrid(e.target.checked)}/>Grid</label><label className="uml-check"><input type="checkbox" checked={snap} onChange={e => setSnap(e.target.checked)}/>Snap</label>
-      <button className="btn btn-ghost" onClick={() => { flow?.fitView({ padding: 0.15 }).catch(error => setNotice({ kind: "error", text: String(error) })); }}>Fit all</button>
-      <button className="btn btn-secondary" onClick={() => { try { saveBlob(new Blob([diagramFile(graph)], { type: "application/json" }), `${graph.id}.doi-diagram.json`); } catch (error) { setNotice({ kind: "error", text: String(error) }); } }}>Export JSON</button>
-      <label className={`btn btn-secondary${busy ? " is-disabled" : ""}`}>Import JSON<input className="visually-hidden" type="file" accept=".json,application/json" disabled={busy} onChange={async event => { const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; try { if (file.size > MAX_DIAGRAM_FILE_BYTES) throw new Error("The diagram file exceeds 4 MB."); await onImport(readDiagramFile(await file.text())); } catch (error) { setNotice({ kind: "error", text: error instanceof Error ? error.message : String(error) }); } }}/></label>
+      <button className="btn btn-ghost" onClick={() => { flow?.fitView({ padding: 0.15 }).catch(showError); }}>Fit all</button>
+      <button className="btn btn-secondary" onClick={() => { try { saveBlob(new Blob([diagramFile(graph)], { type: "application/json" }), `${graph.id}.doi-diagram.json`); } catch (error) { showError(error); } }}>Export JSON</button>
+      <label className={`btn btn-secondary${busy ? " is-disabled" : ""}`}>Import JSON<input className="visually-hidden" type="file" accept=".json,application/json" disabled={busy} onChange={async event => { const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; try { if (file.size > MAX_DIAGRAM_FILE_BYTES) throw new Error("The diagram file exceeds 4 MB."); await onImport(readDiagramFile(await file.text())); } catch (error) { showError(error); } }}/></label>
     </div>
     {notice && <p className={`uml-notice${notice.kind === "error" ? " field-error" : ""}`} role={notice.kind === "error" ? "alert" : "status"}>{notice.text}</p>}
     <div className="uml-flow" ref={canvas}><ReactFlow<FlowNode, FlowEdge> nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onInit={setFlow} onNodesChange={changes} onEdgesChange={changes} onConnect={connection => connect(connection)} onReconnect={(edge, connection) => connect(connection, edge.id)} onNodeDragStart={beginGesture} onNodeDragStop={endGesture} onSelectionDragStart={beginGesture} onSelectionDragStop={endGesture} onPaneClick={() => setSelected(new Set())} connectionMode={ConnectionMode.Loose} selectionOnDrag panOnDrag={[1, 2]} multiSelectionKeyCode={["Control", "Meta", "Shift"]} deleteKeyCode={null} snapToGrid={snap} snapGrid={[16, 16]} defaultViewport={{ x: 40, y: 60, zoom: 1 }} minZoom={0.2} maxZoom={3} colorMode="system">
@@ -111,7 +116,7 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
     <footer className="uml-status">{graph.nodes.length} boxes · {graph.edges.length} connectors · {selected.size} selected<span>Drag handles to connect · Shift-click to select several · Space-drag to pan · Ctrl/⌘S to save</span></footer>
     {inspector && createPortal(<fieldset className="uml-inspector" disabled={busy}>
       {tab === "uml" && (pickedNode ? <ArchitectureNodeInspector node={pickedNode} designs={designs} onChange={node => edit(g => ({ ...g, nodes: g.nodes.map(n => n.id === node.id ? node : n) }))} onReference={onReference}/> : pickedEdge ? <ArchitectureEdgeInspector edge={pickedEdge} onChange={edge => edit(g => ({ ...g, edges: g.edges.map(e => e.id === edge.id ? edge : e) }))}/> : <p className="uml-empty">Select a box or connector to edit its properties.</p>)}
-      {tab === "comments" && <div className="uml-properties"><h3>Diagram comments</h3>{graph.comments.map(c => <article className="uml-comment" key={c.id}><strong>{c.status === "done" ? "Done" : "Open"} · {c.item}</strong><p>{c.text}</p><button className="btn btn-ghost" onClick={() => edit(g => ({ ...g, comments: g.comments.map(item => item.id === c.id ? { ...item, status: item.status === "open" ? "done" : "open" } : item) }))}>{c.status === "open" ? "Mark done" : "Reopen"}</button></article>)}<label className="field">Comment on the selected item<textarea className="textarea" value={comment} onChange={e => setComment(e.target.value)}/></label><button className="btn btn-secondary" disabled={selected.size !== 1 || !comment.trim()} onClick={() => { const item = [...selected][0]; if (item) { edit(g => ({ ...g, comments: [...g.comments, { id: crypto.randomUUID(), item, text: comment.trim(), status: "open", createdAt: new Date().toISOString() }] })); setComment(""); } }}>Add diagram comment</button></div>}
+      {tab === "comments" && <div className="uml-properties"><h3>Diagram comments</h3>{graph.comments.map(c => <article className="uml-comment" key={c.id}><strong>{c.status === "done" ? "Done" : "Open"} · {c.item}</strong><p>{c.text}</p><button className="btn btn-ghost" onClick={() => edit(g => ({ ...g, comments: g.comments.map(item => item.id === c.id ? { ...item, status: item.status === "open" ? "done" : "open" } : item) }))}>{c.status === "open" ? "Mark done" : "Reopen"}</button></article>)}<label className="field">Comment on the selected item<textarea className="textarea" maxLength={5000} value={comment} onChange={e => setComment(e.target.value)}/></label><button className="btn btn-secondary" disabled={selected.size !== 1 || !comment.trim()} onClick={() => { const item = [...selected][0]; if (item) { edit(g => ({ ...g, comments: [...g.comments, { id: crypto.randomUUID(), item, text: comment.trim(), status: "open", createdAt: new Date().toISOString() }] })); setComment(""); } }}>Add diagram comment</button></div>}
       {tab === "history" && <div className="uml-properties"><h3>Session history</h3><p>Undo and redo cover this session. Persistent version history is not connected yet.</p>{doc.past.toReversed().map((snapshot, index) => <button key={index} className="btn btn-ghost" onClick={() => edit(() => snapshot)}>Restore session edit {doc.past.length - index} · {snapshot.nodes.length} boxes</button>)}</div>}
     </fieldset>, inspector)}
   </section>;

@@ -34,6 +34,29 @@ async function withEditor(run: (page: Page, workspace: string, base: string) => 
   } finally { await browser.close(); app.stop(); await rm(workspace, { recursive: true, force: true }); }
 }
 
+test.skipIf(!hasBrowser)("invalid fields and files show plain rules without a write", async () => {
+  await withEditor(async (page, workspace) => {
+    const name = page.getByRole("textbox", { name: "Box name", exact: true });
+    await name.fill("");
+    await page.getByRole("button", { name: "Save diagram", exact: true }).click();
+    expect(await page.getByRole("alert").innerText()).toBe("Box 1 name: Enter a value.");
+    expect(await name.getAttribute("required")).not.toBeNull();
+    expect(await name.getAttribute("maxlength")).toBe("200");
+    expect(await name.getAttribute("aria-invalid")).toBe("true");
+    expect(await page.getByRole("textbox", { name: "Box content", exact: true }).getAttribute("maxlength")).toBe("20000");
+    await page.getByRole("button", { name: "Export JSON", exact: true }).click();
+    expect(await page.getByRole("alert").innerText()).toBe("Box 1 name: Enter a value.");
+    await name.fill("Saved name");
+    const node = createNode("box", { x: 0, y: 0 });
+    const payload = JSON.stringify({ format: "doi-diagram", version: 1, diagram: { ...createDiagram(), nodes: [node, node] } });
+    await page.getByLabel("Import JSON", { exact: true }).setInputFiles({ name: "duplicate.json", mimeType: "application/json", buffer: Buffer.from(payload) });
+    await page.getByRole("alert").filter({ hasText: "Item ids must be unique." }).waitFor();
+    expect(await page.getByRole("alert").innerText()).toBe("Box 2 id: Item ids must be unique.");
+    expect((await readArchitecture(workspace, "sample")).state.diagrams[0]?.nodes[0]?.name).toBe("Saved name");
+    expect((await readArchitecture(workspace, "sample")).state.diagrams).toHaveLength(1);
+  });
+}, 15000);
+
 test.skipIf(!hasBrowser)("a cross-design UI link keeps its page while the target list loads", async () => {
   await withEditor(async page => {
     const gate = Promise.withResolvers<void>();

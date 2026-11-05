@@ -13,8 +13,8 @@ export function ArchitectureEdgeInspector({ edge, onChange }: { edge: DiagramEdg
     <label className="uml-check"><input type="checkbox" checked={edge.locked} onChange={e => patch({ locked: e.target.checked })}/>Locked</label>
     <fieldset disabled={edge.locked}>
       <Choice label="Relationship" value={preset} options={["custom", ...relationshipSchema.options]} onChange={value => { const result = relationshipSchema.safeParse(value); if (result.success) onChange(applyRelationship(edge, result.data)); }}/>
-      <TextField label="Connector label" value={edge.label} onChange={label => patch({ label })}/>
-      <div className="uml-field-row"><TextField label="Start label" value={edge.startLabel} onChange={startLabel => patch({ startLabel })}/><TextField label="End label" value={edge.endLabel} onChange={endLabel => patch({ endLabel })}/></div>
+      <TextField label="Connector label" maxLength={500} value={edge.label} onChange={label => patch({ label })}/>
+      <div className="uml-field-row"><TextField label="Start label" maxLength={500} value={edge.startLabel} onChange={startLabel => patch({ startLabel })}/><TextField label="End label" maxLength={500} value={edge.endLabel} onChange={endLabel => patch({ endLabel })}/></div>
       <Choice label="Line style" value={edge.line} options={lineStyleSchema.options} onChange={line => patch({ line })}/>
       <div className="uml-field-row"><Choice label="Start marker" value={edge.startMarker} options={markerSchema.options} onChange={startMarker => patch({ startMarker })}/><Choice label="End marker" value={edge.endMarker} options={markerSchema.options} onChange={endMarker => patch({ endMarker })}/></div>
       <Choice label="Route" value={edge.route} options={["straight", "elbow", "curved"]} onChange={route => patch({ route })}/>
