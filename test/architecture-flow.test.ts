@@ -12,6 +12,9 @@ test("flow adapters preserve parents, attachment offsets and domain independence
   const before = structuredClone(graph);
   const nodes = flowNodes(graph, new Set([child.id]));
   expect(nodes[0]?.id).toBe(group.id);
+  expect(nodes[0]?.measured).toEqual(group.size);
+  expect(nodes[0]?.measured).not.toBe(group.size);
+  expect(nodes[0]?.width).toBe(group.size.width);
   expect(nodes[1]?.parentId).toBe(group.id);
   const handle = flowEdges(graph, new Set())[0]?.sourceHandle ?? null;
   expect(attachment(graph, child.id, handle, "right")).toEqual({ side: "bottom", offset: 0.25 });

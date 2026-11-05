@@ -1,10 +1,14 @@
-import { Handle, NodeResizer, Position, type Node, type NodeProps } from "@xyflow/react";
+import { useLayoutEffect } from "react";
+import { Handle, NodeResizer, Position, useUpdateNodeInternals, type Node, type NodeProps } from "@xyflow/react";
 import type { DiagramNode, Side } from "../../architecture/nodes.ts";
 export interface ConnectionPort { id: string; side: Side; offset: number; bound: boolean }
 export type FlowNode = Node<{ item: DiagramNode; ports: ConnectionPort[]; onGesture?: (active: boolean) => void }, "uml">;
 const positions: Readonly<Record<Side, Position>> = { top: Position.Top, right: Position.Right, bottom: Position.Bottom, left: Position.Left };
 
 export function ArchitectureNode({ id, data: { item, ports, onGesture }, selected }: NodeProps<FlowNode>) {
+  const updateInternals = useUpdateNodeInternals();
+  const portKey = ports.map(port => `${port.id}:${port.side}:${port.offset}`).join("|");
+  useLayoutEffect(() => { updateInternals(id); }, [id, portKey, item.size.width, item.size.height, updateInternals]);
   return <>
     <NodeResizer nodeId={id} isVisible={!!selected && !item.locked} minWidth={32} minHeight={32} maxWidth={4096} maxHeight={4096} color="var(--accent)" onResizeStart={() => onGesture?.(true)} onResizeEnd={() => onGesture?.(false)} />
     <article className={`uml-node uml-node--${item.shape}`} aria-label={item.name} style={{

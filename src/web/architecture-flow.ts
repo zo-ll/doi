@@ -23,6 +23,7 @@ export function flowNodes(graph: Diagram, selected: ReadonlySet<string>): FlowNo
     id: item.id, type: "uml", position: item.position, parentId: item.parent ?? undefined,
     data: { item, ports: portsFor(graph, item.id) }, selected: selected.has(item.id),
     draggable: !item.locked, deletable: !item.locked, ariaLabel: item.name,
+    width: item.size.width, height: item.size.height, measured: { ...item.size },
     style: { width: item.size.width, height: item.size.height }, zIndex: item.shape === "group" ? 0 : 1,
   }));
 }

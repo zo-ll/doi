@@ -74,7 +74,7 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
     edit(g => { const original = g.edges.find(e => e.id === edgeId) ?? createEdge(connection.source, connection.target); const next = { ...original, source: connection.source, target: connection.target, sourceSide: source.side, sourceOffset: source.offset, targetSide: target.side, targetOffset: target.offset }; return { ...g, edges: edgeId ? g.edges.map(e => e.id === edgeId ? next : e) : [...g.edges, next] }; });
   }
   function changes(changes: (NodeChange | EdgeChange)[]) {
-    setSelected(current => { const next = new Set(current); for (const change of changes) if (change.type === "select") { if (change.selected) next.add(change.id); else next.delete(change.id); } return next; });
+    if (changes.some(change => change.type === "select")) setSelected(current => { const next = new Set(current); for (const change of changes) if (change.type === "select") { if (change.selected) next.add(change.id); else next.delete(change.id); } return next.size === current.size && [...next].every(id => current.has(id)) ? current : next; });
     if (changes.some(c => c.type === "position" || c.type === "dimensions" && c.setAttributes || c.type === "remove")) edit(g => applyGraphChanges(g, changes));
   }
   function duplicate() { const result = duplicateItems(graph, selected); edit(() => result.graph); setSelected(result.ids); }
@@ -95,7 +95,7 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
   }}>
     <header className="uml-canvas-header"><button className="btn btn-ghost" onClick={onBack} disabled={busy}>← Back to UI design</button><strong>{graph.name}</strong><span className="chip">UML</span><span className="uml-save-state" role="status">{busy ? "Save…" : dirty ? "Unsaved changes" : "Saved"}</span><button className="btn btn-primary" disabled={busy || !dirty} onClick={save}>Save diagram</button><button className="btn btn-ghost" disabled={busy} onClick={onReload}>Load latest</button></header>
     <div className="uml-toolbar" aria-label="Diagram tools">
-      <details><summary className="btn btn-secondary">+ Shape</summary><div className="uml-shape-menu">{shapeSchema.options.map(shape => <button className="btn" key={shape} disabled={busy || graph.nodes.length >= 2000} onClick={() => add(shape)}>Add {shape}</button>)}</div></details>
+      <details><summary className="btn btn-secondary">+ Shape</summary><div className="uml-shape-menu">{shapeSchema.options.map(shape => <button className="btn" key={shape} disabled={busy || graph.nodes.length >= 2000} onClick={event => { add(shape); event.currentTarget.closest("details")?.removeAttribute("open"); }}>Add {shape}</button>)}</div></details>
       <button className="btn btn-secondary" disabled={busy || selectedNodes.length !== 2 || graph.edges.length >= 4000} onClick={() => { const [a, b] = selectedNodes; if (a && b) connect({ source: a.id, target: b.id, sourceHandle: "right", targetHandle: "left" }); }}>Connect selected</button>
       <button className="btn btn-ghost" onClick={() => undo()} disabled={busy || !doc.past.length}>Undo</button><button className="btn btn-ghost" onClick={() => undo(true)} disabled={busy || !doc.future.length}>Redo</button>
       <button className="btn btn-ghost" onClick={duplicate} disabled={busy || !selectedNodes.length}>Duplicate</button><button className="btn btn-ghost" disabled={busy || !selected.size} onClick={() => { edit(g => removeItems(g, selected)); setSelected(new Set()); }}>Delete selected</button>
