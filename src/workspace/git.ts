@@ -194,6 +194,29 @@ export function designLog(workspace: string, project: string, design: string, li
 
 const relPath = (workspace: string, path: string) => relative(workspace, path).split(sep).join("/");
 
+/** The commits that changed one file, newest first. Empty without git or without a commit. */
+export function fileLog(workspace: string, path: string, limit = 100): Promise<Version[]> {
+  return serial(async () => {
+    let out: string;
+    try {
+      out = await git(workspace, ["log", `-${limit}`, "--format=%H%x1f%aI%x1f%s", "--", relPath(workspace, path)]);
+    } catch {
+      return [];
+    }
+    return out.split("\n").filter(Boolean).map((line) => {
+      const [sha, at, message] = line.split("\x1f") as [string, string, string];
+      return { sha, at, message };
+    });
+  });
+}
+
+/** One file as it was at a commit, or null when the commit or the file is missing. */
+export async function fileAt(workspace: string, path: string, sha: string): Promise<string | null> {
+  if (!isSha(sha)) throw new Error("Invalid commit id.");
+  const result = await $`git show ${`${sha}:${relPath(workspace, path)}`}`.cwd(workspace).quiet().nothrow();
+  return result.exitCode === 0 ? result.stdout.toString() : null;
+}
+
 /** The page files of a design at a commit (no hidden files), as paths in the design folder. */
 export async function designFilesAt(workspace: string, project: string, design: string, sha: string): Promise<string[]> {
   if (!isSha(sha)) throw new Error("Invalid commit id.");
