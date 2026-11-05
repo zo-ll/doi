@@ -59,6 +59,20 @@ export function useArchitecture(project: string | null) {
     return () => { controller.abort(); for (const request of controllers.current) request.abort(); controllers.current.clear(); };
   }, [project, token, attempt]);
   const data: Load<ArchitectureView> = load.token === token ? load.data : { state: "loading" };
+  /**
+   * Reads the file again without the loading state, so an open editor stays. After a change from
+   * an agent or another window. A write in progress gets its own answer; the refresh then waits.
+   */
+  const queued = useRef(false);
+  const refresh = useCallback(async () => {
+    if (!project || load.token !== token || load.data.state !== "ready") return;
+    if (controllers.current.size) { queued.current = true; return; }
+    try {
+      const next = await architectureRequest(project);
+      if (live.current !== token || controllers.current.size) return;
+      setLoad(current => current.token === token && current.data.state === "ready" && current.data.data.revision === next.revision ? current : { token, data: { state: "ready", data: next } });
+    } catch (error) { console.debug("UML refresh failed:", error); }
+  }, [project, load, token]);
   const write = useCallback(async (state: Architecture): Promise<ArchitectureView> => {
     if (!project || load.token !== token || load.data.state !== "ready") throw new Error("Load the project before you save UML.");
     if (controllers.current.size) throw new Error("A UML save is already active.");
@@ -73,9 +87,14 @@ export function useArchitecture(project: string | null) {
     } catch (error) {
       if (live.current === token) setSave({ token, state: "error", message: error instanceof Error ? error.message : String(error) });
       throw error;
-    } finally { controllers.current.delete(controller); }
+    } finally {
+      controllers.current.delete(controller);
+      if (queued.current && !controllers.current.size) { queued.current = false; setTimeout(() => void refreshRef.current(), 0); }
+    }
   }, [project, load, token]);
-  return { load: data, write, busy: save.token === token && save.state === "saving", error: save.token === token && save.state === "error" ? save.message : undefined, reload: () => setAttempt(n => n + 1) };
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  return { load: data, write, busy: save.token === token && save.state === "saving", error: save.token === token && save.state === "error" ? save.message : undefined, reload: () => setAttempt(n => n + 1), refresh };
 }
 
 export interface ImageRequest { format: "svg" | "png" | "pdf"; diagram: Diagram; theme: "dark" | "light"; background: boolean; ids?: string[]; scale: 1 | 2 }

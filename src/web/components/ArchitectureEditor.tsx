@@ -40,14 +40,30 @@ export function ArchitectureEditor({ project, diagram, busy, inspector, tab, des
   const clean = useRef(diagram), gesture = useRef<Diagram | null>(null), canvas = useRef<HTMLDivElement>(null), section = useRef<HTMLElement>(null);
   const clipboard = useRef<{ clip: Clipboard; pastes: number } | null>(null);
   const [pause, setPause] = useState<Pause>(null), [gesturing, setGesturing] = useState(false), [versions, setVersions] = useState(0);
+  /** The JSON of the graph that a save in progress sends: its echo is not an outside change. */
+  const submitting = useRef<string | null>(null);
   const warned = useRef(false), unrecorded = useRef(false), recorded = useRef(Date.now()), inflight = useRef<Promise<boolean> | null>(null);
   const graph = doc.graph;
   const dirty = JSON.stringify(graph) !== JSON.stringify(clean.current);
   useEffect(() => { onDirty(dirty); }, [dirty, onDirty]);
   useEffect(() => () => onDirty(false), [onDirty]);
+  /**
+   * A new `diagram` prop is this editor's own save, or a change from an agent or another window
+   * (the app refreshes on the file event). Without local edits, the change shows at once and Undo
+   * can reverse it. With local edits, autosave stops: it must not replace the other change.
+   */
   useEffect(() => {
-    if (JSON.stringify(doc.graph) === JSON.stringify(diagram)) { clean.current = diagram; return; }
-    if (JSON.stringify(doc.graph) === JSON.stringify(clean.current)) { clean.current = diagram; setDoc(current => ({ ...current, graph: diagram })); }
+    const incoming = JSON.stringify(diagram);
+    if (incoming === JSON.stringify(doc.graph)) { clean.current = diagram; return; }
+    if (incoming === JSON.stringify(clean.current) || incoming === submitting.current) return;
+    if (JSON.stringify(doc.graph) === JSON.stringify(clean.current)) {
+      clean.current = diagram;
+      setDoc(current => ({ graph: diagram, past: [...current.past, current.graph].slice(-80), future: [] }));
+      setNotice({ kind: "status", text: "Updated from another window or an agent. Undo reverses it." });
+      return;
+    }
+    setPause("conflict");
+    setNotice({ kind: "error", text: "The diagram changed elsewhere. Your edits are not saved. Export JSON to keep them, then select Load latest." });
   }, [diagram]);
   useEffect(() => {
     const close = (event: PointerEvent) => { for (const menu of document.querySelectorAll<HTMLDetailsElement>(".uml-toolbar details[open]")) if (!(event.target instanceof Node && menu.contains(event.target))) menu.open = false; };
@@ -114,6 +130,7 @@ export function ArchitectureEditor({ project, diagram, busy, inspector, tab, des
     try { snapshot = diagramSchema.parse(submitted); }
     catch (error) { setPause("invalid"); showError(error); return false; }
     if (JSON.stringify(snapshot) !== JSON.stringify(clean.current)) {
+      submitting.current = JSON.stringify(snapshot);
       try { await onSave(snapshot); }
       catch (error) { setPause(error instanceof ArchitectureRequestError && error.status === 409 ? "conflict" : "failed"); showError(error); return false; }
       clean.current = snapshot; unrecorded.current = true; setPause(null);

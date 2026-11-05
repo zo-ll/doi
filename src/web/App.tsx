@@ -106,6 +106,9 @@ export function App() {
   const [umlDirty, setUmlDirty] = useState(false);
   const [umlInspector, setUmlInspector] = useState<HTMLDivElement | null>(null);
   const architecture = useArchitecture(active?.project ?? null);
+  /** The event listener lives as long as the app: it reads the current refresh through a ref. */
+  const architectureRefresh = useRef(architecture.refresh);
+  architectureRefresh.current = architecture.refresh;
   const umlDiagram = architecture.load.state === "ready" && architecture.load.data.state.enabled ? architecture.load.data.state.diagrams.find(d => d.id === umlOpen) : undefined;
   const umlMissing = umlOpen === null ? null : !active ? "project" : architecture.load.state !== "ready" || umlDiagram ? null : architecture.load.data.state.enabled ? "diagram" : "hidden";
   useEffect(() => {
@@ -172,6 +175,10 @@ export function App() {
       setRevision((n) => n + 1);
       // The old rect may not match the new layout. A canvas edit keeps its element selected.
       if (Date.now() > keepSelectionUntil.current) setSelection(null);
+    });
+    events.addEventListener("architecture-changed", (e) => {
+      const change = JSON.parse((e as MessageEvent<string>).data) as { project: string };
+      if (activeRef.current?.project === change.project) void architectureRefresh.current();
     });
     return () => events.close();
   }, []);
