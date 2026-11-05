@@ -34,6 +34,23 @@ async function withEditor(run: (page: Page, workspace: string, base: string) => 
   } finally { await browser.close(); app.stop(); await rm(workspace, { recursive: true, force: true }); }
 }
 
+test.skipIf(!hasBrowser)("a cross-design UI link keeps its page while the target list loads", async () => {
+  await withEditor(async page => {
+    const gate = Promise.withResolvers<void>();
+    await page.route("**/api/projects/sample/designs/other/pages?*", async route => { await gate.promise; await route.continue(); });
+    const loaded = page.waitForResponse(response => new URL(response.url()).pathname === "/api/projects/sample/designs/other/pages", { timeout: 5000 }).then(() => true, () => false);
+    try {
+      await page.locator(".uml-ui-reference button").first().click();
+      await page.waitForURL(url => url.searchParams.get("design") === "other");
+      expect(new URL(page.url()).searchParams.get("page")).toBe("about.html");
+      gate.resolve(); expect(await loaded).toBe(true);
+      expect(await page.getByTitle("Pages in this design", { exact: true }).innerText()).toContain("about.html");
+      expect(await page.locator('iframe[sandbox="allow-scripts"]').first().getAttribute("src")).toContain("/other/about.html");
+      expect(new URL(page.url()).searchParams.get("node")).toBe("target");
+    } finally { gate.resolve(); await loaded; }
+  });
+}, 15000);
+
 test.skipIf(!hasBrowser)("the open diagram row preserves dirty ownership and the leave warning", async () => {
   await withEditor(async (page, workspace) => {
     const dialogs: string[] = [], errors: string[] = [];

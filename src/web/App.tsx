@@ -62,21 +62,22 @@ type Panels = { chat: boolean; side: boolean };
 const isPanels = (v: unknown): v is Panels => typeof (v as Panels)?.chat === "boolean" && typeof (v as Panels)?.side === "boolean";
 
 function useLoad<T>(url: string | null): [Load<T>, () => void] {
-  const [load, setLoad] = useState<Load<T>>({ state: "loading" });
+  const [snapshot, setSnapshot] = useState<{ url: string | null; value: Load<T> }>({ url: null, value: { state: "loading" } });
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!url) return;
     let live = true;
-    // A reload keeps the old data on screen until the new data arrives.
-    setLoad((l) => (l.state === "ready" ? l : { state: "loading" }));
+    // Keep data for a reload, but never return another request's result.
+    setSnapshot(current => current.url === url && current.value.state === "ready" ? current : { url, value: { state: "loading" } });
     getJSON<T>(url)
-      .then((data) => live && setLoad({ state: "ready", data }))
-      .catch((e: unknown) => live && setLoad({ state: "error", message: e instanceof Error ? e.message : String(e) }));
+      .then(data => { if (live) setSnapshot({ url, value: { state: "ready", data } }); })
+      .catch((error: unknown) => { if (live) setSnapshot({ url, value: { state: "error", message: error instanceof Error ? error.message : String(error) } }); });
     return () => {
       live = false;
     };
   }, [url, attempt]);
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  const load: Load<T> = snapshot.url === url ? snapshot.value : { state: "loading" };
   return [load, retry];
 }
 
