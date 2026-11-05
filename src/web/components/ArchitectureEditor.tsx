@@ -35,7 +35,7 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
   useEffect(() => () => onDirty(false), [onDirty]);
   useEffect(() => {
     if (JSON.stringify(doc.graph) === JSON.stringify(diagram)) { clean.current = diagram; return; }
-    if (JSON.stringify(doc.graph) === JSON.stringify(clean.current)) { clean.current = diagram; setDoc({ graph: diagram, past: [], future: [] }); }
+    if (JSON.stringify(doc.graph) === JSON.stringify(clean.current)) { clean.current = diagram; setDoc(current => ({ ...current, graph: diagram })); }
   }, [diagram]);
   useEffect(() => {
     if (!dirty) return;
