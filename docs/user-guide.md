@@ -298,7 +298,7 @@ A coding agent reads the diagrams through the doi MCP server (`get_architecture`
 - If you have edits that are not saved yet, doi keeps them and stops autosave with **Not saved: changed elsewhere**. Export JSON to keep your edits, then select **Load latest**.
 - doi records each agent change as a version in the History tab.
 
-The handoff includes the diagrams when the project uses UML: the agent prompt asks the agent to read them, and the handoff bundle has `architecture/architecture.json`, one SVG for each diagram, and the open diagram comments in `HANDOFF.md`.
+The handoff includes the diagrams when the project uses UML: the agent prompt asks the agent to read them, and the handoff bundle has `architecture/architecture.json`, one SVG for each diagram that has boxes, and the open diagram comments in `HANDOFF.md`. A handoff of a project without UML has no architecture part.
 
 **Important:** Run only one doi process for a workspace. The save lock for diagrams is inside one process. Two doi processes on the same workspace can both write a diagram, and the last write wins.
 
