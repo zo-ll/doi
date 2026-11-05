@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { itemId } from "../architecture/nodes.ts";
 import { diagramSchema } from "../architecture/schema.ts";
-import { diagramSvg } from "../architecture/svg.ts";
+import { diagramSvg, imageText } from "../architecture/svg.ts";
 import { diagramFontCss } from "../export/diagram-fonts.ts";
 import { ExportError } from "../export/html.ts";
 import { renderPdf, renderPngs } from "../export/render.ts";
@@ -40,7 +40,8 @@ export async function postArchitectureExport(workspace: string, project: string,
   try {
     await architecturePath(workspace, project);
     const body = exportSchema.parse(await readBody(req));
-    const image = diagramSvg(body.diagram, { theme: body.theme, background: body.background, ids: body.ids ? new Set(body.ids) : undefined, fontCss: await diagramFontCss(JSON.stringify(body.diagram)) });
+    const ids = body.ids ? new Set(body.ids) : undefined;
+    const image = diagramSvg(body.diagram, { theme: body.theme, background: body.background, ids, fontCss: await diagramFontCss(imageText(body.diagram, ids)) });
     if ("error" in image) throw new ArchitectureError(400, image.error);
     if (body.format === "svg") return new Response(image.svg, { headers: { "content-type": "image/svg+xml; charset=utf-8", "content-disposition": `attachment; filename="${imageName(body.diagram.name, "svg")}"` } });
     const scale = body.format === "png" ? body.scale : 1;
