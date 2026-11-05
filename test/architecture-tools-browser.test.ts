@@ -178,7 +178,9 @@ test.skipIf(!hasBrowser)("locked boxes stay put through the arrange tools and cu
     await box(page, "Alpha").click();
     await arrange(page, "Lock selection");
     expect(byName(await saved(), "Alpha").locked).toBe(true);
-    await arrange(page, "Bring to front");
+    await page.getByText("Arrange", { exact: true }).click();
+    expect(await page.getByRole("group", { name: "Arrange", exact: true }).getByRole("button", { name: "Bring to front", exact: true }).isDisabled()).toBe(true);
+    await page.keyboard.press("Escape");
     await page.keyboard.press("Shift+ArrowRight");
     await box(page, "Beta").click({ modifiers: ["Shift"] });
     await page.getByText("Arrange", { exact: true }).click();

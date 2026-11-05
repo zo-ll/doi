@@ -189,7 +189,7 @@ test("a guide does not match a centre with an edge", () => {
   expect(snapToGuides(g, b.id, { x: 150, y: 32 }, 6).position.y).toBe(30);
 });
 
-test("nudge stays linear on a full diagram with nested groups", () => {
+test("nudge and align stay linear on a full diagram with nested groups", () => {
   const boxes = Array.from({ length: 1990 }, (_, i) => box(`N${i}`, (i % 50) * 120, Math.floor(i / 50) * 80));
   let g = graphOf(boxes);
   for (let level = 0; level < 10; level++) {
@@ -201,8 +201,10 @@ test("nudge stays linear on a full diagram with nested groups", () => {
   const all = new Set(g.nodes.map(n => n.id));
   const started = performance.now();
   const moved = nudgeItems(g, all, 1, 0);
+  const aligned = alignItems(g, new Set(g.nodes.filter(n => n.parent === null).map(n => n.id)), "top");
   const elapsed = performance.now() - started;
+  expect(new Set(aligned.nodes.filter(n => n.parent === null).map(n => n.position.y)).size).toBe(1);
   expect(moved.nodes.filter((n, i) => n.position.x !== g.nodes[i]?.position.x).length).toBe(g.nodes.filter(n => n.parent === null).length);
-  // The quadratic walk took about 270 ms here; the linear walk takes a few ms.
+  // The quadratic walks took about 270 ms (nudge) and 400 ms (align) here; the linear walks take a few ms.
   expect(elapsed).toBeLessThan(100);
 });

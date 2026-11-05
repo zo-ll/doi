@@ -7,7 +7,7 @@ import { createEdge } from "../../architecture/edges.ts";
 import { diagramSchema, type Diagram } from "../../architecture/schema.ts";
 import { architectureErrorMessage } from "../../architecture/errors.ts";
 import { duplicateItems, removeItems } from "../../architecture/edit.ts";
-import { absolutePosition, alignItems, movableNodes, copyItems, distributeItems, groupItems, nudgeItems, pasteItems, readClipboard, reorderItems, snapToGuides, ungroupItems, type AlignMode, type Clipboard, type Guide, type OrderMode } from "../../architecture/layout.ts";
+import { absolutePosition, alignItems, copyItems, distributeItems, groupItems, movableNodes, nudgeItems, pasteItems, readClipboard, reorderItems, snapToGuides, ungroupItems, type AlignMode, type Clipboard, type Guide, type OrderMode } from "../../architecture/layout.ts";
 import { diagramFile, MAX_DIAGRAM_FILE_BYTES, readDiagramFile } from "../../architecture/interchange.ts";
 import { applyGraphChanges, attachment, flowEdges, flowNodes } from "../architecture-flow.ts";
 import { saveBlob } from "../export.ts";
@@ -101,7 +101,7 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
   function duplicate() { const result = duplicateItems(graph, selected); edit(() => result.graph); setSelected(result.ids); }
   function copy(cut: boolean): Clipboard | null {
     const clip = copyItems(graph, selected);
-    if (!clip) { setNotice({ kind: "error", text: "Select one or more boxes to copy." }); return null; }
+    if (!clip) { setNotice({ kind: "error", text: `Select one or more boxes to ${cut ? "cut" : "copy"}.` }); return null; }
     if (cut && clip.nodes.some(n => n.locked)) { setNotice({ kind: "error", text: "Unlock the selected boxes and the boxes in the selected groups before you cut them." }); return null; }
     clipboard.current = { clip, pastes: 0 };
     if (cut) { const ids = new Set([...clip.nodes.map(n => n.id), ...selected]); edit(g => removeItems(g, ids)); setSelected(new Set()); }
@@ -213,7 +213,7 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
         <button className="btn" disabled={busy || arrangeable < 3} onClick={() => arrange(g => distributeItems(g, selected, "horizontal"))}>Distribute horizontally</button>
         <button className="btn" disabled={busy || arrangeable < 3} onClick={() => arrange(g => distributeItems(g, selected, "vertical"))}>Distribute vertically</button>
         <span className="uml-menu-label">Order</span>
-        {([["front", "Bring to front"], ["forward", "Bring forward"], ["backward", "Send backward"], ["back", "Send to back"]] as const).map(([mode, label]) => <button className="btn" key={mode} disabled={busy || !selectedNodes.length} onClick={() => order(mode)}>{label}</button>)}
+        {([["front", "Bring to front"], ["forward", "Bring forward"], ["backward", "Send backward"], ["back", "Send to back"]] as const).map(([mode, label]) => <button className="btn" key={mode} disabled={busy || !selectedNodes.some(n => !n.locked)} onClick={() => order(mode)}>{label}</button>)}
         <span className="uml-menu-label">Group</span>
         <button className="btn" disabled={busy || !selectedNodes.length} onClick={group}>Group selection</button>
         <button className="btn" disabled={busy || !selectedGroups.length} onClick={ungroup}>Ungroup</button>

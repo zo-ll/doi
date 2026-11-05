@@ -15,8 +15,21 @@ export function absolutePosition(graph: Diagram, id: string): Point {
   while (node && depth++ <= MAX_WALK) { x += node.position.x; y += node.position.y; node = node.parent ? byId.get(node.parent) : undefined; }
   return { x, y };
 }
-function parentOrigin(graph: Diagram, node: DiagramNode): Point {
-  return node.parent ? absolutePosition(graph, node.parent) : { x: 0, y: 0 };
+/** Canvas positions of every node, with one parent map: O(nodes × nesting depth). */
+function absolutePositions(graph: Diagram): Map<string, Point> {
+  const byId = new Map(graph.nodes.map(n => [n.id, n]));
+  const out = new Map<string, Point>();
+  const resolve = (node: DiagramNode, depth: number): Point => {
+    const known = out.get(node.id);
+    if (known) return known;
+    const parent = node.parent ? byId.get(node.parent) : undefined;
+    const origin = parent && depth <= MAX_WALK ? resolve(parent, depth + 1) : { x: 0, y: 0 };
+    const point = { x: origin.x + node.position.x, y: origin.y + node.position.y };
+    out.set(node.id, point);
+    return point;
+  };
+  for (const node of graph.nodes) resolve(node, 0);
+  return out;
 }
 /**
  * Unlocked nodes in the selection, in graph order, without the nodes that move with a selected group.
@@ -32,12 +45,12 @@ export function movableNodes(graph: Diagram, ids: ReadonlySet<string>): DiagramN
   };
   return graph.nodes.filter(n => unlocked.has(n.id) && !inside(n));
 }
-const movable = movableNodes;
 function moveTo(graph: Diagram, targets: ReadonlyMap<string, Point>): Diagram {
+  const positions = absolutePositions(graph);
   return { ...graph, nodes: graph.nodes.map(node => {
     const target = targets.get(node.id);
     if (!target) return node;
-    const origin = parentOrigin(graph, node);
+    const origin = node.parent ? positions.get(node.parent) ?? { x: 0, y: 0 } : { x: 0, y: 0 };
     return { ...node, position: { x: clamp(Math.round(target.x - origin.x)), y: clamp(Math.round(target.y - origin.y)) } };
   }) };
 }
@@ -46,9 +59,10 @@ export const alignModes = ["left", "centre", "right", "top", "middle", "bottom"]
 export type AlignMode = typeof alignModes[number];
 /** Align the unlocked selected boxes on the canvas. Two or more boxes are necessary. */
 export function alignItems(graph: Diagram, ids: ReadonlySet<string>, mode: AlignMode): Diagram {
-  const nodes = movable(graph, ids);
+  const nodes = movableNodes(graph, ids);
   if (nodes.length < 2) return graph;
-  const boxes = nodes.map(n => ({ n, p: absolutePosition(graph, n.id) }));
+  const positions = absolutePositions(graph);
+  const boxes = nodes.map(n => ({ n, p: positions.get(n.id) ?? n.position }));
   const left = Math.min(...boxes.map(b => b.p.x)), right = Math.max(...boxes.map(b => b.p.x + b.n.size.width));
   const top = Math.min(...boxes.map(b => b.p.y)), bottom = Math.max(...boxes.map(b => b.p.y + b.n.size.height));
   const targets = new Map(boxes.map(({ n, p }) => {
@@ -62,10 +76,11 @@ export function alignItems(graph: Diagram, ids: ReadonlySet<string>, mode: Align
 
 /** Make the gaps between the unlocked selected boxes equal. Three or more boxes are necessary. */
 export function distributeItems(graph: Diagram, ids: ReadonlySet<string>, axis: "horizontal" | "vertical"): Diagram {
-  const nodes = movable(graph, ids);
+  const nodes = movableNodes(graph, ids);
   if (nodes.length < 3) return graph;
   const key = axis === "horizontal" ? "x" : "y", size = axis === "horizontal" ? "width" : "height";
-  const boxes = nodes.map(n => ({ n, p: absolutePosition(graph, n.id) })).toSorted((a, b) => a.p[key] - b.p[key]);
+  const positions = absolutePositions(graph);
+  const boxes = nodes.map(n => ({ n, p: positions.get(n.id) ?? n.position })).toSorted((a, b) => a.p[key] - b.p[key]);
   const first = boxes[0], last = boxes.at(-1);
   if (!first || !last) return graph;
   const span = last.p[key] + last.n.size[size] - first.p[key];
@@ -78,7 +93,7 @@ export function distributeItems(graph: Diagram, ids: ReadonlySet<string>, axis: 
 
 /** Move the unlocked selected boxes. A box inside a moved group moves with the group only. */
 export function nudgeItems(graph: Diagram, ids: ReadonlySet<string>, dx: number, dy: number): Diagram {
-  const moved = new Set(movable(graph, ids).map(n => n.id));
+  const moved = new Set(movableNodes(graph, ids).map(n => n.id));
   return { ...graph, nodes: graph.nodes.map(node => !moved.has(node.id) ? node : { ...node, position: { x: clamp(node.position.x + dx), y: clamp(node.position.y + dy) } }) };
 }
 
@@ -111,10 +126,11 @@ export function groupItems(graph: Diagram, ids: ReadonlySet<string>, padding = 3
   const parent = nodes[0]?.parent ?? null;
   if (nodes.some(n => n.parent !== parent)) return { error: "Select boxes inside the same group." };
   if (graph.nodes.length >= 2000) return { error: "The diagram has the maximum of 2000 boxes." };
-  const boxes = nodes.map(n => ({ n, p: absolutePosition(graph, n.id) }));
+  const positions = absolutePositions(graph);
+  const boxes = nodes.map(n => ({ n, p: positions.get(n.id) ?? n.position }));
   const left = Math.min(...boxes.map(b => b.p.x)) - padding, top = Math.min(...boxes.map(b => b.p.y)) - padding * 1.5;
   const right = Math.max(...boxes.map(b => b.p.x + b.n.size.width)) + padding, bottom = Math.max(...boxes.map(b => b.p.y + b.n.size.height)) + padding;
-  const origin = parent ? absolutePosition(graph, parent) : { x: 0, y: 0 };
+  const origin = parent ? positions.get(parent) ?? { x: 0, y: 0 } : { x: 0, y: 0 };
   const position = { x: Math.round(left - origin.x), y: Math.round(top - origin.y) };
   const size = { width: Math.round(right - left), height: Math.round(bottom - top) };
   if (size.width > MAX_SIZE || size.height > MAX_SIZE) return { error: `A group can be at most ${MAX_SIZE} px wide and high. Select boxes that are closer together.` };
@@ -122,7 +138,7 @@ export function groupItems(graph: Diagram, ids: ReadonlySet<string>, padding = 3
   const group = { ...createNode("group", { x: 0, y: 0 }, "Group"), parent, position, size };
   const first = graph.nodes.findIndex(n => ids.has(n.id));
   const members = new Set(nodes.map(n => n.id));
-  const updated = graph.nodes.map(n => members.has(n.id) ? { ...n, parent: group.id, position: { x: Math.round(absolutePosition(graph, n.id).x - left), y: Math.round(absolutePosition(graph, n.id).y - top) } } : n);
+  const updated = graph.nodes.map(n => members.has(n.id) ? { ...n, parent: group.id, position: { x: Math.round((positions.get(n.id)?.x ?? 0) - left), y: Math.round((positions.get(n.id)?.y ?? 0) - top) } } : n);
   const next = { ...graph, nodes: [...updated.slice(0, first), group, ...updated.slice(first)] };
   const checked = diagramSchema.safeParse(next);
   if (checked.success) return { graph: next, group: group.id };
@@ -196,9 +212,10 @@ export function copyItems(graph: Diagram, ids: ReadonlySet<string>): Clipboard |
     if (before === included.size) break;
   }
   if (!included.size) return null;
+  const positions = absolutePositions(graph);
   const nodes = graph.nodes.filter(n => included.has(n.id)).map(node => {
     if (node.parent && included.has(node.parent)) return structuredClone(node);
-    return { ...structuredClone(node), parent: null, position: absolutePosition(graph, node.id) };
+    return { ...structuredClone(node), parent: null, position: positions.get(node.id) ?? node.position };
   });
   const edges = graph.edges.filter(e => included.has(e.source) && included.has(e.target)).map(e => structuredClone(e));
   return { format: CLIPBOARD_FORMAT, version: 1, nodes, edges };
