@@ -11,7 +11,8 @@ export class ArchitectureError extends Error {
 const missing = (e: unknown) => e instanceof Error && "code" in e && e.code === "ENOENT";
 
 export async function architecturePath(workspace: string, project: string): Promise<string> {
-  assertName("project", project);
+  try { assertName("project", project); }
+  catch (cause) { throw new ArchitectureError(400, cause instanceof Error ? cause.message : "Invalid project.", { cause }); }
   const root = await realpath(workspace);
   const dir = join(root, "projects", project);
   try {
@@ -31,6 +32,7 @@ export async function readArchitecture(workspace: string, project: string): Prom
     if (!stat.isFile() || stat.isSymbolicLink()) throw new ArchitectureError(400, "The UML file must be a regular file.");
     if (stat.size > MAX_ARCHITECTURE_BYTES) throw new ArchitectureError(413, "The UML file exceeds 4 MB.");
     const text = await Bun.file(path).text();
+    if (Buffer.byteLength(text) > MAX_ARCHITECTURE_BYTES) throw new ArchitectureError(413, "The UML file exceeds 4 MB.");
     try {
       const raw: unknown = JSON.parse(text);
       return { revision: revisionOf(text), state: architectureSchema.parse(raw) };
