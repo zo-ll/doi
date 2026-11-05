@@ -243,11 +243,11 @@ The connector inspector has relationship presets, labels, markers, routes and at
 
 Select several items with Shift-click, Ctrl/⌘A or a drag on the empty canvas. The **Arrange** menu has these tools:
 
-- **Align**: left, centres, right, top, middles or bottom. Select two or more boxes. A box inside a selected group moves with its group.
+- **Align**: left, centres, right, top, middles or bottom. Select two or more boxes. A box inside a selected group moves with its group, so a group and its own boxes count as one.
 - **Distribute**: equal gaps, horizontally or vertically. Select three or more boxes.
 - **Order**: bring to front, bring forward, send backward or send to back. Groups always draw behind other boxes.
 - **Group**: put the selected boxes into a new group, or ungroup a group. The boxes keep their positions and connectors. A group can be at most 4096 px wide and high. Remove the connectors of a group before you ungroup it.
-- **Lock** and **Unlock**: a locked item does not move, resize, change order or get cut. Unlock it first.
+- **Lock** and **Unlock**: a locked item does not move, resize, change order or get cut. A cut of a group also stops when a box in the group is locked. Unlock it first.
 
 | Shortcut | Action |
 | --- | --- |
@@ -257,6 +257,7 @@ Select several items with Shift-click, Ctrl/⌘A or a drag on the empty canvas. 
 | Ctrl/⌘G, Ctrl/⌘Shift+G | Group, ungroup. |
 | Ctrl/⌘Z, Ctrl/⌘Shift+Z | Undo, redo. |
 | Delete | Delete the selection. |
+| Esc | Close an open menu, or clear the selection. |
 
 The shortcuts work when the focus is in the diagram or on the page, not in a text field or a dialog. When you select text with the mouse, Ctrl/⌘C copies that text, not the diagram items. Copy uses the system clipboard, so you can paste into another diagram or another doi window.
 
