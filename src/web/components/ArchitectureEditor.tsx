@@ -83,7 +83,7 @@ export function ArchitectureEditor({ diagram, busy, inspector, tab, designs, onS
     if (changes.some(c => c.type === "position" || c.type === "dimensions" && c.setAttributes || c.type === "remove")) edit(g => applyGraphChanges(g, changes));
   }
   function duplicate() { const result = duplicateItems(graph, selected); edit(() => result.graph); setSelected(result.ids); }
-  const nodes = useMemo(() => flowNodes(graph, selected).map(node => ({ ...node, draggable: !busy && node.draggable, data: { ...node.data, onGesture: (active: boolean) => active ? beginGesture() : endGesture() } })), [graph, selected, busy]);
+  const nodes = useMemo(() => flowNodes(graph, selected).map(node => ({ ...node, draggable: !busy && node.draggable, data: { ...node.data, busy, onGesture: (active: boolean) => active ? beginGesture() : endGesture() } })), [graph, selected, busy]);
   const edges = useMemo(() => flowEdges(graph, selected), [graph, selected]);
   const pickedNode = selected.size === 1 ? graph.nodes.find(n => selected.has(n.id)) : undefined;
   const pickedEdge = selected.size === 1 ? graph.edges.find(e => selected.has(e.id)) : undefined;
