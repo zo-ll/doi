@@ -8,9 +8,9 @@ The editor supports free-form diagrams, not mandatory UML categories or a compil
 
 The reference uses doi's dark theme. The implementation must use the existing theme tokens, not a separate theme preference. Existing HTML designs keep their own colours.
 
-**The first edit path now works. The complete feature contract remains open.** A wireframe control does not prove that its action works.
+**The feature contract (U01–U26) is implemented.** Each requirement has an automated check (see the status below). A wireframe control does not prove that its action works: the checks drive the real app.
 
-## First implementation status
+## Implementation status
 
 The app now has the optional right-panel entry, non-destructive hide/re-enable, diagram controls, shapes, class text, connections and property inspectors. The editor autosaves about one second after the last edit, with the same revision check. It also supplies session undo/redo, comments, UI references, editable JSON import/export and MCP `get_architecture`.
 
@@ -22,7 +22,9 @@ Autosave and persistent versions (U17–U19) are in: versions are git commits of
 
 Image export (U22) is in: SVG, PNG and PDF of the whole diagram or the selection, dark or light colours, with or without a background. `src/architecture/svg.ts` renders the SVG; PNG and PDF go through the sandboxed Chromium of the design exports.
 
-Not complete: graph handoff, MCP graph writes/render and automatic shared-instance refresh. The diagram save lock holds for one doi process only; two processes on one workspace are not serialized. Some shape and lifecycle controls still need broader browser coverage. Do not close #145 for this first implementation.
+Agent access, the shared instance and the handoff (U23–U25) are in. MCP `render_architecture` draws a diagram with the export renderer; `update_architecture` writes one diagram with the editor's schema and revision check, only when the user enabled UML, and records a version. The file watcher sends `architecture-changed` on `/api/events`: an open editor without local edits shows the change at once (Undo reverses it); with local edits, autosave stops with the conflict message. The agent prompt (v1) and the handoff bundle (template v1, `architecture/`) include the diagrams. A browser test drives every shape and the diagram lifecycle (new, rename, duplicate, delete with confirmation).
+
+Known limits: the diagram save lock holds for one doi process only; two processes on one workspace are not serialized. A browser reload or a closed tab records no version (the autosaved file stays). Text outside the embedded IBM Plex subsets uses a system font in exports, as in the app.
 
 ## Feature contract
 

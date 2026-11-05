@@ -290,7 +290,15 @@ Open **Export image** in the diagram toolbar.
 
 The export uses the diagram as you see it, also before autosave stores it. The doi server makes the file. SVG files contain the app's IBM Plex fonts for the text that the image draws: IBM Plex Sans for Latin, Latin extended, Cyrillic, Greek and Vietnamese, and IBM Plex Mono for the same scripts except Greek. This text looks the same in other tools. Other text, for example Chinese or Greek class attributes, uses a font of the computer, as in the app. PNG and PDF need Chromium for Playwright on the doi computer, the same as the design exports; without it, the export says how to install it. An image can be at most 16 000 px on a side and 64 million pixels: export a selection, use 1× or use SVG for a larger diagram.
 
-Graph handoff and MCP updates are not ready. `get_architecture` already reads the saved graphs through MCP.
+### Agents and UML
+
+A coding agent reads the diagrams through the doi MCP server (`get_architecture`, `render_architecture`). It can also change a diagram with `update_architecture`, with the same checks as the editor. The agent can do this only in a project where you added UML.
+
+- An open diagram shows the agent's change at once. **Undo** reverses it.
+- If you have edits that are not saved yet, doi keeps them and stops autosave with **Not saved: changed elsewhere**. Export JSON to keep your edits, then select **Load latest**.
+- doi records each agent change as a version in the History tab.
+
+The handoff includes the diagrams when the project uses UML: the agent prompt asks the agent to read them, and the handoff bundle has `architecture/architecture.json`, one SVG for each diagram, and the open diagram comments in `HANDOFF.md`.
 
 **Important:** Run only one doi process for a workspace. The save lock for diagrams is inside one process. Two doi processes on the same workspace can both write a diagram, and the last write wins.
 
@@ -379,6 +387,8 @@ The agent reads the design from doi while it works. Keep doi running until the a
 | `list_designs` | The projects and their designs |
 | `get_design` | The files of a design, its pages, frames, design system name and the last requests |
 | `get_architecture` | The optional UML state, saved diagrams, stable item ids, UI references and current revision of a project |
+| `render_architecture` | An image of one UML diagram |
+| `update_architecture` | Creates or replaces one UML diagram, with the editor's checks and the revision from `get_architecture`. Only in a project with UML |
 | `get_design_system` | The tokens, components and rules of the design system of a project |
 | `get_comments` | The open comments of a design (with `all`: the done comments too) |
 | `get_element` | One element by its `data-oid`, as the browser renders it in one frame: HTML, box, computed styles, matching CSS rules, ancestors and children |
@@ -392,7 +402,7 @@ The agent reads the design from doi while it works. Keep doi running until the a
 
 The prompt tells the agent to read the design through the tools, to use the framework and components of your repo, and to run the checks of your repo.
 
-For an agent that cannot reach doi, for example an agent in the cloud, use the "Handoff bundle (ZIP)" tab. The bundle contains a `HANDOFF.md` file, the design files, screenshots of each page and frame, and `tokens.css` when the design or its design system has tokens.
+For an agent that cannot reach doi, for example an agent in the cloud, use the "Handoff bundle (ZIP)" tab. The bundle contains a `HANDOFF.md` file, the design files, screenshots of each page and frame, `tokens.css` when the design or its design system has tokens, and the UML diagrams in `architecture/` when the project uses UML.
 
 ![Hand off: the MCP URL and the prompt for a coding agent](images/handoff.png)
 
