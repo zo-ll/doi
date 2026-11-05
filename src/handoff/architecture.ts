@@ -2,15 +2,21 @@ import { diagramSvg, imageText } from "../architecture/svg.ts";
 import type { Architecture } from "../architecture/schema.ts";
 import type { ZipEntry } from "../export/zip.ts";
 import { diagramFontCss } from "../export/diagram-fonts.ts";
-import { readArchitecture } from "../workspace/architecture.ts";
+import { ArchitectureError, readArchitecture } from "../workspace/architecture.ts";
 
 /**
  * The project's UML for a handoff (U25). Only when the user enabled UML and it has diagrams:
- * a handoff of a project without UML stays as it was.
+ * a handoff of a project without UML stays as it was. "invalid": the file cannot be read
+ * (corrupt, or a link); the handoff still works and says so.
  */
-export async function handoffArchitecture(workspace: string, project: string): Promise<Architecture | null> {
-  const { state } = await readArchitecture(workspace, project);
-  return state.enabled && state.diagrams.length ? state : null;
+export async function handoffArchitecture(workspace: string, project: string): Promise<Architecture | "invalid" | null> {
+  try {
+    const { state } = await readArchitecture(workspace, project);
+    return state.enabled && state.diagrams.length ? state : null;
+  } catch (error) {
+    if (error instanceof ArchitectureError && error.status !== 404) return "invalid";
+    throw error;
+  }
 }
 
 const flat = (text: string, max: number) => { const one = text.replace(/\s+/g, " ").trim(); return one.length > max ? `${one.slice(0, max - 1)}…` : one; };
@@ -30,15 +36,17 @@ export function diagramFiles(state: Architecture): { id: string; name: string; p
 }
 
 /** The agent prompt's step for the diagrams, or "" without UML. */
-export function promptStep(state: Architecture | null): string {
+export function promptStep(state: Architecture | "invalid" | null): string {
   if (!state) return "";
+  if (state === "invalid") return "   The project's UML file is invalid, so its diagrams are not part of this task. Do not call `update_architecture`.";
   const names = state.diagrams.map(d => `"${flat(d.name, 80).replace(/"/g, "'")}"`).join(", ");
-  return `   Then call \`get_architecture\` for the project and \`render_architecture\` for each UML diagram (${names}). They show the parts of the product and how they connect. A box can link to pages and elements of the UI designs (\`references\`). Each open diagram comment is a change that the user still wants.`;
+  return `   The project also has UML diagrams of its architecture: ${names}. Call the doi tools \`get_architecture\` for the project and \`render_architecture\` for each diagram. They show the parts of the product and how they connect. A box can link to pages and elements of the UI designs (\`references\`). Each open diagram comment is a change that the user still wants.`;
 }
 
-/** The HANDOFF.md section: the files and the open diagram comments. */
-export function handoffSection(state: Architecture | null): string {
-  if (!state) return "None. The project has no UML diagrams.";
+/** The HANDOFF.md section with its heading, or "" without UML. */
+export function handoffSection(state: Architecture | "invalid" | null): string {
+  if (!state) return "";
+  if (state === "invalid") return "## Architecture\n\nThe project's UML file is invalid. Fix it in doi; this bundle has no diagrams.\n\n";
   const files = diagramFiles(state);
   const lines = [
     "The project has UML diagrams of its architecture. Use them to place the code: they show the parts and how they connect. A box can link to pages of the UI designs (`references`).",
@@ -53,12 +61,12 @@ export function handoffSection(state: Architecture | null): string {
     return d.comments.filter(c => c.status === "open").map(c => `- In "${flat(d.name, 80)}", on ${code(flat(names.get(c.item) ?? c.item, 80))} (${code(c.item)}): ${flat(c.text, 2000)}`);
   });
   lines.push("", "Open diagram comments:", "", ...(open.length ? open : ["- None."]));
-  return lines.join("\n");
+  return `## Architecture\n\n${lines.join("\n")}\n\n`;
 }
 
 /** The bundle files: the JSON and one light SVG for each diagram, with the fonts that its text needs. */
-export async function architectureEntries(state: Architecture | null): Promise<ZipEntry[]> {
-  if (!state) return [];
+export async function architectureEntries(state: Architecture | "invalid" | null): Promise<ZipEntry[]> {
+  if (!state || state === "invalid") return [];
   const utf8 = new TextEncoder();
   const entries: ZipEntry[] = [{ path: "architecture/architecture.json", data: utf8.encode(JSON.stringify(state, null, 2) + "\n") }];
   const files = diagramFiles(state);

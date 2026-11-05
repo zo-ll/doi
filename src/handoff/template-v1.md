@@ -38,11 +38,7 @@ All paths are relative to this file.
 
 The `data-oid` attributes in `design/` are ids for doi. The comments below refer to them. Do not copy them into the code.
 
-## Architecture
-
-{{architecture}}
-
-## Open comments
+{{architecture}}## Open comments
 
 {{comments}}
 

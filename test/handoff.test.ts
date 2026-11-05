@@ -61,7 +61,7 @@ describe("HANDOFF.md draft", () => {
     expect(md).not.toContain("Done one");
     expect(md).not.toMatch(/\{\{(?!design\}\} red)\w+\}\}/);
     expect(HANDOFF_TEMPLATE.version).toBe("v1");
-    expect(md).toContain("## Architecture\n\nNone. The project has no UML diagrams.\n");
+
   });
 
   test("a line break in the project name or a frame label cannot start a Markdown block", async () => {
@@ -288,7 +288,25 @@ describe("UML in the handoff", () => {
     expect(without).toContain("pictures show the result that you must match.\n5. Read this repository");
     await withUml();
     const withUmlText = await agentPrompt(ws, "shop", "home", "http://x/mcp");
-    expect(withUmlText).toContain('   Then call `get_architecture` for the project and `render_architecture` for each UML diagram ("System `map`", "System `map`").');
-    expect(withUmlText).toContain("`get_architecture`, `render_architecture`)");
+    expect(withUmlText).toContain('4. Call `export_png` for each page in each frame. The pictures show the result that you must match.\n   The project also has UML diagrams of its architecture: "System `map`", "System `map`". Call the doi tools `get_architecture` for the project and `render_architecture` for each diagram.');
+
   });
+});
+
+test("a corrupt UML file does not stop the handoff", async () => {
+  await Bun.write(join(ws, "projects", "shop", "architecture.json"), '{"not json"');
+  const md = await draftHandoff(ws, "shop", "home");
+  expect(md).toContain("## Architecture\n\nThe project's UML file is invalid. Fix it in doi; this bundle has no diagrams.");
+  const { agentPrompt } = await import("../src/handoff/prompt.ts");
+  expect(await agentPrompt(ws, "shop", "home", "http://x/mcp")).toContain("The project's UML file is invalid");
+  const bundle = await buildBundle(ws, "shop", "home", "# Go", fakeRender);
+  expect(bundle.files.some(f => f.path.startsWith("architecture/"))).toBe(false);
+});
+
+test("a project without UML gets the v0 handoff text", async () => {
+  const md = await draftHandoff(ws, "shop", "home");
+  expect(md).not.toContain("## Architecture");
+  const { agentPrompt } = await import("../src/handoff/prompt.ts");
+  const prompt = await agentPrompt(ws, "shop", "home", "http://x/mcp");
+  expect(prompt).not.toContain("architecture");
 });

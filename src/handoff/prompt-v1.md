@@ -6,7 +6,7 @@ doi is a local design tool. It gives the design to you through its MCP server:
 - Transport: Streamable HTTP, no authentication.
 - Project id: `{{project}}`. Design id: `{{design}}`.
 
-Before you start, make sure that you have the doi tools (`list_designs`, `get_design`, `get_design_system`, `get_comments`, `get_element`, `export_png`, `get_architecture`, `render_architecture`). If you do not have them, stop. Ask the user to add an MCP server with the name "doi" and the URL above to your agent, and then to start the task again. Do not guess the design.
+Before you start, make sure that you have the doi tools (`list_designs`, `get_design`, `get_design_system`, `get_comments`, `get_element`, `export_png`). If you do not have them, stop. Ask the user to add an MCP server with the name "doi" and the URL above to your agent, and then to start the task again. Do not guess the design.
 
 Do these steps:
 
