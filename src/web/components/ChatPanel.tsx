@@ -76,6 +76,7 @@ export function ChatPanel({
   onCollapse,
   onOpenSettings,
   repo = null,
+  readOnlyReason,
 }: {
   /** The open design; null disables the composer. */
   target: Active | null;
@@ -100,8 +101,10 @@ export function ChatPanel({
   onOpenSettings: () => void;
   /** The project's linked repo: the samples start from the app's code. */
   repo?: string | null;
+  /** Another artifact owns the canvas; HTML generation must not start from this view. */
+  readOnlyReason?: string;
 }) {
-  const disabled = target === null;
+  const disabled = target === null || !!readOnlyReason;
   const [draft, setDraft] = useState("");
   const [images, setImages] = useState<PreparedImage[]>([]);
   const [imageError, setImageError] = useState<string | null>(null);
@@ -147,7 +150,7 @@ export function ChatPanel({
 
   /** Starts `n` variants of `text`. The answer streams into one message. */
   const sendVariants = async (s: Sent) => {
-    if (!target) return;
+    if (!target || readOnlyReason) return;
     push({ kind: "user", text: s.text, at: new Date().toISOString(), ...(s.target ? { target: s.target } : {}) });
     const id = nextId.current++;
     setMessages((list) => [...list, { id, kind: "variants", status: "running", items: [] }]);
@@ -247,7 +250,7 @@ export function ChatPanel({
 
   /** Runs one turn. The answer streams into a new message. */
   const sendTurn = async (s: Sent) => {
-    if (!target) return;
+    if (!target || readOnlyReason) return;
     push({
       kind: "user",
       text: s.text,
@@ -442,7 +445,7 @@ export function ChatPanel({
               </div>
             </div>
           ) : m.kind === "assistant" ? (
-            <AnswerView key={m.id} answer={m} running={running} onRetry={() => retry(m.id)} onOtherModel={() => setModelMenu(true)} />
+            <AnswerView key={m.id} answer={m} running={running || !!readOnlyReason} onRetry={() => retry(m.id)} onOtherModel={() => setModelMenu(true)} />
           ) : m.kind === "variants" ? (
             <VariantsLine key={m.id} message={m} />
           ) : m.kind === "error" ? (
@@ -459,6 +462,7 @@ export function ChatPanel({
       </div>
 
       <div className="composer-wrap">
+        {readOnlyReason && <p className="uml-hint" role="note">{readOnlyReason}</p>}
         {variantsOpen && (
           <div className="banner banner-warn" role="status">
             <span className="dot dot-warn" />
@@ -569,7 +573,7 @@ export function ChatPanel({
                 void addImages(files);
               }
             }}
-            placeholder={disabled ? "Open a design to start" : selection ? "Describe a change to this element…" : "Describe a design or a change…"}
+            placeholder={readOnlyReason ? "Use the UML tools to edit this diagram" : disabled ? "Open a design to start" : selection ? "Describe a change to this element…" : "Describe a design or a change…"}
             rows={3}
             disabled={disabled}
             aria-label="Message"
