@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-11-05. The optional UML wireframe is saved in the local `doi-uml/home` design. The user must review it before feature implementation. UML is optional for each project, with access from the right panel. Issue #145 remains open. Section 6 has the artifact and evidence.
+Last update: 2026-11-05. The user approved the initial UML layout and requested dark mode plus the complete editor controls. The local `doi-uml/home` reference now has six dark states. Thirty browser checks pass. `docs/uml-feature-map.md` defines 26 implementation requirements. No production editor code changed; issue #145 remains open. Section 6 has the artifact and evidence.
 
 PR #147 merged the TypeScript refactor and two browser fixes into `main` at `e95e541`. All 529 tests passed, with no skips or failures. The type check, Linux binary build and smoke test passed. The Usage gap for unpicked variants remains open.
 
@@ -130,6 +130,14 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 - CLI backends (`editsFiles: true`) change the files in `GenerateRequest.cwd` themselves. Their `edit`/`write` events only report the change. **The edit applier must skip them.**
 
 ## 6. State and next steps
+
+**2026-11-05: dark UML reference and feature contract.** The user approved the initial layout, then requested dark mode and the tools for a complete UML editor. The existing doi theme control now selects dark mode in the visible Chrome profile. A second normal chat request used `claude-code:claude-opus-5-5`. Workspace commit `d38856d` contains six dark reference pages: `index.html`, `canvas.html`, `linked-ui.html`, `connector.html`, `selection.html` and `output.html`. The last three illustrate connector properties, multiple selection, and export/history/conflict controls.
+
+Thirty browser checks pass, including seven relationship presets, endpoint labels, marker choices, six dark surfaces, unique element ids and the prototype links. At 1100 × 760, connector labels remain 12 px and the canvas scrolls internally. The normal Export dialog supplied a valid nine-file ZIP. MCP returned all six rendered pages and the source. Evidence: `/tmp/doi-uml-wireframe.15gqXJ/dark-results.json`, `dark-*.png`, `downloads-dark/` and `mcp-dark-final.json`.
+
+`docs/uml-feature-map.md` defines 26 requirements and small implementation units. It compares three canvas libraries and identifies React Flow as the initial candidate, not an installed dependency. The application still needs every graph operation, persistence, revision checks, exports, history and MCP graph access. The wireframe's controls do not perform these operations. Issue #145 now records the broader tool scope and dark reference.
+
+Two reference details need care before implementation. The prototype does not show the non-destructive hide/re-enable flow. Its FEATURES.md also describes copy ids too broadly: allocate new ids for copies inside one diagram, then update their bindings. The source feature contract requires both corrections. Keep the existing comment on `box-web-app` for the implementation pass. The visible browser and server remain available on the same screen and ports.
 
 **2026-11-05: optional UML wireframe.** The user requested an optional architecture area for each project, with access from the right panel. Nontechnical users can continue with UI designs without UML. The local artifact is `doi UML / home` (`doi-uml/home` in MCP). `index.html` shows the optional state; `canvas.html` shows six boxes and labelled arrows; `linked-ui.html` shows the return to the UI design. The three pages share `styles.css`.
 
