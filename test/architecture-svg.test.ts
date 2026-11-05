@@ -73,3 +73,49 @@ test("wrap breaks lines at the box width and splits long words", () => {
   expect(wrap("a\nb", 100, 10)).toEqual(["a", "b"]);
   expect(wrap("x".repeat(25), 57, 10)).toEqual(["x".repeat(10), "x".repeat(10), "x".repeat(5)]);
 });
+
+test("class compartments clip their own text", () => {
+  const box = createNode("class", { x: 0, y: 0 }, "Busy");
+  box.attributes = Array.from({ length: 12 }, (_, i) => `field${i}: string`).join("\n");
+  box.operations = "run()";
+  const svg = image(diagramSvg(diagramSchema.parse({ ...createDiagram(), nodes: [box] }), { theme: "dark", background: true })).svg;
+  const area = (id: string) => { const m = svg.match(new RegExp(`<clipPath id="${id}"><rect x="[^"]+" y="([^"]+)" width="[^"]+" height="([^"]+)"`)); if (!m) throw new Error(`No ${id}`); return { top: Number(m[1]), bottom: Number(m[1]) + Number(m[2]) }; };
+  const attributes = area("c0a"), operations = area("c0o");
+  expect(attributes.bottom).toBeLessThanOrEqual(operations.top);
+  expect(operations.bottom).toBe(170);
+  expect(svg).toContain('<g clip-path="url(#c0a)"><text');
+  expect(svg).toContain('<g clip-path="url(#c0o)"><text');
+});
+
+test("the view box holds every connector label, also long labels at the outer edges", () => {
+  const { graph } = sample();
+  const long = "This start label is sixty characters long or a little more";
+  const edges = graph.edges.map((e, i) => i === 0 ? { ...e, sourceSide: "left" as const, startLabel: long, points: [{ x: -200, y: 300 }], label: "L".repeat(40) } : e);
+  const svg = image(diagramSvg({ ...graph, edges }, { theme: "dark", background: true })).svg;
+  const [left, top, width, height] = (svg.match(/viewBox="([^"]+)"/)?.[1] ?? "").split(" ").map(Number);
+  const rects = [...svg.matchAll(/<rect x="([-\d.]+)" y="([-\d.]+)" width="([\d.]+)" height="18" rx="3"/g)].map(m => [Number(m[1]), Number(m[2]), Number(m[3])]);
+  expect(rects.length).toBe(3);
+  for (const [x = 0, y = 0, w = 0] of rects) {
+    expect(x).toBeGreaterThanOrEqual(left ?? 0);
+    expect(y).toBeGreaterThanOrEqual(top ?? 0);
+    expect(x + w).toBeLessThanOrEqual((left ?? 0) + (width ?? 0));
+    expect(y + 18).toBeLessThanOrEqual((top ?? 0) + (height ?? 0));
+  }
+});
+
+test("hollow markers stay hollow without a background", () => {
+  const { graph } = sample();
+  const marker = (svg: string) => svg.match(/<marker [^>]*><path d="M1 0L10 5L1 10Z" fill="([^"]+)"/)?.[1];
+  expect(marker(image(diagramSvg(graph, { theme: "dark", background: true })).svg)).toBe("#0e0e0d");
+  expect(marker(image(diagramSvg(graph, { theme: "dark", background: false })).svg)).toBe("none");
+});
+
+test("control characters are removed and UI links show as on the canvas", () => {
+  const box = createNode("box", { x: 0, y: 0 }, "Bad\u0002name\u001f");
+  box.references.push({ design: "home", page: "index.html", node: null }, { design: "home", page: "about.html", node: null });
+  const svg = image(diagramSvg(diagramSchema.parse({ ...createDiagram(), nodes: [box] }), { theme: "dark", background: true, fontCss: "@font-face{font-family:x}</style><script>" })).svg;
+  expect(svg).not.toMatch(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/);
+  expect(svg).toContain(">Badname<");
+  expect(svg).toContain("↗ 2 UI links");
+  expect(svg).not.toContain("<script");
+});

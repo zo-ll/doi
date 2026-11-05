@@ -15,6 +15,8 @@ export interface SvgOptions {
   background: boolean;
   /** Only these boxes (with the boxes inside them) and connectors. Absent: the whole diagram. */
   ids?: ReadonlySet<string>;
+  /** `@font-face` rules to embed (the server adds IBM Plex as data URLs). */
+  fontCss?: string;
 }
 export interface DiagramImage { svg: string; width: number; height: number }
 
@@ -27,7 +29,8 @@ const FONT = "'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe U
 const MONO = "'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace";
 const PAD = 32, MAX_WALK = 21;
 
-const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c);
+/** XML text: the five special characters as entities; C0 controls other than TAB, LF and CR are invalid XML 1.0 and go. */
+const escape = (text: string) => text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c);
 const num = (n: number) => Number.isInteger(n) ? String(n) : n.toFixed(2);
 type Rect = { x: number; y: number; width: number; height: number };
 
@@ -94,7 +97,8 @@ function textLines(lines: string[], x: number, y: number, size: number, options:
   return lines.map((line, i) => `<text x="${num(x)}" y="${num(y + i * lineHeight)}" font-size="${size}" font-family="${escape(options.mono ? MONO : FONT)}"${options.weight ? ` font-weight="${options.weight}"` : ""} fill="${escape(options.colour)}"${options.anchor === "middle" ? ' text-anchor="middle"' : ""} dominant-baseline="hanging" xml:space="preserve">${escape(line)}</text>`).join("");
 }
 
-function nodeSvg(node: DiagramNode, rect: Rect, palette: Palette, clip: string): string {
+/** One box. `defs` receives its clip paths: the box, and the two class compartments. */
+function nodeSvg(node: DiagramNode, rect: Rect, palette: Palette, clip: string, defs: string[]): string {
   const { x, y, width, height } = rect;
   const size = node.style.fontSize, lineHeight = Math.round(size * 1.35);
   const note = node.shape === "note";
@@ -110,8 +114,7 @@ function nodeSvg(node: DiagramNode, rect: Rect, palette: Palette, clip: string):
   } else if (node.shape === "diamond") {
     body += `<path d="M${num(x + width / 2)} ${num(y + 1)}L${num(x + width - 1)} ${num(y + height / 2)}L${num(x + width / 2)} ${num(y + height - 1)}L${num(x + 1)} ${num(y + height / 2)}Z" fill="${escape(fill)}" stroke="${escape(stroke)}"${dash}/>`;
   } else if (note) {
-    const fold = Math.min(16, width / 4, height / 4);
-    body += `<path d="M${num(x + 0.5)} ${num(y + 0.5)}H${num(x + width - fold)}L${num(x + width - 0.5)} ${num(y + fold)}V${num(y + height - 0.5)}H${num(x + 0.5)}Z" fill="${escape(fill)}" stroke="${escape(stroke)}"${dash}/><path d="M${num(x + width - fold)} ${num(y + 0.5)}V${num(y + fold)}H${num(x + width - 0.5)}" fill="none" stroke="${escape(stroke)}"/>`;
+    body += `<rect x="${num(x + 0.5)}" y="${num(y + 0.5)}" width="${num(width - 1)}" height="${num(height - 1)}" rx="3" fill="${escape(fill)}" stroke="${escape(stroke)}"${dash}/>`;
   } else if (node.shape === "group") {
     body += `<rect x="${num(x + 0.5)}" y="${num(y + 0.5)}" width="${num(width - 1)}" height="${num(height - 1)}" rx="4" fill="${escape(fill)}" fill-opacity="${node.style.fill ? 1 : 0.2}" stroke="${escape(stroke)}"${dash}/>`;
   }
@@ -126,22 +129,28 @@ function nodeSvg(node: DiagramNode, rect: Rect, palette: Palette, clip: string):
     const attributes = wrap(node.attributes, inner, size, true), operations = wrap(node.operations, inner, size, true);
     const split = Math.min(y + height - 16, cursor + attributes.length * lineHeight + 16);
     body += head.join("");
-    body += `<path d="M${num(x)} ${num(cursor)}H${num(x + width)}M${num(x)} ${num(split)}H${num(x + width)}" stroke="${escape(stroke)}"/>`;
-    body += textLines(attributes, x + 12, cursor + 8, size, { colour: text, mono: true });
-    body += textLines(operations, x + 12, split + 8, size, { colour: text, mono: true });
+    body += `<path d="M${num(x)} ${num(cursor)}H${num(x + width)}M${num(x)} ${num(split)}H${num(x + width)}" stroke="${palette.line}"/>`;
+    // Each compartment clips its own text, as the canvas scrolls each one.
+    defs.push(`<clipPath id="${clip}a"><rect x="${num(x)}" y="${num(cursor)}" width="${num(width)}" height="${num(Math.max(0, split - cursor))}"/></clipPath>`);
+    defs.push(`<clipPath id="${clip}o"><rect x="${num(x)}" y="${num(split)}" width="${num(width)}" height="${num(Math.max(0, y + height - split))}"/></clipPath>`);
+    body += `<g clip-path="url(#${clip}a)">${textLines(attributes, x + 12, cursor + 8, size, { colour: text, mono: true })}</g>`;
+    body += `<g clip-path="url(#${clip}o)">${textLines(operations, x + 12, split + 8, size, { colour: text, mono: true })}</g>`;
   } else if (node.shape === "actor") {
-    const cx = x + width / 2, scale = Math.min(width / 60, (height - lineHeight - 4) / 70, 1.5);
-    body += `<g transform="translate(${num(cx - 30 * scale)} ${num(y)}) scale(${num(scale)})" fill="none" stroke="${escape(stroke)}" stroke-width="${num(1.5 / scale)}"><circle cx="30" cy="10" r="8"/><path d="M30 18V45M12 29H48M30 45L14 66M30 45L46 66"/></g>`;
-    body += textLines(wrap(node.name, width, size).slice(0, 2), cx, y + 72 * scale + 4, size, { colour: text, weight: 600, anchor: "middle" });
+    // The canvas icon: 48 × 58 px in the text colour, above the name, both centred.
+    const cx = x + width / 2, name = wrap(node.name, width, size).slice(0, 2);
+    const top = y + Math.max(0, (height - 58 - 4 - name.length * lineHeight) / 2);
+    body += `<g transform="translate(${num(cx - 24)} ${num(top)}) scale(0.8 ${num(58 / 70)})" fill="none" stroke="${escape(text)}" stroke-width="1.5" vector-effect="non-scaling-stroke"><circle cx="30" cy="10" r="8"/><path d="M30 18V45M12 29H48M30 45L14 66M30 45L46 66"/></g>`;
+    body += textLines(name, cx, top + 62, size, { colour: text, weight: 600, anchor: "middle" });
   } else if (node.shape === "group") {
     body += textLines(wrap(node.name, inner, Math.max(10, size - 2)).slice(0, 1), x + 12, y + 8, Math.max(10, size - 2), { colour: palette.text2, weight: 600 });
   } else {
     const centred = node.shape === "ellipse" || node.shape === "diamond";
-    const box = centred ? width * 0.7 : node.shape === "text" ? width : inner;
+    const box = centred ? width - 32 : node.shape === "text" ? width : inner;
     const lines: [string[], { colour: string; weight?: number; small?: boolean }][] = [];
     if (node.stereotype) lines.push([[`«${node.stereotype}»`], { colour: palette.text2, small: true }]);
     lines.push([wrap(node.name, box, size), { colour: text, weight: 600 }]);
     if (node.content) lines.push([wrap(node.content, box, size), { colour: node.style.text ?? palette.text2 }]);
+    if (node.references.length) lines.push([[`↗ ${node.references.length} UI link${node.references.length === 1 ? "" : "s"}`], { colour: palette.text2, small: true }]);
     const total = lines.reduce((sum, [l]) => sum + l.length * lineHeight, 0) + (lines.length - 1) * 4;
     let cursor = note ? y + 10 : y + Math.max(8, (height - total) / 2);
     const tx = centred ? x + width / 2 : node.shape === "text" ? x : x + 12;
@@ -157,13 +166,16 @@ const GLYPHS: Readonly<Partial<Record<Marker, string>>> = {
   arrow: "M1 1L10 5L1 9Z", "open-arrow": "M1 1L10 5L1 9", triangle: "M1 0L10 5L1 10Z",
   diamond: "M0 5L5 1L10 5L5 9Z", "diamond-filled": "M0 5L5 1L10 5L5 9Z",
 };
-function markerSvg(id: string, marker: Marker, colour: string, background: string): string {
-  const fill = marker === "arrow" || marker === "diamond-filled" ? colour : marker === "open-arrow" ? "none" : background;
+/** `background`: the fill inside a hollow marker; null in a transparent export, so the marker stays hollow. */
+function markerSvg(id: string, marker: Marker, colour: string, background: string | null): string {
+  const fill = marker === "arrow" || marker === "diamond-filled" ? colour : marker === "open-arrow" ? "none" : background ?? "none";
   const shape = marker === "circle" ? `<circle cx="5" cy="5" r="4" fill="${escape(fill)}" stroke="${escape(colour)}"/>` : `<path d="${GLYPHS[marker] ?? ""}" fill="${escape(fill)}" stroke="${escape(colour)}" stroke-linejoin="round"/>`;
   return `<marker id="${id}" viewBox="0 0 12 10" markerWidth="14" markerHeight="12" refX="10" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse">${shape}</marker>`;
 }
+/** The chip around a connector label: about 7 px for each character of 12 px text. */
+const labelBox = (text: string, at: Point): Rect => { const width = text.length * 7 + 10; return { x: at.x - width / 2, y: at.y - 9, width, height: 18 }; };
 function labelSvg(text: string, at: Point, palette: Palette): string {
-  const width = Math.min(320, text.length * 7 + 10), height = 18;
+  const { width, height } = labelBox(text, at);
   return `<rect x="${num(at.x - width / 2)}" y="${num(at.y - height / 2)}" width="${num(width)}" height="${height}" rx="3" fill="${palette.panel}"/><text x="${num(at.x)}" y="${num(at.y)}" font-size="12" font-family="${escape(FONT)}" fill="${palette.text}" text-anchor="middle" dominant-baseline="central">${escape(text)}</text>`;
 }
 
@@ -176,13 +188,16 @@ export function diagramSvg(graph: Diagram, options: SvgOptions): DiagramImage | 
     const from = rects.get(edge.source), to = rects.get(edge.target);
     if (!from || !to) return [];
     const source = anchor(from, edge.sourceSide, edge.sourceOffset), target = anchor(to, edge.targetSide, edge.targetOffset);
-    return [{ edge, source, target, ...edgeRoute(edge, source, target) }];
+    const route = edgeRoute(edge, source, target);
+    const labels = [[edge.label, route.label], [edge.startLabel, { x: source.x + 12, y: source.y - 14 }], [edge.endLabel, { x: target.x - 12, y: target.y - 14 }]] as const;
+    return [{ edge, source, target, labels, ...route }];
   });
   // Bounds: boxes, bend points, label positions and the self-connector loop.
   const xs: number[] = [], ys: number[] = [];
   for (const node of nodes) { const r = rects.get(node.id); if (r) { xs.push(r.x, r.x + r.width); ys.push(r.y, r.y + r.height); } }
-  for (const { edge, source, target, label } of routes) {
-    for (const p of [source, target, label, ...edge.points]) { xs.push(p.x - 60, p.x + 60); ys.push(p.y - 24, p.y + 24); }
+  for (const { edge, source, target, label, labels } of routes) {
+    for (const p of [source, target, label, ...edge.points]) { xs.push(p.x - 16, p.x + 16); ys.push(p.y - 16, p.y + 16); }
+    for (const [text, at] of labels) if (text) { const box = labelBox(text, at); xs.push(box.x, box.x + box.width); ys.push(box.y, box.y + box.height); }
     if (edge.source === edge.target) ys.push(Math.min(source.y, target.y) - 90);
   }
   const left = Math.floor(Math.min(...xs) - PAD), top = Math.floor(Math.min(...ys) - PAD);
@@ -192,7 +207,7 @@ export function diagramSvg(graph: Diagram, options: SvgOptions): DiagramImage | 
   const markerId = (marker: Marker, colour: string) => {
     const key = `${marker}|${colour}`;
     let id = markers.get(key);
-    if (!id) { id = `m${markers.size}`; markers.set(key, id); defs.push(markerSvg(id, marker, colour, palette.canvas)); }
+    if (!id) { id = `m${markers.size}`; markers.set(key, id); defs.push(markerSvg(id, marker, colour, options.background ? palette.canvas : null)); }
     return id;
   };
   const order = new Map(graph.nodes.map((n, i) => [n.id, i]));
@@ -204,19 +219,20 @@ export function diagramSvg(graph: Diagram, options: SvgOptions): DiagramImage | 
     const r = rects.get(node.id);
     if (!r) return "";
     defs.push(`<clipPath id="c${i}"><rect x="${num(r.x - 1)}" y="${num(r.y - 1)}" width="${num(r.width + 2)}" height="${num(r.height + 2)}"/></clipPath>`);
-    return nodeSvg(node, r, palette, `c${i}`);
+    return nodeSvg(node, r, palette, `c${i}`, defs);
   });
   const groups = shapes.filter((_, i) => drawn[i]?.shape === "group"), boxes = shapes.filter((_, i) => drawn[i]?.shape !== "group");
-  const lines = routes.map(({ edge, path, source, target, label }) => {
+  const lines = routes.map(({ edge, path, labels }) => {
     const colour = edge.colour ?? palette.text2;
     const dash = edge.line === "dashed" ? ' stroke-dasharray="7 4"' : edge.line === "dotted" ? ' stroke-dasharray="2 4"' : "";
     const start = edge.startMarker === "none" ? "" : ` marker-start="url(#${markerId(edge.startMarker, colour)})"`;
     const end = edge.endMarker === "none" ? "" : ` marker-end="url(#${markerId(edge.endMarker, colour)})"`;
-    const texts = [[edge.label, label], [edge.startLabel, { x: source.x + 12, y: source.y - 14 }], [edge.endLabel, { x: target.x - 12, y: target.y - 14 }]] as const;
-    return `<g data-id="${escape(edge.id)}"><path d="${escape(path)}" fill="none" stroke="${escape(colour)}" stroke-width="${num(edge.width)}"${dash}${start}${end}/>${texts.map(([text, at]) => text ? labelSvg(text, at, palette) : "").join("")}</g>`;
+    return `<g data-id="${escape(edge.id)}"><path d="${escape(path)}" fill="none" stroke="${escape(colour)}" stroke-width="${num(edge.width)}"${dash}${start}${end}/>${labels.map(([text, at]) => text ? labelSvg(text, at, palette) : "").join("")}</g>`;
   });
   const background = options.background ? `<rect x="${left}" y="${top}" width="${width}" height="${height}" fill="${palette.canvas}"/>` : "";
   const title = `<title>${escape(graph.name)}</title>`;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${left} ${top} ${width} ${height}" role="img">${title}<defs>${defs.join("")}</defs>${background}${groups.join("")}${lines.join("")}${boxes.join("")}</svg>`;
+  // CSS needs no "<": removing it keeps the rules from closing the style element.
+  const fonts = options.fontCss ? `<style>${options.fontCss.replace(/</g, "")}</style>` : "";
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${left} ${top} ${width} ${height}" role="img">${title}<defs>${fonts}${defs.join("")}</defs>${background}${groups.join("")}${lines.join("")}${boxes.join("")}</svg>`;
   return { svg, width, height };
 }
