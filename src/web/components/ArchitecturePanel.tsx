@@ -46,7 +46,7 @@ export function ArchitecturePanel({ controller, current, dirty, tab, onOpen, onC
           change({ ...state, enabled: false }).then(saved => { if (saved) onClose(); }).catch(() => {});
         }}>Hide UML</button></div>
         <div className="uml-diagram-list">{state.diagrams.map(diagram => <div className="uml-diagram-row" key={diagram.id}>
-          <button className={`btn uml-diagram-choice${current === diagram.id ? " is-current" : ""}`} onClick={() => onOpen(diagram.id)}>{diagram.name}<small>{diagram.nodes.length} items</small></button>
+          <button className={`btn uml-diagram-choice${current === diagram.id ? " is-current" : ""}`} disabled={busy && current !== diagram.id} onClick={() => onOpen(diagram.id)}>{diagram.name}<small>{diagram.nodes.length} items</small></button>
           <details><summary aria-label={`Actions for ${diagram.name}`}>⋯</summary><div className="uml-actions">
             <button className="btn" disabled={blocked} onClick={() => rename(diagram)}>Rename</button>
             <button className="btn" disabled={blocked} onClick={() => { const copy = { ...structuredClone(diagram), id: crypto.randomUUID(), name: `${diagram.name} copy`.slice(0, 200) }; change({ ...state, diagrams: [...state.diagrams, copy] }, copy.id); }}>Duplicate</button>

@@ -107,10 +107,12 @@ export function App() {
   const [umlInspector, setUmlInspector] = useState<HTMLDivElement | null>(null);
   const architecture = useArchitecture(active?.project ?? null);
   const umlDiagram = architecture.load.state === "ready" && architecture.load.data.state.enabled ? architecture.load.data.state.diagrams.find(d => d.id === umlOpen) : undefined;
-  const umlMissing = umlOpen !== null && architecture.load.state === "ready" && !umlDiagram;
+  const umlMissing = umlOpen === null ? null : !active ? "project" : architecture.load.state !== "ready" || umlDiagram ? null : architecture.load.data.state.enabled ? "diagram" : "hidden";
   useEffect(() => {
     if (!umlMissing) return;
-    setUmlOpen(null); setUmlDirty(false); setToast("The open diagram is no longer in this project.");
+    setUmlOpen(null); setUmlDirty(false);
+    if (umlMissing === "hidden") setToast("UML is hidden in this project. Your diagrams are kept.");
+    if (umlMissing === "diagram") setToast("The open diagram is no longer in this project.");
   }, [umlMissing]);
   function leaveUml(): boolean {
     if (umlDirty && !window.confirm("Leave the diagram and discard unsaved edits?")) return false;
