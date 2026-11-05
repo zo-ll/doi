@@ -239,6 +239,30 @@ UML is optional for each project. The first editor supports real boxes, class co
 
 The connector inspector has relationship presets, labels, markers, routes and attachment controls. A box can link to a UI design, page or node. **Back to UI design** returns to the normal design canvas. Chat sends UI requests only; the composer is disabled while a UML diagram owns the canvas.
 
+### Arrange a diagram
+
+Select several items with Shift-click, Ctrl/⌘A or a drag on the empty canvas. The **Arrange** menu has these tools:
+
+- **Align**: left, centres, right, top, middles or bottom. Select two or more boxes. A box inside a selected group moves with its group, so a group and its own boxes count as one.
+- **Distribute**: equal gaps, horizontally or vertically. Select three or more boxes.
+- **Order**: bring to front, bring forward, send backward or send to back. Groups always draw behind other boxes.
+- **Group**: put the selected boxes into a new group, or ungroup a group. The boxes keep their positions and connectors. A group can be at most 4096 px wide and high. Remove the connectors of a group before you ungroup it.
+- **Lock** and **Unlock**: a locked item does not move, resize, change order or get cut. A cut of a group also stops when a box in the group is locked. Unlock it first.
+
+| Shortcut | Action |
+| --- | --- |
+| Arrow keys | Move the selected boxes 1 px. Hold Shift to move 16 px. |
+| Ctrl/⌘C, Ctrl/⌘X, Ctrl/⌘V | Copy, cut and paste boxes and the connectors between them. A paste gives the copies new ids. |
+| Ctrl/⌘D | Duplicate the selected boxes. With no box selected, Ctrl/⌘D opens the design systems, as elsewhere in doi. |
+| Ctrl/⌘G, Ctrl/⌘Shift+G | Group, ungroup. |
+| Ctrl/⌘Z, Ctrl/⌘Shift+Z | Undo, redo. |
+| Delete | Delete the selection. |
+| Esc | Close an open menu, or clear the selection. |
+
+The shortcuts work when the focus is in the diagram or on the page, not in a text field or a dialog. When you select text with the mouse, Ctrl/⌘C copies that text, not the diagram items. Copy uses the system clipboard, so you can paste into another diagram or another doi window.
+
+When **Snap** is on and you drag one box, a line shows where an edge or the centre meets the same line of another box in the same group, or where the two boxes touch. The box snaps to that line. **Snap** also snaps positions to the 16 px grid. **Fit all** shows the whole diagram; **Fit selection** zooms to the selected boxes.
+
 **Hide UML** keeps saved diagrams. **Show UML in this project** restores the area. Rename, duplicate and delete controls appear in each diagram's menu.
 
 **Export JSON** saves an editable diagram. **Import JSON** adds a diagram to the current project. If the project already has a diagram with the same name, the import adds " copy" to the name. If a save conflict occurs, export your edits before **Load latest**. You can then import that file as another diagram.

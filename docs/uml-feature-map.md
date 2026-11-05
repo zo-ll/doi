@@ -16,7 +16,9 @@ The app now has the optional right-panel entry, non-destructive hide/re-enable, 
 
 A real browser test checks opt-in without a file, box/class creation, a handle connection, inheritance, multiplicity, save/reload, undo after save, hide/re-enable, pointer resize/move, comments and a UI link. The test verifies the saved workspace state and confirms that no model request starts. Unit tests check every relationship preset, graph validation, atomic writes, stale saves, copy ids and JSON round trips.
 
-Not complete: autosave, persistent version history, operating-system clipboard, group/ungroup and layer tools, alignment/distribution, guides, fit selection, image exports, graph handoff, MCP graph writes/render and automatic shared-instance refresh. The diagram save lock holds for one doi process only; two processes on one workspace are not serialized. Some shape and lifecycle controls still need broader browser coverage. Do not close #145 for this first implementation.
+The arrange tools add system-clipboard copy, cut and paste with new ids, group and ungroup, bulk lock, draw order, align, distribute, drag guides, keyboard nudges and fit selection (U12–U15). Browser tests drive align, distribute, order, group, ungroup, lock, unlock, clipboard, guides, nudges, select all, delete, undo, redo and fit selection, and check the saved graph.
+
+Not complete: autosave, persistent version history, image exports, graph handoff, MCP graph writes/render and automatic shared-instance refresh. The diagram save lock holds for one doi process only; two processes on one workspace are not serialized. Some shape and lifecycle controls still need broader browser coverage. Do not close #145 for this first implementation.
 
 ## Feature contract
 
