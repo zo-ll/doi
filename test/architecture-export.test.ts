@@ -10,7 +10,8 @@ import { createDiagram, diagramSchema } from "../src/architecture/schema.ts";
 import { createNode } from "../src/architecture/nodes.ts";
 import { createEdge } from "../src/architecture/edges.ts";
 import { diagramSvg } from "../src/architecture/svg.ts";
-import { imageName } from "../src/server/architecture-export.ts";
+import { imageName, postArchitectureExport } from "../src/server/architecture-export.ts";
+import { ExportError } from "../src/export/html.ts";
 
 const hasBrowser = await chromium.launch().then(browser => browser.close().then(() => true), () => false);
 test.if(!!process.env.CI)("CI has Chromium for UML image export", () => expect(hasBrowser).toBe(true));
@@ -74,7 +75,14 @@ test("export rejects bad bodies, empty selections, huge images, other origins an
     const far = diagramSchema.parse({ ...diagram, nodes: [web, { ...api, position: { x: 20_000, y: 0 } }], edges: [] });
     const huge = await post(url, { format: "png", diagram: far, theme: "dark", background: true });
     expect(huge.status).toBe(413);
-    expect((await huge.json()).error).toContain("Export a selection, use 1× or use SVG.");
+    expect((await huge.json()).error).toContain("Export a selection or use SVG.");
+    // Each side fits, but the 2× area is 196 million pixels.
+    const square = diagramSchema.parse({ ...diagram, nodes: [web, { ...api, position: { x: 6900, y: 6900 } }], edges: [] });
+    const area = await post(url, { format: "png", diagram: square, theme: "dark", background: true, scale: 2 });
+    expect(area.status).toBe(413);
+    expect((await area.json()).error).toContain("Export a selection, use 1× or use SVG.");
+    const pdfHuge = await post(url, { format: "pdf", diagram: far, theme: "dark", background: true });
+    expect((await pdfHuge.json()).error).not.toContain("1×");
     expect((await post(url, { format: "png", diagram, theme: "dark", background: true }, { origin: "https://evil.example" })).status).toBe(403);
     expect((await post(url.replace("/sample/", "/missing/"), { format: "png", diagram, theme: "dark", background: true })).status).toBe(404);
   });
@@ -86,3 +94,42 @@ test("download names keep letters, digits, inner dots and dashes", () => {
   expect(imageName(".hidden.", "png")).toBe("hidden.png");
   expect(imageName("«»", "svg")).toBe("diagram.svg");
 });
+
+test("SVG export embeds the app fonts; render failures and a missing Chromium give plain messages", async () => {
+  await withApp(async url => {
+    const svg = await post(url, { format: "svg", diagram, theme: "dark", background: false });
+    expect(svg.headers.get("content-type")).toBe("image/svg+xml; charset=utf-8");
+    expect(svg.headers.get("content-disposition")).toBe('attachment; filename="System-overview.svg"');
+    const text = await svg.text();
+    expect(text.match(/@font-face/g)).toHaveLength(3);
+    expect(text).toContain("font-family:'IBM Plex Mono'");
+    expect(text).toContain("data:font/woff2;base64,");
+  });
+  const workspace = await mkdtemp(join(tmpdir(), "doi-uml-export-direct-"));
+  const app = await startServer(parseConfig({ workspace }), { port: 0, development: false });
+  try {
+    const request = () => new Request("http://127.0.0.1/x", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ format: "png", diagram, theme: "dark", background: true }) });
+    const broken = { renderPngs: async () => { throw new Error("Unable to capture screenshot"); }, renderPdf: async () => { throw new Error("no"); } };
+    const failed = await postArchitectureExport(workspace, "sample", request(), broken);
+    expect(failed.status).toBe(500);
+    expect(await failed.json()).toEqual({ error: "The browser could not make the image. Try again, or export SVG." });
+    const missing = { renderPngs: async () => { throw new ExportError("Chromium for Playwright is not installed.", 503); }, renderPdf: async () => { throw new Error("no"); } };
+    const absent = await postArchitectureExport(workspace, "sample", request(), missing);
+    expect(absent.status).toBe(503);
+    expect((await absent.json()).error).toContain("not installed");
+  } finally { app.stop(); await rm(workspace, { recursive: true, force: true }); }
+});
+
+test.skipIf(!hasBrowser)("a PDF page has the image size", async () => {
+  await withApp(async url => {
+    const svg = diagramSvg(diagram, { theme: "light", background: false });
+    if ("error" in svg) throw new Error(svg.error);
+    const pdf = new TextDecoder("latin1").decode(await (await post(url, { format: "pdf", diagram, theme: "light", background: false })).arrayBuffer());
+    const box = pdf.match(/\/MediaBox\s*\[\s*0 0 ([\d.]+) ([\d.]+)\s*\]/);
+    if (!box) throw new Error("No MediaBox");
+    // CSS px to PDF points: × 0.75. Chromium rounds the page to whole points.
+    expect(Math.abs(Number(box[1]) - svg.width * 0.75)).toBeLessThan(1.5);
+    expect(Math.abs(Number(box[2]) - svg.height * 0.75)).toBeLessThan(1.5);
+    expect((pdf.match(/\/Type\s*\/Page\b/g) ?? []).length).toBe(1);
+  });
+}, 60_000);

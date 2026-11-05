@@ -34,4 +34,8 @@ tools=$(curl -sf -X POST "$url/mcp" -H 'content-type: application/json' -H 'acce
 for t in list_designs get_design get_design_system get_comments export_png; do
   printf '%s' "$tools" | grep -q "\"$t\"" || fail "MCP tool $t"
 done
+# UML export: the fonts are file imports that only the compiled binary must carry.
+uml=$(curl -sf -X POST "$url/api/projects/sample/architecture/export" -H 'content-type: application/json' \
+  -d '{"format":"svg","theme":"dark","background":true,"diagram":{"id":"d1","name":"Smoke","nodes":[{"id":"n1","name":"Box","position":{"x":0,"y":0}}]}}') || fail "UML SVG export"
+[ "$(printf '%s' "$uml" | grep -o '@font-face' | wc -l)" -eq 3 ] || fail "UML export fonts"
 echo "smoke test passed: $bin"
