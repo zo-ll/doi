@@ -288,7 +288,7 @@ Open **Export image** in the diagram toolbar.
 5. For PNG, choose the **Size**: 1× or 2×.
 6. Select **Download**.
 
-The export uses the diagram as you see it, also before autosave stores it. SVG renders in the browser. PNG and PDF need Chromium for Playwright on the doi computer, the same as the design exports; without it, the export says how to install it. An image can be at most 16 000 px on its long side: export a selection, use 1× or use SVG for a larger diagram.
+The export uses the diagram as you see it, also before autosave stores it. The doi server makes the file. SVG files contain the app fonts (IBM Plex), so text looks the same in other tools. PNG and PDF need Chromium for Playwright on the doi computer, the same as the design exports; without it, the export says how to install it. An image can be at most 16 000 px on a side and 64 million pixels: export a selection, use 1× or use SVG for a larger diagram.
 
 Graph handoff and MCP updates are not ready. `get_architecture` already reads the saved graphs through MCP.
 
