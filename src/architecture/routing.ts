@@ -1,6 +1,6 @@
-import { getBezierPath, getSmoothStepPath, getStraightPath, Position } from "@xyflow/react";
-import type { DiagramEdge } from "../architecture/edges.ts";
-import type { Point, Side } from "../architecture/nodes.ts";
+import { getBezierPath, getSmoothStepPath, getStraightPath, Position } from "@xyflow/system";
+import type { DiagramEdge } from "./edges.ts";
+import type { Point, Side } from "./nodes.ts";
 const positions: Readonly<Record<Side, Position>> = { top: Position.Top, right: Position.Right, bottom: Position.Bottom, left: Position.Left };
 
 export function edgeRoute(edge: DiagramEdge, source: Point, target: Point): { path: string; label: Point } {

@@ -24,6 +24,7 @@ import { excludeClones } from "../github/gh.ts";
 import { handleMcp, MCP_PATH } from "../mcp/server.ts";
 import { getHistory, reopenVariants, restoreVersion } from "./history.ts";
 import { getLayout, putLayout } from "./layout.ts";
+import { postArchitectureExport } from "./architecture-export.ts";
 import { getArchitecture, getArchitectureVersion, getArchitectureVersions, postArchitectureCheckpoint, putArchitecture } from "./architecture.ts";
 import { createVariantHandlers } from "./variants.ts";
 import { DesignLocks } from "./locks.ts";
@@ -253,6 +254,7 @@ export async function startServer(config: Config, options: { port?: number; deve
       "/api/projects/:project/architecture/versions": { GET: (req) => getArchitectureVersions(config.workspace, req.params.project) },
       "/api/projects/:project/architecture/versions/:sha": { GET: (req) => getArchitectureVersion(config.workspace, req.params.project, req.params.sha) },
       "/api/projects/:project/architecture/checkpoint": { POST: (req) => postArchitectureCheckpoint(config.workspace, req.params.project, req) },
+      "/api/projects/:project/architecture/export": { POST: (req) => postArchitectureExport(config.workspace, req.params.project, req) },
       "/api/projects/:project/designs": { POST: (req) => postDesign(projectDeps, req, req.params) },
       "/api/projects/:project/designs/:design": { PATCH: (req) => patchDesign(projectDeps, req, req.params) },
       "/api/projects/:project/designs/:design/kind": { PUT: (req) => putDesignKind(projectDeps, req, req.params) },

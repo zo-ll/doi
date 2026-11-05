@@ -44,8 +44,7 @@ async function withTools(run: (page: Page, saved: () => Promise<Diagram>) => Pro
 }
 const box = (page: Page, name: string) => page.getByRole("group", { name, exact: true });
 async function arrange(page: Page, label: string) {
-  const menu = page.locator("details.uml-menu");
-  if (await menu.getAttribute("open") === null) await page.getByText("Arrange", { exact: true }).click();
+  if (!(await page.getByRole("group", { name: "Arrange", exact: true }).isVisible())) await page.getByText("Arrange", { exact: true }).click();
   await page.getByRole("group", { name: "Arrange", exact: true }).getByRole("button", { name: label, exact: true }).click();
 }
 const byName = (d: Diagram, name: string) => { const n = d.nodes.find(x => x.name === name); if (!n) throw new Error(`No ${name}`); return n; };

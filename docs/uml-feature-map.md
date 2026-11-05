@@ -20,7 +20,9 @@ The arrange tools add system-clipboard copy, cut and paste with new ids, group a
 
 Autosave and persistent versions (U17–U19) are in: versions are git commits of `architecture.json`, recorded on Save diagram, on leave and every 5 minutes of autosave. The History tab restores the open diagram from a version as an undoable edit.
 
-Not complete: image exports, graph handoff, MCP graph writes/render and automatic shared-instance refresh. The diagram save lock holds for one doi process only; two processes on one workspace are not serialized. Some shape and lifecycle controls still need broader browser coverage. Do not close #145 for this first implementation.
+Image export (U22) is in: SVG, PNG and PDF of the whole diagram or the selection, dark or light colours, with or without a background. `src/architecture/svg.ts` renders the SVG; PNG and PDF go through the sandboxed Chromium of the design exports.
+
+Not complete: graph handoff, MCP graph writes/render and automatic shared-instance refresh. The diagram save lock holds for one doi process only; two processes on one workspace are not serialized. Some shape and lifecycle controls still need broader browser coverage. Do not close #145 for this first implementation.
 
 ## Feature contract
 

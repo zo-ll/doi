@@ -4,7 +4,7 @@ import { ArchitectureError, MAX_ARCHITECTURE_BYTES, readArchitecture, writeArchi
 import { architectureAt, architectureVersions, checkpointArchitecture, checkpointSchema } from "../workspace/architecture-history.ts";
 
 /** Bound the stream before JSON parsing, including requests without Content-Length. */
-async function readBody(req: Request): Promise<unknown> {
+export async function readBody(req: Request): Promise<unknown> {
   if (!req.body) throw new ArchitectureError(400, "The body must be JSON.");
   const reader = req.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -33,7 +33,7 @@ async function readBody(req: Request): Promise<unknown> {
     throw new ArchitectureError(400, "The body must be valid JSON.", { cause });
   }
 }
-function failure(error: unknown): Response {
+export function failure(error: unknown): Response {
   if (error instanceof ArchitectureError) return Response.json({ error: error.message }, { status: error.status });
   if (error instanceof z.ZodError) return Response.json({ error: error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; ") }, { status: 400 });
   console.error("UML request failed:", error);
