@@ -7,7 +7,7 @@ test("the graph runtime loads under Bun and bundles the actual node component", 
   expect(path).toStartWith("M");
   expect(path).not.toContain("NaN");
   const result = await Bun.build({
-    entrypoints: [fileURLToPath(new URL("../src/web/components/ArchitectureNode.tsx", import.meta.url))],
+    entrypoints: [fileURLToPath(new URL("../src/web/components/ArchitectureNode.tsx", import.meta.url)), fileURLToPath(new URL("../src/web/components/ArchitectureEditor.tsx", import.meta.url))],
     target: "browser", minify: true,
   });
   expect(result.success).toBe(true);
