@@ -41,3 +41,4 @@ jobs:
       - run: scripts/smoke-binary.sh dist/doi-*-linux-x64
         env:
           DOI_SMOKE_RENDER: "1"
+      - run: scripts/e2e-install.sh dist/doi-*-linux-x64

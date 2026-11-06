@@ -67,7 +67,7 @@ async function stub(name: string, body: string) {
 }
 const machine = (arch: string) => stub("uname", `case "$1" in -s) echo Linux ;; -m) echo ${arch} ;; esac`);
 
-describe("a new install", () => {
+describe.skipIf(process.platform === "win32")("a new install", () => {
   test("verifies, installs in a folder with spaces, runs from an unrelated folder, and leaves no temp files", async () => {
     await machine("x86_64");
     release("1.2.3");
@@ -135,7 +135,7 @@ describe("a new install", () => {
   });
 });
 
-describe("a failed install or upgrade changes nothing", () => {
+describe.skipIf(process.platform === "win32")("a failed install or upgrade changes nothing", () => {
   const data = () => join(home, ".local/share/doi/workspace/kept.txt");
   async function withOld() {
     await machine("x86_64");
@@ -215,7 +215,98 @@ describe("a failed install or upgrade changes nothing", () => {
   });
 });
 
-test("uninstall removes the binary and the PATH line, and keeps the user's data and lines", async () => {
+describe.skipIf(process.platform === "win32")("shell files", () => {
+  const shell = (rc: string, code: string) => Bun.$`sh -c ${`. "${rc}"; ${code}`}`.env({ PATH: "/usr/bin:/bin", HOME: home }).quiet().nothrow();
+
+  test("a folder name cannot run a command or break a shell file", async () => {
+    await machine("x86_64");
+    release("1.2.3");
+    const proof = join(root, "proof");
+    for (const name of [`d$(touch "${proof}")x`, 'dq"x', "s'q", "a b"]) {
+      dir = join(root, name);
+      const result = await install(["--version", "1.2.3"]);
+      expect(result.code).toBe(0);
+      const rc = join(home, ".profile");
+      const run = await shell(rc, 'printf "%s" "$PATH"');
+      expect(run.exitCode).toBe(0);
+      expect(run.text().split(":")).toContain(dir);
+      expect(await Bun.file(proof).exists()).toBe(false);
+      expect((await install(["--uninstall"])).code).toBe(0);
+      expect(await Bun.file(rc).text()).not.toContain(dir);
+    }
+  });
+
+  test("a folder with a line break is refused", async () => {
+    dir = join(root, "a\nb");
+    const result = await install(["--version", "1.2.3"]);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("line break");
+  });
+
+  test("a shell file that cannot change does not fail the install or the uninstall", async () => {
+    await machine("x86_64");
+    release("1.2.3");
+    const rc = join(home, ".profile");
+    await Bun.write(rc, "# mine\n");
+    await Bun.$`chmod 444 ${rc}`;
+    const result = await install(["--version", "1.2.3"]);
+    expect(result.code).toBe(0);
+    expect(result.stderr).toContain("cannot write");
+    expect(result.stdout).toContain("Installed doi 1.2.3");
+    expect(await installed().exists()).toBe(true);
+
+    await Bun.$`chmod 644 ${rc}`;
+    await install(["--version", "1.2.3"]);
+    await Bun.$`chmod 444 ${rc}`;
+    const out = await install(["--uninstall"]);
+    expect(out.code).toBe(0);
+    expect(out.stderr).toContain("cannot write");
+    expect(await installed().exists()).toBe(false);
+    expect((await readdir(home)).filter((f) => f.includes("doi-tmp"))).toEqual([]);
+  });
+
+  test("an uninstall of one folder leaves the PATH line of another", async () => {
+    await machine("x86_64");
+    release("1.2.3");
+    const other = join(root, "other bin");
+    await install(["--version", "1.2.3"]);
+    await install(["--version", "1.2.3", "--dir", other]);
+    await install(["--uninstall"]);
+    const text = await Bun.file(join(home, ".profile")).text();
+    expect(text).toContain(other);
+    expect(text).not.toContain(dir);
+  });
+
+  test("login shell files get the line when they exist", async () => {
+    await machine("x86_64");
+    release("1.2.3");
+    await Bun.write(join(home, ".bash_profile"), "# mine\n");
+    await Bun.write(join(home, ".zprofile"), "# mine\n");
+    await install(["--version", "1.2.3"]);
+    for (const rc of [".bash_profile", ".zprofile"]) expect(await Bun.file(join(home, rc)).text()).toContain(dir);
+  });
+
+  test("with no HOME, --dir still works, and without it the message says what to do", async () => {
+    await machine("x86_64");
+    release("1.2.3");
+    const clean = { PATH: `${bin}:${process.env.PATH}`, DOI_INSTALL_BASE_URL: `http://127.0.0.1:${server.port}` };
+    const withDir = Bun.spawn(["sh", SCRIPT, "--dir", dir, "--version", "1.2.3"], { env: clean, stdout: "pipe", stderr: "pipe" });
+    expect(await withDir.exited).toBe(0);
+    expect(await installed().exists()).toBe(true);
+    const without = Bun.spawn(["sh", SCRIPT, "--version", "1.2.3"], { env: clean, stdout: "pipe", stderr: "pipe" });
+    expect(await without.exited).toBe(1);
+    expect(await new Response(without.stderr).text()).toContain("HOME is not set");
+  });
+
+  test("the uninstall message names the folder that doi uses, also with a relative XDG path", async () => {
+    const result = await install(["--uninstall"], { XDG_DATA_HOME: "relative", XDG_CONFIG_HOME: "/abs/cfg" });
+    expect(result.stdout).toContain(join(home, ".local/share/doi"));
+    expect(result.stdout).toContain("/abs/cfg/doi");
+    expect(result.stdout).not.toContain("relative");
+  });
+});
+
+test.skipIf(process.platform === "win32")("uninstall removes the binary and the PATH line, and keeps the user's data and lines", async () => {
   await machine("x86_64");
   release("1.2.3");
   await Bun.write(join(home, ".bashrc"), "# mine\n");

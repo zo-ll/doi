@@ -8,7 +8,8 @@ dir=$(mktemp -d)
 port=${PORT:-4499}
 url=http://127.0.0.1:$port
 pid=""
-trap 'kill "${pid:-}" 2>/dev/null || true; rm -rf "$dir"' EXIT
+# A failed check after doi start must not leave its detached server behind.
+trap 'kill "${pid:-}" 2>/dev/null || true; if [ -n "${home:-}" ]; then env -i HOME="$home" PATH=/usr/bin:/bin "$bin" stop --json > /dev/null 2>&1 || true; fi; rm -rf "$dir"' EXIT
 
 cd "$dir"
 env -i HOME="$dir" PATH=/usr/bin:/bin "$bin" --version

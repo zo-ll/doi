@@ -12,7 +12,8 @@ set -eu
 REPO="zo-ll/doi"
 BASE="${DOI_INSTALL_BASE_URL:-https://github.com/$REPO/releases/download}"
 VERSION="${DOI_VERSION:-}"
-DIR="${DOI_INSTALL_DIR:-$HOME/.local/bin}"
+DIR="${DOI_INSTALL_DIR:-}"
+HOME="${HOME:-}"
 MODIFY_PATH=1
 UNINSTALL=0
 MARK="# added by the doi installer"
@@ -28,24 +29,45 @@ while [ $# -gt 0 ]; do
     *) fail "unknown option $1. Options: --version <v>, --dir <folder>, --no-modify-path, --uninstall." ;;
   esac
 done
+if [ -z "$DIR" ]; then
+  [ -n "$HOME" ] || fail "HOME is not set. Use --dir <folder>."
+  DIR="$HOME/.local/bin"
+fi
 case "$DIR" in /*) ;; *) DIR="$PWD/$DIR" ;; esac
+case "$DIR" in *'
+'*) fail "the folder name has a line break." ;; esac
+# One line for each folder, so an uninstall of one folder leaves the line of another.
+LINE_MARK="$MARK: $DIR"
 
-rc_files() { printf '%s\n' "$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc"; }
+# The shell files that can set PATH. .profile is the one that a new line can always go to.
+rc_candidates() {
+  [ -n "$HOME" ] || return 0
+  for rc in "$HOME/.profile" "$HOME/.bash_profile" "$HOME/.bashrc" "$HOME/.zprofile" "$HOME/.zshrc"; do
+    if [ "$rc" = "$HOME/.profile" ] || [ -f "$rc" ]; then printf '%s\n' "$rc"; fi
+  done
+}
+
+# The folder that doi uses: a relative XDG path counts as missing, as in src/user-dirs.ts.
+xdg_or() {
+  case "$1" in /*) printf '%s' "$1" ;; *) printf '%s' "$2" ;; esac
+}
 
 if [ "$UNINSTALL" = 1 ]; then
-  rm -f "$DIR/doi"
-  rc_files | while IFS= read -r rc; do
+  rm -f "$DIR/doi" || fail "cannot remove $DIR/doi."
+  rc_candidates | while IFS= read -r rc; do
     [ -f "$rc" ] || continue
-    if grep -qF "$MARK" "$rc"; then
+    if grep -qF "$LINE_MARK" "$rc" 2>/dev/null; then
       # grep exits with 1 when no line stays, and that is a good result here.
-      grep -vF "$MARK" "$rc" > "$rc.doi-tmp" || true
-      cat "$rc.doi-tmp" > "$rc"
+      grep -vF "$LINE_MARK" "$rc" > "$rc.doi-tmp" || true
+      if ! cat "$rc.doi-tmp" 2>/dev/null > "$rc"; then
+        printf 'doi install: cannot write %s. Remove the line with "%s" yourself.\n' "$rc" "$MARK" >&2
+      fi
       rm -f "$rc.doi-tmp"
     fi
-  done
+  done || true
   printf 'doi is removed from %s.\n' "$DIR"
   printf 'Your designs, config and credentials stay. To delete them, remove %s and %s.\n' \
-    "${XDG_DATA_HOME:-$HOME/.local/share}/doi" "${XDG_CONFIG_HOME:-$HOME/.config}/doi"
+    "$(xdg_or "${XDG_DATA_HOME:-}" "$HOME/.local/share")/doi" "$(xdg_or "${XDG_CONFIG_HOME:-}" "$HOME/.config")/doi"
   exit 0
 fi
 
@@ -115,13 +137,17 @@ mv -f "$tmp/doi" "$DIR/doi"
 on_path=0
 case ":${PATH:-}:" in *":$DIR:"*) on_path=1 ;; esac
 if [ "$on_path" = 0 ]; then
-  if [ "$MODIFY_PATH" = 1 ]; then
-    line="export PATH=\"$DIR:\$PATH\" $MARK"
-    rc_files | while IFS= read -r rc; do
-      if [ "$rc" = "$HOME/.profile" ] || [ -f "$rc" ]; then
-        if ! grep -qF "$line" "$rc" 2>/dev/null; then printf '%s\n' "$line" >> "$rc"; fi
+  if [ "$MODIFY_PATH" = 1 ] && [ -n "$HOME" ]; then
+    # Single quotes: nothing in the folder name runs, or breaks the file, at the next shell start.
+    esc=$(printf '%s' "$DIR" | sed "s/'/'\\\\''/g")
+    line="export PATH='$esc':\"\$PATH\" $LINE_MARK"
+    # The binary is in place by now, so a shell file that cannot change must not fail the install.
+    rc_candidates | while IFS= read -r rc; do
+      if grep -qF "$LINE_MARK" "$rc" 2>/dev/null; then continue; fi
+      if ! { printf '%s\n' "$line" >> "$rc"; } 2>/dev/null; then
+        printf 'doi install: cannot write %s. Add %s to your PATH yourself.\n' "$rc" "$DIR" >&2
       fi
-    done
+    done || true
     printf 'Added %s to your PATH in your shell files. Open a new terminal to use it.\n' "$DIR"
   else
     printf 'Add %s to your PATH to use the doi command.\n' "$DIR"

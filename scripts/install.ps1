@@ -12,6 +12,8 @@ param(
   [switch]$NoModifyPath,
   [switch]$Uninstall
 )
+# A child scope: through `irm | iex` this runs in the user's own session, which must keep its settings.
+& {
 $ErrorActionPreference = "Stop"
 $Repo = "zo-ll/doi"
 $Base = if ($env:DOI_INSTALL_BASE_URL) { $env:DOI_INSTALL_BASE_URL } else { "https://github.com/$Repo/releases/download" }
@@ -39,11 +41,18 @@ function Set-UserPathEntries([string[]]$Entries) {
   [Environment]::SetEnvironmentVariable("DOI_INSTALL_REFRESH", $null, "User")
 }
 
-$InstallDir = [IO.Path]::GetFullPath($InstallDir)
+# Relative to the PowerShell location, not to the folder that the process started in.
+$InstallDir = [IO.Path]::GetFullPath([IO.Path]::Combine((Get-Location -PSProvider FileSystem).Path, $InstallDir))
 $target = Join-Path $InstallDir "doi.exe"
 
 if ($Uninstall) {
-  if (Test-Path $target) { Remove-Item -Force $target }
+  if (Test-Path $target) {
+    try {
+      Remove-Item -Force $target
+    } catch {
+      Stop-Install "cannot remove $target, because it runs. Run doi stop, then uninstall again."
+    }
+  }
   Remove-Item -Force "$target.old" -ErrorAction SilentlyContinue
   $entries = @(Get-UserPathEntries)
   $kept = @($entries | Where-Object { $_.TrimEnd("\") -ine $InstallDir.TrimEnd("\") })
@@ -54,7 +63,9 @@ if ($Uninstall) {
   return
 }
 
-$machine = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
+# The computer, not this process: an x64 PowerShell on ARM64 Windows reports AMD64 for itself.
+$machine = [Environment]::GetEnvironmentVariable("PROCESSOR_ARCHITECTURE", "Machine")
+if (-not $machine) { $machine = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE } }
 $arch = switch ($machine) {
   "AMD64" { "x64" }
   "ARM64" { "arm64" }
@@ -63,11 +74,18 @@ $arch = switch ($machine) {
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 if (-not $Version) {
+  # The redirect on github.com, as install.sh reads it: it has no API rate limit.
   try {
-    $Version = (Invoke-RestMethod -UseBasicParsing -Uri "https://api.github.com/repos/$Repo/releases/latest").tag_name
+    $request = [Net.WebRequest]::Create("https://github.com/$Repo/releases/latest")
+    $request.AllowAutoRedirect = $false
+    $response = $request.GetResponse()
+    $location = $response.Headers["Location"]
+    $response.Close()
+    $Version = ($location -split "/")[-1]
   } catch {
     Stop-Install "cannot find the latest release of $Repo. $($_.Exception.Message)"
   }
+  if (-not $Version) { Stop-Install "cannot find the latest release of $Repo." }
 }
 $Version = $Version -replace "^v", ""
 if ($Version -notmatch "^[0-9A-Za-z.-]+$") { Stop-Install "'$Version' is not a version." }
@@ -141,3 +159,4 @@ Write-Output "Installed doi $Version at $target."
 Write-Output "doi has no code signature, so SmartScreen can warn about it. See the user guide."
 Write-Output "Next: run doi doctor to check the tools, and doi install-browser for PNG, PDF and agent screenshots."
 Write-Output "Then start it with doi --open."
+}

@@ -32,7 +32,7 @@ function Install($case, [string[]]$Extra = @()) {
   $ErrorActionPreference = $saved
   return [pscustomobject]@{ Text = ($out -join "`n"); Code = $code }
 }
-$pathFlag = if ($ModifyPath) { @() } else { @("-NoModifyPath") }
+[string[]]$pathFlag = if ($ModifyPath) { @() } else { @("-NoModifyPath") }
 $exe = Join-Path $target "doi.exe"
 function Leftovers { @(Get-ChildItem -Force $target | Where-Object { $_.Name -ne "doi.exe" }) }
 
@@ -70,6 +70,36 @@ try {
   $cut = Install "short" $pathFlag
   if ($cut.Text -notmatch "does not match") { Fail "cut download: $($cut.Text)" }
 
+  # A transfer that breaks: the server promises more bytes, and it closes the connection.
+  $cutPort = 4496
+  $server = Start-Job -ArgumentList $cutPort, (Join-Path $dir "release good\v$version\SHA256SUMS") -ScriptBlock {
+    param($port, $sums)
+    $listener = New-Object Net.HttpListener
+    $listener.Prefixes.Add("http://127.0.0.1:$port/")
+    $listener.Start()
+    for ($i = 0; $i -lt 2; $i++) {
+      $context = $listener.GetContext()
+      if ($context.Request.Url.AbsolutePath -like "*SHA256SUMS") {
+        $bytes = [IO.File]::ReadAllBytes($sums)
+        $context.Response.OutputStream.Write($bytes, 0, $bytes.Length)
+        $context.Response.Close()
+      } else {
+        $context.Response.ContentLength64 = 1000000
+        $context.Response.OutputStream.Write([byte[]](1..10), 0, 10)
+        $context.Response.OutputStream.Flush()
+        $context.Response.Abort()
+      }
+    }
+    $listener.Stop()
+  }
+  Start-Sleep -Seconds 2
+  $env:DOI_INSTALL_BASE_URL = "http://127.0.0.1:$cutPort"
+  $saved = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+  $broken = (& powershell -NoProfile -ExecutionPolicy Bypass -File $script -Version $version -InstallDir $target @pathFlag 2>&1) -join "`n"
+  $ErrorActionPreference = $saved
+  Stop-Job $server -ErrorAction SilentlyContinue; Remove-Job $server -Force -ErrorAction SilentlyContinue
+  if ($broken -notmatch "failed. Nothing changed") { Fail "a broken transfer: $broken" }
+
   $gone = Install "no-such-release" $pathFlag
   if ($gone.Text -notmatch "cannot download") { Fail "missing release: $($gone.Text)" }
 
@@ -92,6 +122,13 @@ try {
   Stop-Process -Id $running.Id -Force -ErrorAction SilentlyContinue
   if (((& $exe --version) -join "") -ne "doi $version") { Fail "the binary after the upgrade" }
   if ((Get-Content $data) -ne "my design") { Fail "the upgrade changed the data" }
+
+  # The whole way: the smoke test on the installed command, up to the shared design. A computer
+  # without git cannot start doi, so only a run with -ModifyPath (CI) does this.
+  if ($ModifyPath) {
+    & (Join-Path $PSScriptRoot "smoke-binary.ps1") $exe 4495
+    Write-Output "install to shared design passed: $exe"
+  }
 
   # Uninstall keeps the data.
   $removed = Install "good" @("-Uninstall")
