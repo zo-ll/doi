@@ -313,7 +313,7 @@ The handoff includes the diagrams when the project uses UML: the agent prompt as
 Select an element and press N, or use the Comment tool (C). The Comments tab on the right lists the comments, and the canvas shows a pin on each element.
 
 - Apply puts a comment into your next message.
-- Done marks a comment as complete. When a turn includes an applied comment and changes its element, doi marks that comment as done.
+- Done marks a comment as complete. When a turn includes an applied comment and changes its element, doi marks that comment as done. If the model asks a question in that turn, your answer does not send the comment again, so the comment stays open. Select Done after the answer.
 
 ### History
 
