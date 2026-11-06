@@ -88,13 +88,13 @@ powershell -File install.ps1 -Uninstall
 
 ### Build the binary
 
-The binary contains the server, the UI and the Bun runtime. It runs without Bun on Linux (x64, arm64) and macOS (arm64, x64).
+The binary contains the server, the UI and the Bun runtime. It runs without Bun on Linux and Windows (x64, arm64). doi has no automated check for a macOS build; you can build one by name on a Mac.
 
 1. Build the binaries on a computer with Bun. The binaries go to `dist/`, for example `dist/doi-0.1.0-linux-x64`:
 
    ```bash
    bun install
-   bun run build                    # all four targets
+   bun run build                    # the release targets: Linux and Windows, x64 and arm64
    bun run build bun-darwin-arm64   # one target
    ```
 
@@ -120,7 +120,7 @@ The binary works from any folder. The first start makes `config.toml` and the wo
 
 On Windows, a credentials file from an older doi stays in use at its old path until a new file exists. From a source checkout, doi keeps using `./config.toml` and `./workspace`.
 
-The binary has no developer signature. If you download a macOS binary and Gatekeeper stops it, run `xattr -d com.apple.quarantine ./doi` one time.
+The binary has no developer signature. If you download a macOS binary and Gatekeeper stops it, run `xattr -d com.apple.quarantine ./doi` one time. On Windows, SmartScreen can warn about the unsigned file: select More info, then Run anyway, only if you trust this source.
 
 ### From the source
 
@@ -200,7 +200,7 @@ doi doctor --json    # git, the model CLIs, gh and the renderer; no model reques
 | 1 | `doi status`: doi does not run for this workspace |
 | 2 | Bad usage, or a bad config |
 | 3 | A required tool is missing |
-| 4 | The server did not get ready, or did not stop. `status` and `stop` also give it when the recorded server does not answer; the JSON code is then `unreachable` |
+| 4 | The server did not get ready, or did not stop. `start`, `status` and `stop` also give it when the recorded server does not answer; the JSON code is then `unreachable` |
 | 5 | Port conflict, or this workspace already runs |
 
 With `--json`, a failure of the command prints `{"ok":false,"code":"…","message":"…"}` on stdout. Bad usage prints words on stderr.
