@@ -186,6 +186,9 @@ test.skipIf(!hasBrowser)("a kept UML edit keeps the screen, the prompt and the o
     await page.waitForFunction(() => [...document.querySelectorAll("button")].some((b) => b.textContent === "Start" && !b.disabled));
     expect(await start(page).getByLabel("First prompt").inputValue()).toBe("A page after the diagram");
     expect(turns).toHaveLength(0);
+    // The project exists: its kind cannot change, and the screen says so.
+    expect(await start(page).getByRole("radio", { name: /^Mobile app/ }).isDisabled()).toBe(true);
+    await start(page).getByText("The project is made").waitFor();
     accept = true;
     await again.click();
     await page.getByText("I make the first screen.").waitFor();

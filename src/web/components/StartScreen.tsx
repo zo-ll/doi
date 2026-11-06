@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { sendJSON, type Active } from "../api.ts";
 import { modelChoices, useComposerImages } from "../composer.ts";
 import { shortModel, type TaskStatus } from "../providers.ts";
@@ -39,8 +39,8 @@ export function StartScreen({ tasks, onStarted, onClose, onOpenSample, onImport,
   const [repo, setRepo] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  /** The project of a failed repo link: another try must not make a second project. */
-  const created = useRef<Active | null>(null);
+  /** The project of a failed repo link or a refused discard: another try must not make a second one. */
+  const [created, setCreated] = useState<Active | null>(null);
 
   const current = chosen ?? tasks.find((t) => t.task === "generate") ?? null;
   const choices = modelChoices(tasks);
@@ -64,16 +64,18 @@ export function StartScreen({ tasks, onStarted, onClose, onOpenSample, onImport,
     if (!text || busy || imagesUnread) return;
     setError(null);
     try {
-      if (!created.current) {
+      let project = created;
+      if (!project) {
         setBusy("Making the project…");
         const r = await sendJSON<{ id: string; design: string }>("POST", "/api/projects", { name: projectNameFrom(text), kind, free: true });
-        created.current = { project: r.id, design: r.design };
+        project = { project: r.id, design: r.design };
+        setCreated(project);
       }
       if (repo && linkRepo) {
         setBusy(`Cloning ${repo}…`);
-        await sendJSON("PUT", `/api/projects/${created.current.project}/repo`, { name: repo });
+        await sendJSON("PUT", `/api/projects/${project.project}/repo`, { name: repo });
       }
-      if (!onStarted(created.current, { text, images, model: chosen })) setBusy(null);
+      if (!onStarted(project, { text, images, model: chosen })) setBusy(null);
     } catch (e) {
       setError((e as Error).message);
       setBusy(null);
@@ -103,12 +105,18 @@ export function StartScreen({ tasks, onStarted, onClose, onOpenSample, onImport,
 
         <div className="format-cards start-kinds" role="radiogroup" aria-label="Project kind">
           {START_KINDS.map((k) => (
-            <button key={k.id} type="button" role="radio" aria-checked={kind === k.id} className="format-card" disabled={!!busy} onClick={() => setKind(k.id)}>
+            <button key={k.id} type="button" role="radio" aria-checked={kind === k.id} className="format-card" disabled={!!busy || !!created} onClick={() => setKind(k.id)}>
               <span className="format-title">{k.title}</span>
               <span className="format-sub">{k.sub}</span>
             </button>
           ))}
         </div>
+
+        {created && (
+          <p className="muted" role="status">
+            The project is made, so its kind and name stay. Start goes on in this project. You can rename it in the drawer.
+          </p>
+        )}
 
         {modelProblem && (
           <div className="banner banner-warn" role="status">
@@ -228,7 +236,7 @@ export function StartScreen({ tasks, onStarted, onClose, onOpenSample, onImport,
           <div className="banner banner-err" role="alert">
             <span className="dot dot-err" />
             <span className="spacer">{error}</span>
-            {repo && created.current && (
+            {repo && created && (
               <button className="btn btn-secondary btn-sm" onClick={() => void start(false)}>
                 Start without the repo
               </button>
