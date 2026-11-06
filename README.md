@@ -25,7 +25,7 @@ bun run start                        # http://127.0.0.1:4317
 
 The first start makes `./workspace` with a sample design.
 
-To run doi without Bun, build one binary with `bun run build` (Linux and macOS, in `dist/`), then start it with `doi --open`. See [The binary](docs/user-guide.md#the-binary) and [Start options](docs/user-guide.md#start-options).
+To run doi without Bun, build one binary with `bun run build` (Linux and Windows, in `dist/`), then start it with `doi --open`. See [The binary](docs/user-guide.md#the-binary) and [Start options](docs/user-guide.md#start-options).
 
 By default, doi uses your subscription through the official CLIs: `claude-code:<model>` (`claude -p`) and `codex:<model>` (`codex exec`). Log in to the CLI first, or use the OAuth button in Settings. To use an API key, open Settings → Models and providers, select the provider, select API key, and paste the key. See [Providers and models](docs/user-guide.md#providers-and-models).
 

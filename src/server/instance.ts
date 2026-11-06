@@ -45,8 +45,8 @@ export async function writeRecord(record: InstanceRecord, file = recordFile(reco
 
 /**
  * Creates the file only when it does not exist. `link` also shows a reader a whole file. A folder
- * without hard links (a network share, FAT) falls back to an exclusive write; a reader that comes
- * during that write sees a broken file, which counts as no record, and it tries again.
+ * without hard links (a network share, FAT) falls back to an exclusive write. A reader that comes
+ * during that write sees a broken file for a moment, and `claimRecord()` reads it again.
  */
 async function exclusive(tmp: string, record: InstanceRecord, file: string): Promise<void> {
   try {
@@ -75,8 +75,10 @@ export async function claimRecord(record: InstanceRecord, file = recordFile(reco
       }
       const current = await readRecord(file);
       if (!current) {
-        // A file that cannot be read claims nothing. It must not block every later start.
-        await removeRecord(file);
+        // A file that stays unreadable claims nothing, and it must not block every later start.
+        // It gets a moment first: the exclusive write of another server shows a broken file for a moment.
+        await Bun.sleep(100);
+        if (!(await readRecord(file))) await removeRecord(file);
         continue;
       }
       if (current.pid === record.pid) {

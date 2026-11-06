@@ -1,0 +1,99 @@
+name: Release
+
+# A tag v<version> builds, checks and publishes one release. Nothing publishes until every check
+# passes on a real system of that platform. macOS is out on purpose: see issue #146.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: A release comes only from a commit on main
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "$GITHUB_REF_NAME names $GITHUB_SHA, which is not on main."; exit 1; }
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+      - run: bun install --frozen-lockfile
+      - name: The tag must match package.json
+        run: |
+          version=$(bun -p "require('./package.json').version")
+          [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "Tag $GITHUB_REF_NAME, but package.json has $version"; exit 1; }
+      # Chromium for the PNG and PDF export tests.
+      - run: bun run install-browser --with-deps
+      - run: bun check
+      - run: bun test
+        env:
+          CI: "1"
+      - run: bun run build
+      - name: Checksums
+        run: cd dist && sha256sum doi-* > SHA256SUMS && cat SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  check-linux:
+    needs: build
+    strategy:
+      matrix:
+        include:
+          - { runner: ubuntu-latest, arch: x64 }
+          - { runner: ubuntu-24.04-arm, arch: arm64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - run: |
+          chmod +x dist/doi-*-linux-${{ matrix.arch }}
+          scripts/smoke-binary.sh dist/doi-*-linux-${{ matrix.arch }}
+
+  check-windows:
+    needs: build
+    strategy:
+      matrix:
+        include:
+          - { runner: windows-latest, arch: x64 }
+          - { runner: windows-11-arm, arch: arm64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - shell: powershell
+        run: |
+          $bin = (Get-ChildItem "dist\doi-*-windows-${{ matrix.arch }}.exe").FullName
+          .\scripts\smoke-binary.ps1 $bin
+
+  publish:
+    needs: [check-linux, check-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Verify the checksums again
+        run: cd dist && sha256sum --check SHA256SUMS
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "doi $GITHUB_REF_NAME" --generate-notes --verify-tag

@@ -38,13 +38,13 @@ You can run doi as one binary, or from the source.
 
 ### The binary
 
-The binary contains the server, the UI and the Bun runtime. It runs without Bun on Linux (x64, arm64) and macOS (arm64, x64).
+The binary contains the server, the UI and the Bun runtime. It runs without Bun on Linux and Windows (x64, arm64). doi has no automated check for a macOS build; you can build one by name on a Mac.
 
 1. Build the binaries on a computer with Bun. The binaries go to `dist/`, for example `dist/doi-0.1.0-linux-x64`:
 
    ```bash
    bun install
-   bun run build                    # all four targets
+   bun run build                    # the release targets: Linux and Windows, x64 and arm64
    bun run build bun-darwin-arm64   # one target
    ```
 
@@ -70,7 +70,7 @@ The binary works from any folder. The first start makes `config.toml` and the wo
 
 On Windows, a credentials file from an older doi stays in use at its old path until a new file exists. From a source checkout, doi keeps using `./config.toml` and `./workspace`.
 
-The binary has no developer signature. If you download a macOS binary and Gatekeeper stops it, run `xattr -d com.apple.quarantine ./doi` one time.
+The binary has no developer signature. If you download a macOS binary and Gatekeeper stops it, run `xattr -d com.apple.quarantine ./doi` one time. On Windows, SmartScreen can warn about the unsigned file: select More info, then Run anyway, only if you trust this source.
 
 ### From the source
 
@@ -141,6 +141,7 @@ doi doctor --json    # git, the model CLIs, gh and the renderer; no model reques
 - doi never attaches to another workspace. A port in use gives exit code 5. Use `--port` with a free port, or `--port 0` for any free port.
 - `doi stop` stops only the server of this workspace, after that server confirms its identity. On Linux the server ends cleanly. On Windows the stop ends the process at once, so stop a running turn first.
 - doi knows a workspace by its path text. A symbolic link, or on Windows a junction or an 8.3 short name, counts as another workspace, so keep to one spelling. The per-user config holds one path.
+- `doi start --open` opens the URL in your browser, also when the server already runs.
 - Server logs go to the `log` file. Without `--json`, the commands print words for a person.
 
 | Exit code | Meaning |
@@ -149,7 +150,7 @@ doi doctor --json    # git, the model CLIs, gh and the renderer; no model reques
 | 1 | `doi status`: doi does not run for this workspace |
 | 2 | Bad usage, or a bad config |
 | 3 | A required tool is missing |
-| 4 | The server did not get ready, or did not stop |
+| 4 | The server did not get ready, or did not stop. `start`, `status` and `stop` also give it when the recorded server does not answer; the JSON code is then `unreachable` |
 | 5 | Port conflict, or this workspace already runs |
 
 With `--json`, a failure of the command prints `{"ok":false,"code":"…","message":"…"}` on stdout. Bad usage prints words on stderr.
