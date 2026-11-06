@@ -49,7 +49,7 @@ for (const target of targets) {
       autoloadBunfig: false,
     },
     minify: true,
-    define: { "process.env.NODE_ENV": JSON.stringify("production") },
+    define: { "process.env.NODE_ENV": JSON.stringify("production"), "process.env.DOI_BINARY": JSON.stringify("1") },
     // Playwright loads chromium-bidi only for the BiDi protocol; doi uses Chromium over CDP.
     external: ["chromium-bidi", "chromium-bidi/*"],
     plugins: [playwrightFiles],

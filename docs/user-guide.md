@@ -61,6 +61,15 @@ The binary contains the server, the UI and the Bun runtime. It runs without Bun 
    doi --open
    ```
 
+The binary works from any folder. The first start makes `config.toml` and the workspace in your per-user folders, once. Later starts use the same files, and an upgrade does not change them. `--config` and `--workspace` override these paths.
+
+| System | Config and credentials | Workspace |
+| --- | --- | --- |
+| Linux | `$XDG_CONFIG_HOME/doi`, else `~/.config/doi` | `$XDG_DATA_HOME/doi/workspace`, else `~/.local/share/doi/workspace` |
+| Windows | `%APPDATA%\\doi` | `%LOCALAPPDATA%\\doi\\workspace` |
+
+From a source checkout, doi keeps using `./config.toml` and `./workspace`.
+
 The binary has no developer signature. If you download a macOS binary and Gatekeeper stops it, run `xattr -d com.apple.quarantine ./doi` one time.
 
 ### From the source

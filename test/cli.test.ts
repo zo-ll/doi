@@ -9,7 +9,7 @@ import { openCommand, parseCli } from "../src/server/cli.ts";
 
 describe("parseCli", () => {
   test("no arguments: start with ./config.toml", () => {
-    expect(parseCli([])).toEqual({ command: "start", config: "config.toml", workspace: undefined, port: undefined, open: false });
+    expect(parseCli([])).toEqual({ command: "start", config: undefined, workspace: undefined, port: undefined, open: false });
   });
 
   test("start options", () => {

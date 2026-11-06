@@ -2,6 +2,7 @@ import { chmod, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { keyEnvFor, type Config, type ProviderId } from "../config.ts";
+import { userDirs } from "../user-dirs.ts";
 
 /**
  * API keys that the user adds in Settings. doi keeps them in the system keychain (Bun.secrets).
@@ -27,7 +28,7 @@ export interface KeyStore {
 const SERVICE = "doi";
 
 export function credentialsFile(env: Record<string, string | undefined> = process.env): string {
-  return join(env.XDG_CONFIG_HOME || join(homedir(), ".config"), "doi", "credentials.json");
+  return join(userDirs(env).config, "credentials.json");
 }
 
 export interface Keychain {

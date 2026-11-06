@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-11-06. The UML work (#145) and the effect cleanup (#148, PR #156) are merged and closed. The mobile app fixes (#144, PR #157) are merged. Issue #153 (full user flow) is merged and closed (PRs #158, #159, #160). The start screen (#141) is on `feature/start-screen`. The removal of xyflow is on hold (user, 2026-11-06): do not plan it until the user asks. Section 6 records the details.
+Last update: 2026-11-06. The UML work (#145) and the effect cleanup (#148, PR #156) are merged and closed. The mobile app fixes (#144, PR #157) are merged. Issue #153 (full user flow) is merged and closed (PRs #158, #159, #160). The start screen (#141, PR #161) is merged and closed. The installer (#146) is in progress in four PRs: persistent paths on `feature/installer`, then the launch contract, release automation and the installer scripts. The removal of xyflow is on hold (user, 2026-11-06): do not plan it until the user asks. Section 6 records the details.
 
 PR #147 merged the TypeScript refactor and two browser fixes into `main` at `e95e541`. All 529 tests passed, with no skips or failures. The type check, Linux binary build and smoke test passed. The Usage gap for unpicked variants remains open.
 
@@ -130,6 +130,8 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 - CLI backends (`editsFiles: true`) change the files in `GenerateRequest.cwd` themselves. Their `edit`/`write` events only report the change. **The edit applier must skip them.**
 
 ## 6. State and next steps
+
+**2026-11-06: persistent paths (#146, part 1, branch `feature/installer`).** Owner decisions are in the issue comment: the owner makes the repo public; releases and checks are for Linux and Windows only. `src/user-dirs.ts`: `userDirs()` and `ensureUserConfig()`. The build defines `process.env.DOI_BINARY`, so a binary without `--config` uses the per-user `config.toml`; a source checkout keeps `./config.toml`, so `bun run dev` does not move. The config names the workspace as an absolute path, written once with `wx`. `credentialsFile()` uses the same folder: the same path on Linux, and %APPDATA%\\doi on Windows. Next: the launch contract.
 
 **2026-11-06: start screen (#141, branch `feature/start-screen`).** `StartScreen.tsx` shows when the workspace has nothing but the sample and no last design, and from New project in the drawer. The inline "new project" field is gone. A node link and an existing project open as before. `POST /api/projects` takes `kind` and `free` (a taken name gets a number; a name with no usable letters gets the id `project`); `createProject()` checks the kind before it makes the folder. The name comes from the first words of the prompt (`projectNameFrom()`, an owner decision). The screen makes the project, links the repo when one is chosen, and hands the message to the new `ChatPanel` through `first`, which sends it once as a normal turn, so the ask card works here too. A failed clone, or a refused discard of unsaved UML edits, keeps the screen and the project: another try uses the same project, and the kind cards lock. A failed clone also offers a start without the repo. If the user closes the screen then, the empty project stays in the drawer. The first message waits for the stored chat, so it cannot show twice. Shared parts came out of `ChatPanel` and `RepoDialog`: `useComposerImages()` and `modelChoices()` (`src/web/composer.ts`), `ModelMenu.tsx`, `RepoPicker.tsx` with `useGithub()`.
 
