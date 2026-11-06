@@ -8,6 +8,7 @@ import { getHandoff, postBundle } from "../src/server/handoff.ts";
 import { appendChat } from "../src/workspace/chat.ts";
 import { addComment, updateComment } from "../src/workspace/comments.ts";
 import { designSystemDir } from "../src/workspace/design-systems.ts";
+import { defaultLayout, flowFrames } from "../src/workspace/frames.ts";
 import { writeLayout } from "../src/workspace/layout.ts";
 import { designDir } from "../src/workspace/paths.ts";
 
@@ -155,6 +156,18 @@ describe("HANDOFF.md draft", () => {
       "screenshots/a-b-2-desktop.png",
       "screenshots/a-b-2-2-desktop.png",
     ]);
+  });
+});
+
+describe("page frames", () => {
+  test("the draft and the bundle have one Desktop screenshot per page, not one per page frame", async () => {
+    await writeLayout(ws, "shop", "home", flowFrames(defaultLayout(), ["index.html", "about.html"]));
+    const md = await draftHandoff(ws, "shop", "home");
+    expect(md).toContain("screenshots/index-desktop.png");
+    expect(md).toContain("screenshots/about-desktop.png");
+    expect(md).not.toContain("page-about");
+    const bundle = await buildBundle(ws, "shop", "home", "# H\n", fakeRender);
+    expect(bundle.files.map((f) => f.path).filter((p) => p.startsWith("screenshots/")).sort()).toEqual(["screenshots/about-desktop.png", "screenshots/index-desktop.png"]);
   });
 });
 

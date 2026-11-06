@@ -86,6 +86,32 @@ test.skipIf(!hasBrowser)("a design with several pages shows one frame per page; 
     expect(sizes.some((s) => s.includes("Desktop"))).toBe(true);
     expect(sizes.some((s) => s.includes("Mobile"))).toBe(true);
     expect(sizes.some((s) => s.includes("dashboard") || s.includes("signup"))).toBe(false);
+    await dialog.getByRole("button", { name: "Close" }).click();
+
+    // The Hand off dialog counts the viewports too.
+    await page.getByRole("button", { name: "Hand off" }).click();
+    const handoff = page.getByRole("dialog", { name: "Hand off" });
+    await handoff.getByRole("tab").nth(1).click();
+    await handoff.getByText("Screenshots · 6").waitFor(); // 3 pages at 2 sizes
+  });
+}, 30_000);
+
+test.skipIf(!hasBrowser)("a change that keeps the page list keeps the view and asks for no new layout", async () => {
+  await drive(["02-signup.html"], async ({ page, workspace }) => {
+    await page.locator(".frame-name").nth(1).waitFor();
+    await page.locator(".zoom-value").click();
+    await page.locator(".zoom-value").filter({ hasText: "100%" }).waitFor();
+    let layouts = 0;
+    page.on("request", (r) => {
+      if (r.url().endsWith(`${HOME}/layout`)) layouts++;
+    });
+    const dir = join(workspace, "projects/sample/designs/home");
+    await Bun.write(join(dir, "index.html"), `${await Bun.file(join(dir, "index.html")).text()}\n<!-- changed -->\n`);
+    await page.locator('figure.frame iframe[src*="v=1"]').first().waitFor({ state: "attached" });
+    await Bun.sleep(300);
+    expect(layouts).toBe(0);
+    expect(await page.locator(".zoom-value").textContent()).toContain("100%");
+    expect(await labels(page)).toEqual(["index", "02-signup"]);
   });
 }, 30_000);
 
@@ -102,7 +128,7 @@ test.skipIf(!hasBrowser)("a click in a page frame opens that page", async () => 
   });
 }, 30_000);
 
-test.skipIf(!hasBrowser)("a deck stays one frame, also with a second page", async () => {
+test.skipIf(!hasBrowser)("a deck gets no page frames, also with a second page", async () => {
   await drive(["notes.html"], async ({ page, workspace, origin }) => {
     await Bun.write(join(workspace, "projects/sample/designs/home/index.html"), '<!doctype html><section data-slide data-oid="s1">Slide</section>');
     await page.goto(`${origin}/?project=sample&design=home`, { waitUntil: "domcontentloaded" });

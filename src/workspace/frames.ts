@@ -10,7 +10,7 @@ export interface Frame {
   y: number;
 }
 
-export const FRAME_LIMITS = { min: 200, maxWidth: 3840, maxHeight: 4000, count: 12, label: 40, coord: 100_000 } as const;
+export const FRAME_LIMITS = { min: 200, maxWidth: 3840, maxHeight: 4000, count: 12, label: 40, coord: 100_000, page: 1024 } as const;
 
 /** Viewport presets. The first two are the default layout of a new design. */
 export const PRESETS = [
@@ -85,7 +85,8 @@ export function flowFrames(stored: readonly ScreenFrame[], pages: readonly strin
   const own = stored.filter((f) => !f.page);
   if (pages.length <= 1) return own.length ? [...own] : defaultLayout();
   const added = stored.some((f) => f.page) ? own : own.filter((f) => f.id !== "desktop" && f.id !== "mobile");
-  const shown = pages.slice(0, FRAME_LIMITS.count);
+  // A page path over the limit cannot be stored, and would block every save of the layout.
+  const shown = pages.filter((p) => p.length <= FRAME_LIMITS.page).slice(0, FRAME_LIMITS.count);
   const extras = added.slice(0, FRAME_LIMITS.count - shown.length);
   const saved = new Map(stored.filter((f) => f.page).map((f) => [f.page!, f]));
   const placed = shown.flatMap((p) => saved.get(p) ?? []);
@@ -137,7 +138,7 @@ export function parseLayout(raw: unknown): ScreenFrame[] | string {
     if (!isInt(x, -FRAME_LIMITS.coord, FRAME_LIMITS.coord) || !isInt(y, -FRAME_LIMITS.coord, FRAME_LIMITS.coord)) {
       return "A frame position must be whole numbers on the canvas.";
     }
-    if (page !== undefined && (typeof page !== "string" || !page || page.length > 200)) return "A frame's page must be a page name.";
+    if (page !== undefined && (typeof page !== "string" || !page || page.length > FRAME_LIMITS.page)) return "A frame's page must be a page name.";
     ids.add(id);
     out.push({ id, label: label.trim(), width, height, x, y, ...(page === undefined ? {} : { page }) });
   }

@@ -52,6 +52,14 @@ test("the frame limit holds, and page frames come first", () => {
   expect(typeof parseLayout(frames)).not.toBe("string");
 });
 
+test("a very long page name does not block the saves of the layout", () => {
+  const long = `${"x".repeat(FRAME_LIMITS.page)}.html`;
+  const fine = `${"x".repeat(205)}.html`;
+  const frames = flowFrames(defaultLayout(), ["index.html", fine, long]);
+  expect(frames.map((f) => f.page)).toEqual(["index.html", fine]);
+  expect(typeof parseLayout(frames)).not.toBe("string");
+});
+
 test("the open page always has a frame", () => {
   const many = Array.from({ length: 15 }, (_, i) => `p${i}.html`);
   expect(shownPages(many, "p1.html")).toEqual(many.slice(0, 12));
@@ -86,5 +94,5 @@ test("MCP lists viewports, not page frames", async () => {
 test("a stored frame's page must be a page name", () => {
   const base = { id: "a", label: "A", width: 400, height: 400, x: 0, y: 0 };
   expect(parseLayout([{ ...base, page: "a.html" }])).toEqual([{ ...base, page: "a.html" }]);
-  for (const page of [7, "", "x".repeat(201)]) expect(typeof parseLayout([{ ...base, page }])).toBe("string");
+  for (const page of [7, "", "x".repeat(FRAME_LIMITS.page + 1)]) expect(typeof parseLayout([{ ...base, page }])).toBe("string");
 });

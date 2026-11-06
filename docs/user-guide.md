@@ -176,7 +176,7 @@ Usage (top bar) shows the tokens of each answer. For an API model with an entry 
 
 1. Open the projects drawer (the doi logo, or Ctrl/⌘ + P). Make a project, then a design, a mobile app or a slide deck.
 2. Type a description in the chat on the left, and send it with Ctrl/⌘ + Enter.
-3. The model writes the pages. The canvas shows each page in its frames, for example Desktop and Mobile.
+3. The model writes the pages. The canvas shows a single page in a Desktop and a Mobile frame, and several pages in one Desktop frame each.
 4. Send more messages to change the design. Each completed turn is a new version.
 
 To rename a design, use its Rename control in the projects drawer. F2 also starts a rename when the design has focus.

@@ -7,6 +7,8 @@ import { zip } from "../src/export/zip.ts";
 import { getExport, REPORT_HEADER } from "../src/server/export.ts";
 import { bundleRequest, exportUrl, fallbackName, fileNameOf, formatSize, parseReport, type ExportChoice } from "../src/web/export.ts";
 import { designSystemDir } from "../src/workspace/design-systems.ts";
+import { defaultLayout, flowFrames } from "../src/workspace/frames.ts";
+import { writeLayout } from "../src/workspace/layout.ts";
 import { designDir } from "../src/workspace/paths.ts";
 
 let ws: string;
@@ -282,6 +284,18 @@ describe("GET …/export as PNG and PDF", () => {
   };
   const get = (query: string) =>
     getExport(ws, new Request(`http://127.0.0.1/api/projects/p/designs/d/export${query}`), { project: "p", design: "d" }, fake);
+
+  test("page frames count as one Desktop viewport, with the frames the user added", async () => {
+    const pages = flowFrames(defaultLayout(), ["index.html", "about.html", "third.html"]);
+    await writeLayout(ws, "p", "d", [...pages, { id: "phone", label: "Phone", width: 390, height: 844, x: 9000, y: 0 }]);
+    calls.length = 0;
+    expect((await get("?format=png&frame=desktop")).status).toBe(200);
+    expect(calls[0]!.frames).toEqual([expect.objectContaining({ id: "desktop", width: 1440 })]);
+    calls.length = 0;
+    expect((await get("?format=png")).status).toBe(200);
+    expect(calls[0]!.frames).toEqual([expect.objectContaining({ id: "desktop" }), expect.objectContaining({ id: "phone" })]);
+    expect((await get(`?format=png&frame=${pages[0]!.id}`)).status).toBe(404);
+  });
 
   test("renders one frame, all frames as a ZIP, or a PDF of the first frame", async () => {
     calls.length = 0;

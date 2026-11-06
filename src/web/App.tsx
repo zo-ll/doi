@@ -257,7 +257,7 @@ export function App() {
 
   const comments = useComments(active, revision);
   const history = useHistory(active, revision);
-  // A history preview of a mobile app shows the pages of that version.
+  // A history preview shows the pages of that version.
   const previewSha = history.preview?.sha ?? null;
   const [previewPages] = useLoad<string[]>(active && previewSha ? `/api/projects/${active.project}/designs/${active.design}/pages?sha=${previewSha}` : null);
   const commentList = comments.comments.state === "ready" ? comments.comments.data : [];
@@ -298,7 +298,8 @@ export function App() {
   };
   const activeProject = active && projects.state === "ready" ? (projects.data.find((p) => p.id === active.project) ?? null) : null;
   const isApp = !!(active && activeProject?.apps.includes(active.design));
-  // The page list loads again after each change. Until then, the frames keep the last list.
+  // The page list loads again after each change. Until then the canvas keeps the last list, so a
+  // turn that does not change the pages keeps the view and asks for no new layout.
   const knownPages = useRef<{ design: string; pages: string[] } | null>(null);
   const designId = active ? `${active.project}/${active.design}` : null;
   if (designId && pages.state === "ready") knownPages.current = { design: designId, pages: pages.data };
