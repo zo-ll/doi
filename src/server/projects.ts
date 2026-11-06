@@ -131,7 +131,7 @@ export async function patchDesign(deps: ProjectDeps, req: Request, params: Param
 }
 
 /**
- * DELETE /api/projects/:project: removes the project folder (designs, variants, chat, uploads)
+ * DELETE /api/projects/:project: removes the project folder (designs, chat, uploads, and old variant sets)
  * and commits the removal, so the history keeps it. A linked repo's clone goes when no other
  * project links that repo. Refused while a turn runs on one of its designs.
  */

@@ -10,8 +10,6 @@ import { designKey, type DesignLocks } from "./locks.ts";
 export interface EditDeps {
   workspace: string;
   locks: DesignLocks;
-  /** True when the design has open variants. */
-  variantsOpen: (params: Params) => Promise<boolean>;
   /** Commits these paths. Returns the commit id, or null when nothing changed. */
   commit: (paths: string[], message: string) => Promise<string | null>;
 }
@@ -81,7 +79,6 @@ export async function postEdit(deps: EditDeps, req: Request, params: Params): Pr
   } catch (e) {
     return fail(e instanceof EditError ? e.message : "The body must be a JSON object.");
   }
-  if (await deps.variantsOpen(params)) return fail("This design has open variants. Pick one or discard them first.", 409);
   const key = designKey(params.project, params.design);
   if (!deps.locks.tryLock(key)) return fail(BUSY, 409);
   try {
@@ -126,7 +123,6 @@ export async function undoEdit(deps: EditDeps, req: Request, params: Params): Pr
   if (dir instanceof Response) return dir;
   const sha = ((await req.json().catch(() => null)) as { commit?: unknown } | null)?.commit;
   if (typeof sha !== "string" || !isSha(sha)) return fail("commit must be a commit id.");
-  if (await deps.variantsOpen(params)) return fail("This design has open variants. Pick one or discard them first.", 409);
   const key = designKey(params.project, params.design);
   if (!deps.locks.tryLock(key)) return fail(BUSY, 409);
   try {

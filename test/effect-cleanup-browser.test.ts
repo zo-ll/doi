@@ -66,11 +66,8 @@ async function openOther(page: Page) {
   await page.locator(".crumb-current").filter({ hasText: "other" }).waitFor();
 }
 
-test.skipIf(!hasBrowser)("a design switch shows no comments or variants of the old design", async () => {
+test.skipIf(!hasBrowser)("a design switch shows no comments of the old design", async () => {
   await drive(async ({ page, context, origin }) => {
-    await context.route(`**${DESIGNS}/home/variants`, (route) =>
-      route.fulfill({ json: { id: "set-1", prompt: "Old variants", target: null, createdAt: new Date().toISOString(), promptVersion: "v0", variants: [] } }),
-    );
     // A slow answer for the new design, so the old data has time to show.
     await context.route(`**${DESIGNS}/other/comments`, async (route) => {
       await Bun.sleep(300);
@@ -78,8 +75,7 @@ test.skipIf(!hasBrowser)("a design switch shows no comments or variants of the o
     });
     await page.goto(`${origin}/?project=sample&design=home`, { waitUntil: "domcontentloaded" });
     await page.getByText(OLD_COMMENT).waitFor();
-    await page.locator(".variants-view").waitFor();
-    await watchStaleFrames(page, [{ text: OLD_COMMENT }, { selector: ".variants-view" }]);
+    await watchStaleFrames(page, [{ text: OLD_COMMENT }]);
     await openOther(page);
     await page.locator(".comments-bar .panel-meta").filter({ hasText: "0 open" }).waitFor();
     expect(await staleFrames(page)).toEqual([]);

@@ -18,7 +18,6 @@ let behave: (req: GenerateRequest) => AsyncGenerator<any>;
 let capabilities: ProviderCapabilities;
 let commits: string[];
 let commitResult: () => Promise<string | null>;
-let variantsOpen: boolean;
 
 beforeEach(async () => {
   const workspace = await mkdtemp(join(tmpdir(), "doi-turns-"));
@@ -37,7 +36,6 @@ beforeEach(async () => {
   commits = [];
   commitResult = async () => "a".repeat(40);
   capabilities = caps;
-  variantsOpen = false;
   behave = async function* () {
     yield { type: "text", delta: "Blue now." };
     yield { type: "edit", file: "styles.css", oldText: "red", newText: "blue" };
@@ -46,7 +44,6 @@ beforeEach(async () => {
   };
   const handler = createTurnHandler({
     config,
-    variantsOpen: async () => variantsOpen,
     commit: (project, design, prompt) => {
       commits.push(`${project}/${design}: ${prompt}`);
       return commitResult();
@@ -122,14 +119,6 @@ describe("POST turns", () => {
     expect(await Bun.file(join(designDir(config.workspace, "p", "d"), "index.html")).text()).toContain(
       '<link rel="stylesheet" href="/ds/brand/tokens.css">',
     );
-  });
-
-  test("a turn waits while the design has open variants", async () => {
-    variantsOpen = true;
-    const res = await post({ text: "x" });
-    expect(res.status).toBe(409);
-    expect((await res.json()).error).toBe("This design has open variants. Pick one or discard them first.");
-    expect(calls).toHaveLength(0);
   });
 
   test("a target uses the edit model and goes into the message", async () => {

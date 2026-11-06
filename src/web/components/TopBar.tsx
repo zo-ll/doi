@@ -28,7 +28,7 @@ export function TopBar(props: {
   onPage: (page: string) => void;
   /** The count of versions of the open design; null while unknown. */
   version: number | null;
-  /** A turn or a variant set runs: the design is not saved yet. */
+  /** A turn runs: the design is not saved yet. */
   busy: boolean;
   navOpen: boolean;
   onNav: () => void;

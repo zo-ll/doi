@@ -14,7 +14,7 @@ doi runs on your computer only. The server listens on `127.0.0.1`. Your designs,
 4. [Make a design](#make-a-design)
 5. [Edit on the canvas](#edit-on-the-canvas)
 6. [Optional UML](#optional-uml)
-7. [Comments, variants and history](#comments-variants-and-history)
+7. [Comments and history](#comments-and-history)
 8. [Design systems](#design-systems)
 9. [Export](#export)
 10. [Hand off to a coding agent (MCP)](#hand-off-to-a-coding-agent-mcp)
@@ -170,7 +170,7 @@ Use only the provider ids in this section for `[providers.<id>]` tables. An unkn
 
 Usage (top bar) shows the tokens of each answer. For an API model with an entry in `[prices]`, it also shows an estimated cost. A subscription shows tokens only.
 
-**Warning:** Usage omits unpicked and discarded variants. Its token totals and cost estimates can be lower than actual use.
+**Warning:** Usage omits variants that older versions of doi made and that you did not pick. For such a design, its token totals and cost estimates can be lower than actual use.
 
 ## Make a design
 
@@ -302,7 +302,7 @@ The handoff includes the diagrams when the project uses UML: the agent prompt as
 
 **Important:** Run only one doi process for a workspace. The save lock for diagrams is inside one process. Two doi processes on the same workspace can both write a diagram, and the last write wins.
 
-## Comments, variants and history
+## Comments and history
 
 ### Comments
 
@@ -311,13 +311,9 @@ Select an element and press N, or use the Comment tool (C). The Comments tab on 
 - Apply puts a comment into your next message.
 - Done marks a comment as complete. When a turn includes an applied comment and changes its element, doi marks that comment as done.
 
-### Variants
-
-Select 2, 3 or 4 next to the message box before you send. doi makes that number of variants of the same request. Pick one variant to keep it. History can bring a variant set back after a pick.
-
 ### History
 
-The History tab lists the versions of the design. Every turn, pick, edit, restore and rename is a version. Preview shows an old version on the canvas. Restore makes the old version the current one, as a new version. No version is lost.
+The History tab lists the versions of the design. Every turn, edit, restore and rename is a version. A "pick" is a version from an older doi that had variants. Preview shows an old version on the canvas. Restore makes the old version the current one, as a new version. No version is lost.
 
 ![The History tab: each version with its kind](images/history.png)
 
@@ -422,7 +418,6 @@ workspace/
 │       │       ├── styles.css
 │       │       ├── tweaks.json   # optional: the Tweaks controls
 │       │       └── .comments.json
-│       ├── variants/<design>/<set>/<n>/   # open variant sets
 │       └── uploads/              # images that you attached to messages
 ├── design-systems/
 │   └── <name>/                   # tokens.css, components.html, components.css, rules.md, fonts/, screenshots/
@@ -459,7 +454,6 @@ Settings → Shortcuts shows the same list without Ctrl + Z.
 
 - **The model status is not green.** Open Settings → Models and providers. Log in to the CLI, or add an API key. "Check again" reads the status again.
 - **"Another change runs on this design".** A turn, a rename or an edit is in progress on the design. Wait until it stops, and then try again.
-- **"This design has open variants".** Pick a variant or discard the set first.
 - **PNG or PDF export gives an error (503).** Chromium is not installed. Run `doi install-browser`, or `bun run install-browser` from the source.
 - **The agent does not have the doi tools.** Add the MCP server (see [Hand off](#hand-off-to-a-coding-agent-mcp)), make sure that doi runs, and start the agent again.
 - **The port is in use.** Set a different `port` in `config.toml`.

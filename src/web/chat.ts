@@ -1,6 +1,6 @@
-import type { ChatEntryView, FileStat, TurnStreamEvent, Usage, VariantStreamEvent } from "./api.ts";
+import type { ChatEntryView, FileStat, TurnStreamEvent, Usage } from "./api.ts";
 
-/** Which model setting made an answer: generate (a new design), edit (one element), or a picked variant. */
+/** Which model setting made an answer: generate (a new design), edit (one element), or a variant that an older version of doi picked. */
 export type Task = "generate" | "edit" | `variant ${number}`;
 
 export type AnswerStatus = "running" | "done" | "error" | "stopped";
@@ -46,70 +46,10 @@ export type ChatMessage =
       writing?: string;
       proposed?: string[];
     }
-  | VariantsMessage
   | { id: number; kind: "error"; text: string }
   | { id: number; kind: "info"; text: string };
 
 export type Answer = Extract<ChatMessage, { kind: "assistant" }>;
-
-/** One variant while it runs, as the chat shows it. */
-export interface VariantItem {
-  n: number;
-  model: string;
-  status: "running" | "done" | "error" | "stopped";
-  text: string;
-  usage: Usage | null;
-  error?: string;
-}
-
-/** The answer of a variants run: one item per variant. It is not stored; the pick is. */
-export interface VariantsMessage {
-  id: number;
-  kind: "variants";
-  status: "running" | "done" | "error" | "stopped";
-  items: VariantItem[];
-  error?: string;
-}
-
-/** Applies one event of a variants stream. */
-export function applyVariantEvent(m: VariantsMessage, e: VariantStreamEvent): VariantsMessage {
-  switch (e.type) {
-    case "variants":
-      return {
-        ...m,
-        items: e.variants.map((v) => ({ n: v.n, model: `${v.provider}:${v.model}`, status: "running", text: "", usage: null })),
-      };
-    case "variants-done":
-      return { ...m, status: m.items.some((i) => i.status === "done") ? "done" : "error", ...(e.error ? { error: e.error } : {}) };
-    case "variant":
-      return {
-        ...m,
-        items: m.items.map((item) => {
-          if (item.n !== e.n) return item;
-          const ev = e.event;
-          switch (ev.type) {
-            case "text":
-              return { ...item, text: item.text + ev.delta };
-            case "retry":
-              return { ...item, text: "" };
-            case "usage": {
-              const u = item.usage ?? { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
-              return {
-                ...item,
-                usage: { inputTokens: u.inputTokens + ev.inputTokens, outputTokens: u.outputTokens + ev.outputTokens, cachedTokens: u.cachedTokens + ev.cachedTokens },
-              };
-            }
-            case "done":
-              return { ...item, status: "done" };
-            case "error":
-              return { ...item, status: "error", error: errorText(ev.kind, ev.message) };
-            default:
-              return item;
-          }
-        }),
-      };
-  }
-}
 
 export function newAnswer(id: number, model?: string, task?: Task): Answer {
   return {
