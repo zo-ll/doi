@@ -955,7 +955,7 @@ a:hover { color: var(--text); }
 
 .start-screen { position: absolute; inset: 0; z-index: 40; display: flex; justify-content: center; overflow: auto; padding: var(--space-8) var(--space-4); background: var(--bg); }
 .start-inner { width: 100%; max-width: 760px; height: fit-content; display: flex; flex-direction: column; gap: var(--space-4); }
-.start-kinds { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.format-cards.start-kinds { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .start-repo { display: flex; flex-direction: column; gap: var(--space-2); }
 .start-foot { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
 .canvas-empty { display: grid; place-items: center; }
