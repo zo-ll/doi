@@ -26,13 +26,16 @@ page=$(curl -sf "$url/") || fail "no UI page"
 for asset in $(printf '%s' "$page" | grep -oE '(src|href)="/chunk-[^"]+"' | cut -d'"' -f2); do
   curl -sf -o /dev/null "$url$asset" || fail "UI asset $asset"
 done
-curl -sf "$url/__doi/bridge.js" | grep -q 'doi:ready' || fail "bridge script"
-curl -sf "$url/api/projects" | grep -q '"sample"' || fail "projects API"
-curl -sf "$url/design/sample/home/" | grep -q '/__doi/bridge.js' || fail "design page"
+# Read the whole answer first. In a pipe, `grep -q` exits at its first match, the writer then fails
+# on the closed pipe (curl: 23), and pipefail reports a failure for a correct answer.
+has() { grep -q -- "$2" <<<"$1"; }
+body=$(curl -sf "$url/__doi/bridge.js") && has "$body" 'doi:ready' || fail "bridge script"
+body=$(curl -sf "$url/api/projects") && has "$body" '"sample"' || fail "projects API"
+body=$(curl -sf "$url/design/sample/home/") && has "$body" '/__doi/bridge.js' || fail "design page"
 tools=$(curl -sf -X POST "$url/mcp" -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}') || fail "MCP request"
 for t in list_designs get_design get_design_system get_comments export_png; do
-  printf '%s' "$tools" | grep -q "\"$t\"" || fail "MCP tool $t"
+  has "$tools" "\"$t\"" || fail "MCP tool $t"
 done
 # UML export: the fonts are file imports that only the compiled binary must carry.
 uml=$(curl -sf -X POST "$url/api/projects/sample/architecture/export" -H 'content-type: application/json' \
