@@ -21,7 +21,8 @@ function RepoChoice({ busy, onPick }: { busy: boolean; onPick: (name: string) =>
  */
 export function StartScreen({ tasks, onStarted, onClose, onOpenSample, onImport, onOpenSettings }: {
   tasks: TaskStatus[];
-  onStarted: (active: Active, first: FirstTurn) => void;
+  /** False when the app could not open the project: the user kept unsaved edits. */
+  onStarted: (active: Active, first: FirstTurn) => boolean;
   /** Absent when nothing can open behind this screen. */
   onClose?: () => void;
   /** Absent when the workspace has no sample. */
@@ -49,9 +50,10 @@ export function StartScreen({ tasks, onStarted, onClose, onOpenSample, onImport,
   const canStart = draft.trim().length > 0 && !imagesUnread && !busy;
 
   useEffect(() => {
-    if (!onClose) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !busy && !modelMenu) onClose();
+      if (e.key !== "Escape") return;
+      if (modelMenu) setModelMenu(false);
+      else if (!busy) onClose?.();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -71,7 +73,7 @@ export function StartScreen({ tasks, onStarted, onClose, onOpenSample, onImport,
         setBusy(`Cloning ${repo}…`);
         await sendJSON("PUT", `/api/projects/${created.current.project}/repo`, { name: repo });
       }
-      onStarted(created.current, { text, images, model: chosen });
+      if (!onStarted(created.current, { text, images, model: chosen })) setBusy(null);
     } catch (e) {
       setError((e as Error).message);
       setBusy(null);

@@ -5,6 +5,9 @@ import { join } from "node:path";
 import { chromium, type BrowserContext, type Page } from "playwright-core";
 import { parseConfig } from "../src/config.ts";
 import { startServer } from "../src/server/app.ts";
+import { createNode } from "../src/architecture/nodes.ts";
+import { createDiagram } from "../src/architecture/schema.ts";
+import { writeArchitecture } from "../src/workspace/architecture.ts";
 import { createProject } from "../src/workspace/projects.ts";
 
 const hasBrowser = await chromium.launch().then(
@@ -137,6 +140,7 @@ test.skipIf(!hasBrowser)("a taken name gets a number, and a prompt without Latin
     await start(page).getByLabel("First prompt").fill("日本語のページ");
     await start(page).getByRole("button", { name: "Start", exact: true }).click();
     await page.waitForFunction(() => location.search.includes("project=project"));
+    await page.locator(".chat").getByText("I make the first screen.").waitFor();
     expect((await projectsOf(origin)).find((p) => p.id === "project")?.name).toBe("日本語のページ");
     expect(turns).toHaveLength(2);
   });
@@ -152,6 +156,85 @@ test.skipIf(!hasBrowser)("an existing project opens as before; New project opens
     await page.keyboard.press("Escape");
     await start(page).waitFor({ state: "detached" });
     await page.locator(".frame-name").first().waitFor();
+  });
+}, 30_000);
+
+test.skipIf(!hasBrowser)("a kept UML edit keeps the screen, the prompt and the one project; the next Start goes on", async () => {
+  const prepare = async (workspace: string) => {
+    const node = createNode("box", { x: 80, y: 80 }, "Saved name");
+    await writeArchitecture(workspace, "sample", null, { version: 1, enabled: true, diagrams: [{ ...createDiagram(), nodes: [node] }] });
+  };
+  await drive(prepare, async ({ page, context, origin, turns }) => {
+    // A save that does not end keeps the edit unsaved.
+    await context.route("**/api/projects/sample/architecture", async (route) => {
+      if (route.request().method() === "PUT") return;
+      await route.continue();
+    });
+    await page.getByRole("tab", { name: "UML", exact: true }).click();
+    await page.getByRole("button", { name: /System overview/ }).click();
+    await page.getByRole("group", { name: "Saved name", exact: true }).click();
+    await page.getByRole("textbox", { name: "Box name", exact: true }).fill("Unsaved name");
+    await page.locator(".uml-save-state").filter({ hasNotText: /^Saved$/ }).waitFor();
+
+    await page.getByRole("button", { name: "Projects and designs" }).click();
+    await page.getByRole("button", { name: "New project" }).click();
+    await start(page).getByLabel("First prompt").fill("A page after the diagram");
+    let accept = false;
+    page.on("dialog", (d) => void (accept ? d.accept() : d.dismiss()));
+    await start(page).getByRole("button", { name: "Start", exact: true }).click();
+    const again = start(page).getByRole("button", { name: "Start", exact: true });
+    await page.waitForFunction(() => [...document.querySelectorAll("button")].some((b) => b.textContent === "Start" && !b.disabled));
+    expect(await start(page).getByLabel("First prompt").inputValue()).toBe("A page after the diagram");
+    expect(turns).toHaveLength(0);
+    accept = true;
+    await again.click();
+    await page.getByText("I make the first screen.").waitFor();
+    expect(turns).toHaveLength(1);
+    expect((await projectsOf(origin)).filter((p) => p.id.startsWith("a-page-after")).map((p) => p.id)).toEqual(["a-page-after-the-diagram"]);
+  }, "/?project=sample&design=home");
+}, 30_000);
+
+test.skipIf(!hasBrowser)("Esc closes the model menu first, and the screen after it", async () => {
+  await drive(async (workspace) => void (await createProject(workspace, "Mine")), async ({ page }) => {
+    await page.locator(".frame-name").first().waitFor();
+    await page.getByRole("button", { name: "Projects and designs" }).click();
+    await page.getByRole("button", { name: "New project" }).click();
+    await start(page).locator(".model-chip").click();
+    await page.locator(".model-menu").waitFor();
+    await page.keyboard.press("Escape");
+    await page.locator(".model-menu").waitFor({ state: "detached" });
+    expect(await start(page).count()).toBe(1);
+    await page.keyboard.press("Escape");
+    await start(page).waitFor({ state: "detached" });
+  });
+}, 30_000);
+
+test.skipIf(!hasBrowser)("after Open the sample, a delete that empties the workspace shows the screen again", async () => {
+  await drive(async () => {}, async ({ page }) => {
+    await start(page).getByRole("button", { name: "Open the sample" }).click();
+    await page.locator(".frame-name").first().waitFor();
+    await page.getByRole("button", { name: "Projects and designs" }).click();
+    await page.getByTitle("Delete Sample").click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Delete project" }).click();
+    await start(page).waitFor();
+  });
+}, 30_000);
+
+test.skipIf(!hasBrowser)("a slow chat load does not show the first message twice", async () => {
+  await drive(async () => {}, async ({ page, context, turns }) => {
+    await context.route("**/api/projects/*/designs/*/chat", async (route) => {
+      await Bun.sleep(700);
+      await route.fulfill({ json: [] });
+    });
+    await start(page).getByLabel("First prompt").fill("A page with a slow history");
+    await start(page).getByRole("button", { name: "Start", exact: true }).click();
+    await start(page).waitFor({ state: "detached" });
+    await Bun.sleep(300);
+    expect(turns).toHaveLength(0); // the stored chat is still on its way
+    await page.getByText("I make the first screen.").waitFor();
+    expect(await page.getByText("A page with a slow history").count()).toBeLessThanOrEqual(2); // the message, and maybe the title
+    expect(turns).toHaveLength(1);
+    expect(await page.locator(".chat").getByText("I make the first screen.").count()).toBe(1);
   });
 }, 30_000);
 

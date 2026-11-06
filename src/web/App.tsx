@@ -633,8 +633,10 @@ export function App() {
               retryProjects();
               retryWorkspace();
               if (!panels.chat) togglePanel("chat");
-              if (open(a)) setFirstTurn(first);
-              else setStartOpen(false);
+              // The user kept the unsaved diagram: the screen stays, and its next Start uses this project.
+              if (!open(a)) return false;
+              setFirstTurn(first);
+              return true;
             }}
             onClose={active ? () => setStartOpen(false) : undefined}
             onOpenSample={
@@ -665,6 +667,7 @@ export function App() {
             }}
             onDeleted={(project) => {
               deleted.current.add(project);
+              skipStart.current = false; // only the sample that was open then; the workspace changed
               // The open design went with its project: the app opens the first design left.
               if (active?.project === project) setActive(null);
               onProjectsChanged();

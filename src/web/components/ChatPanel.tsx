@@ -113,6 +113,7 @@ export function ChatPanel({
   const { images, setImages, imageError, setImageError, addImages } = useComposerImages();
   const [dragging, setDragging] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [running, setRunningState] = useState(false);
   /** The parent hears at once. A run that a design switch or an unmount aborted still ends here. */
   const setRunning = (on: boolean) => {
@@ -161,6 +162,7 @@ export function ChatPanel({
       getJSON<ChatEntryView[]>(chatUrl(target.project, target.design))
       .then((entries) => {
         if (!live) return;
+        setHistoryLoaded(true);
         const loaded = fromEntries(entries, () => nextId.current++, (name) => uploadUrl(target.project, name));
         // After a reload during a turn, the server can still be writing that turn's answer:
         // load again a few times while the newest turn has no answer.
@@ -180,6 +182,7 @@ export function ChatPanel({
         if (attempt === 0 && loaded.length === 0 && !document.querySelector('[aria-modal="true"], .nav-drawer')) inputRef.current?.focus();
       })
       .catch((e: unknown) => {
+        if (live) setHistoryLoaded(true);
         if (live && attempt === 0) push({ kind: "error", text: `The chat history could not load: ${e instanceof Error ? e.message : String(e)}` });
       });
     void load(0);
@@ -263,13 +266,14 @@ export function ChatPanel({
   };
 
   // The first message of a new project. The ref holds, because this effect must send it only once.
+  // It waits for the stored chat: an answer that reads the file after this turn began would show it twice.
   const firstSent = useRef(false);
   useEffect(() => {
-    if (!first || firstSent.current || !target) return;
+    if (!first || firstSent.current || !target || !historyLoaded) return;
     firstSent.current = true;
     onFirstTaken?.();
     void sendTurn({ text: first.text, target: null, images: first.images, comments: [] });
-  }, [first]);
+  }, [first, historyLoaded]);
 
   const send = () => {
     const text = draft.trim();
