@@ -1,5 +1,5 @@
 import { chmod, mkdir, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { keyEnvFor, type Config, type ProviderId } from "../config.ts";
 import { credentialsPath } from "../user-dirs.ts";
 

@@ -34,7 +34,7 @@ export function userDirs(env: Record<string, string | undefined> = process.env, 
 
 /** A config that names the default workspace. A TOML basic string has the escapes of a JSON string for these characters. */
 export function firstConfig(workspace: string): string {
-  return `# The config of doi. The user guide lists all settings: docs/user-guide.md, "Configure".
+  return `# The config of doi. The "Configure" part of the doi user guide lists all settings.
 # Keep this path absolute. A relative path counts from this folder, and it is another workspace.
 workspace = ${JSON.stringify(workspace)}
 `;
@@ -48,7 +48,7 @@ export function credentialsPath(env: Record<string, string | undefined> = proces
   const { join } = platform === "win32" ? win32 : posix;
   const current = join(userDirs(env, platform, home).config, "credentials.json");
   if (platform !== "win32") return current;
-  const older = join(home, ".config", "doi", "credentials.json");
+  const older = join(env.XDG_CONFIG_HOME || join(home, ".config"), "doi", "credentials.json");
   return !exists(current) && exists(older) ? older : current;
 }
 

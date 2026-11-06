@@ -208,9 +208,9 @@ export function withPrices(text: string, prices: Record<string, Price>): string 
 
 /**
  * Loads config.toml (default: from the current directory). A missing file gives the defaults.
- * A relative workspace path is relative to the folder of the file.
+ * A relative workspace path is relative to the folder of the file. `defaultWorkspace` is for a
+ * file with no `workspace` line, because all keys of a config are optional.
  */
-/** `defaultWorkspace` is for a file with no `workspace` line. All keys of a config are optional. */
 export async function loadConfig(path = "config.toml", defaultWorkspace?: string): Promise<Config> {
   const file = Bun.file(path);
   const raw = (await file.exists()) ? Bun.TOML.parse(await file.text()) : {};

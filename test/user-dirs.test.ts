@@ -40,6 +40,8 @@ describe("userDirs", () => {
     expect(credentialsPath(env, "win32", home, () => false)).toBe(current);
     expect(credentialsPath(env, "win32", home, (p) => p === older)).toBe(older);
     expect(credentialsPath(env, "win32", home, () => true)).toBe(current);
+    const withXdg = { ...env, XDG_CONFIG_HOME: "C:\\X" };
+    expect(credentialsPath(withXdg, "win32", home, (p) => p === "C:\\X\\doi\\credentials.json")).toBe("C:\\X\\doi\\credentials.json");
   });
 
   test("the per-user paths on each system", () => {

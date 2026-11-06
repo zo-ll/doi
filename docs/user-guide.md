@@ -68,7 +68,7 @@ The binary works from any folder. The first start makes `config.toml` and the wo
 | Linux | `$XDG_CONFIG_HOME/doi`, else `~/.config/doi` | `$XDG_DATA_HOME/doi/workspace`, else `~/.local/share/doi/workspace` |
 | Windows | `%APPDATA%\doi` | `%LOCALAPPDATA%\doi\workspace` |
 
-From a source checkout, doi keeps using `./config.toml` and `./workspace`.
+On Windows, a credentials file from an older doi stays in use at its old path until a new file exists. From a source checkout, doi keeps using `./config.toml` and `./workspace`.
 
 The binary has no developer signature. If you download a macOS binary and Gatekeeper stops it, run `xattr -d com.apple.quarantine ./doi` one time.
 
@@ -124,7 +124,7 @@ The binary reads the per-user `config.toml`. A source run reads `config.toml` fr
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `workspace` | `"./workspace"` | The folder for your projects, design systems and history |
+| `workspace` | The per-user workspace for the binary, `"./workspace"` for a source run | The folder for your projects, design systems and history |
 | `port` | `4317` | The port of the server on `127.0.0.1` |
 | `editor_url` | `"vscode://file{path}"` | The link that opens a design system file in your editor. doi puts the file path in `{path}` |
 | `[providers.<id>]` | | Settings for one provider: `api_key_env`, `base_url`, `formats` |
