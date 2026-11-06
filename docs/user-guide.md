@@ -176,7 +176,7 @@ Usage (top bar) shows the tokens of each answer. For an API model with an entry 
 
 1. Open the projects drawer (the doi logo, or Ctrl/⌘ + P). Make a project, then a design, a mobile app or a slide deck.
 2. Type a description in the chat on the left, and send it with Ctrl/⌘ + Enter.
-3. The model writes the pages. The canvas shows each page in its frames, for example Desktop and Mobile.
+3. The model writes the pages. The canvas shows a single page in a Desktop and a Mobile frame, and several pages in one Desktop frame each.
 4. Send more messages to change the design. Each completed turn is a new version.
 
 To rename a design, use its Rename control in the projects drawer. F2 also starts a rename when the design has focus.
@@ -200,6 +200,8 @@ When an element is selected, your next message changes only that element. doi us
 Every meaningful element in a design has a `data-oid` attribute. Selection, comments and edits use it. doi adds missing ids after each turn.
 
 ## Edit on the canvas
+
+A design with one page shows a Desktop frame and a Mobile frame. A design with several pages shows one Desktop frame for each page, in page order. A click in a frame opens that page. Drag a frame label to move the frame. doi keeps the place. "+ Frame" adds a frame at another size, for example Mobile. That frame shows the open page. A design shows at most 12 frames. Open the other pages with the page picker in the top bar.
 
 With the Select tool, you can change the selected element directly. doi writes each change as CSS in a `[data-oid="…"]` rule at the end of `styles.css`, or moves the element in the HTML. Each change is one version.
 

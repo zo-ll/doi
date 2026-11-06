@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getJSON } from "../api.ts";
+import { viewportFrames, type ScreenFrame } from "../../workspace/frames.ts";
 import { bundleRequest, runExport, type ExportReport } from "../export.ts";
 import { ExportResult } from "./ExportDialog.tsx";
 
@@ -44,8 +45,8 @@ export function HandoffDialog({ project, design, version, pages, openComments, h
 
   useEffect(() => {
     let live = true;
-    getJSON<unknown[]>(`/api/projects/${project}/designs/${design}/layout`)
-      .then((f) => live && setFrames(f.length))
+    getJSON<ScreenFrame[]>(`/api/projects/${project}/designs/${design}/layout`)
+      .then((f) => live && setFrames(viewportFrames(f).length))
       .catch(() => {}); // only the footer and the checklist count frames
     getJSON<{ prompt: string; url: string }>(`${base}/prompt`)
       .then((r) => {

@@ -8,7 +8,7 @@ import type { ZipEntry } from "../export/zip.ts";
 import { readChat } from "../workspace/chat.ts";
 import { readComments } from "../workspace/comments.ts";
 import { activeDesignSystem } from "../workspace/design-systems.ts";
-import { readLayout } from "../workspace/layout.ts";
+import { readLayout, viewportFrames } from "../workspace/layout.ts";
 import type { Frame } from "../workspace/frames.ts";
 import { designDir, designPages, listProjects } from "../workspace/paths.ts";
 import template from "./template-v1.md" with { type: "text" };
@@ -216,7 +216,7 @@ export async function bundleTokens(workspace: string, project: string, design: s
 export async function draftHandoff(workspace: string, project: string, design: string): Promise<string> {
   const pages = await pagesOf(workspace, project, design);
   const [frames, chat, comments, tokens, projects, oids, architecture] = await Promise.all([
-    readLayout(workspace, project, design),
+    readLayout(workspace, project, design).then(viewportFrames),
     readChat(workspace, project, design),
     readComments(workspace, project, design),
     bundleTokens(workspace, project, design),
@@ -284,7 +284,7 @@ export async function buildBundle(
   const missing = new Set(folder.missing);
   const warnings = new Set(folder.warnings);
 
-  const plan = screenshotPlan(pages, await readLayout(workspace, project, design));
+  const plan = screenshotPlan(pages, viewportFrames(await readLayout(workspace, project, design)));
   if (plan.length > MAX_SCREENSHOTS) {
     warnings.add(`The bundle has the first ${MAX_SCREENSHOTS} of ${plan.length} screenshots.`);
   }

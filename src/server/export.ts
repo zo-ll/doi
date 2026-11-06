@@ -2,7 +2,7 @@ import { ExportError, exportFolder, exportPage } from "../export/html.ts";
 import { renderPdf, renderPngs } from "../export/render.ts";
 import { REPORT_HEADER } from "../export/report.ts";
 import { zip } from "../export/zip.ts";
-import { readLayout } from "../workspace/layout.ts";
+import { readLayout, viewportFrames } from "../workspace/layout.ts";
 import { designDir } from "../workspace/paths.ts";
 
 type Params = { project: string; design: string };
@@ -52,7 +52,7 @@ export async function getExport(workspace: string, req: Request, params: Params,
       return download(result.html, "text/html; charset=utf-8", `${name}.html`, result);
     }
 
-    const frames = await readLayout(workspace, params.project, params.design);
+    const frames = viewportFrames(await readLayout(workspace, params.project, params.design));
     const frameId = query.get("frame") ?? (format === "png" ? "all" : frames[0]!.id);
     const chosen = frameId === "all" && format === "png" ? frames : frames.filter((f) => f.id === frameId);
     if (!chosen.length) return fail(`The design has no frame "${frameId}".`, 404);

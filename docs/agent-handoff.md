@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-11-06. The UML work (#145) and the effect cleanup (#148, PR #156) are merged and closed. The mobile app fixes (#144, PR #157) are merged. Issue #153 (full user flow) is in progress on three PRs: variants removal, canvas frames, then prompt v3 with the ask block. The removal of xyflow is on hold (user, 2026-11-06): do not plan it until the user asks. Section 6 records the details.
+Last update: 2026-11-06. The UML work (#145) and the effect cleanup (#148, PR #156) are merged and closed. The mobile app fixes (#144, PR #157) are merged. Issue #153 (full user flow) is in progress: the variants removal is merged (PR #158), the canvas frames are on `feature/page-frames`, then prompt v3 with the ask block. The removal of xyflow is on hold (user, 2026-11-06): do not plan it until the user asks. Section 6 records the details.
 
 PR #147 merged the TypeScript refactor and two browser fixes into `main` at `e95e541`. All 529 tests passed, with no skips or failures. The type check, Linux binary build and smoke test passed. The Usage gap for unpicked variants remains open.
 
@@ -129,6 +129,8 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 - CLI backends (`editsFiles: true`) change the files in `GenerateRequest.cwd` themselves. Their `edit`/`write` events only report the change. **The edit applier must skip them.**
 
 ## 6. State and next steps
+
+**2026-11-06: one frame per page (#153, part 2, branch `feature/page-frames`).** A web design with several pages shows one Desktop frame per page, in page order (`flowFrames()` in `src/workspace/frames.ts`). The frames are stored in `layouts.<design>` with an optional `page`. A design with one page and a deck behave as before; a mobile app still uses `screenFrames()`. The default Desktop and Mobile frames go when a design first gets several pages, as the owner decided. "+ Frame" stays: an added frame shows the open page and counts toward the limit of 12. Page frames come first; `shownPages()` keeps the open page among them, and the toolbar counts the pages without a frame. `viewportFrames()` turns the page frames into one Desktop viewport for export, the handoff and MCP, so these do not render the same page once per frame. `App` keeps the last page list during a reload (`knownPages`), so a turn that does not change the pages keeps the view and sends no new layout request. A preview shows the pages of its version and stores no layout. Next: prompt v3 with the ask block (parts 1 and 4).
 
 **2026-11-06: variants removed (#153, part 3, branch `refactor/remove-variants`).** The owner does not use variants, and the composer selector was the only place that started them, so the whole feature is gone: the selector, the grid, Pick, Discard, "Reopen variants" and the routes. A send starts one turn. Old data stays readable: a stored chat entry keeps `variant` and shows "variant n", and a "Pick variant n" commit still shows the kind "pick" in History. An open set from before stays as an unused folder at `projects/<p>/variants/`; it no longer blocks a turn, and a project delete removes it. A design rename does not move it. `DesignRef.dir` stays for the design system import. The Usage gap for unpicked variants has no new cases. The owner's decisions and the plan for the other parts of #153 are in the issue comment of 2026-11-06. Next: one frame per page (part 2), then prompt v3 with the ask block (parts 1 and 4).
 

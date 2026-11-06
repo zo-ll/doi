@@ -69,7 +69,8 @@ test.skipIf(!hasBrowser)("a cross-design UI link keeps its page while the target
       expect(new URL(page.url()).searchParams.get("page")).toBe("about.html");
       gate.resolve(); expect(await loaded).toBe(true);
       expect(await page.getByTitle("Pages in this design", { exact: true }).innerText()).toContain("about.html");
-      expect(await page.locator('iframe[sandbox="allow-scripts"]').first().getAttribute("src")).toContain("/other/about.html");
+      // The design has two pages, so each has a frame; the link names the second one.
+      await page.locator('iframe[sandbox="allow-scripts"][src*="/other/about.html"]').first().waitFor({ state: "attached" });
       expect(new URL(page.url()).searchParams.get("node")).toBe("target");
     } finally { gate.resolve(); await loaded; }
   });

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getJSON } from "../api.ts";
 import { exportUrl, fallbackName, formatSize, runExport, type ExportChoice, type ExportFormat, type ExportReport } from "../export.ts";
-import type { Frame } from "../../workspace/frames.ts";
+import { viewportFrames, type Frame, type ScreenFrame } from "../../workspace/frames.ts";
 import { MOD } from "./TopBar.tsx";
 
 const FORMATS: { id: ExportFormat; title: string; sub: string }[] = [
@@ -46,8 +46,8 @@ export function ExportDialog({ project, design, onClose }: { project: string; de
 
   useEffect(() => {
     let live = true;
-    getJSON<Frame[]>(`/api/projects/${project}/designs/${design}/layout`)
-      .then((f) => live && setFrames(f))
+    getJSON<ScreenFrame[]>(`/api/projects/${project}/designs/${design}/layout`)
+      .then((f) => live && setFrames(viewportFrames(f)))
       .catch((e: Error) => live && setError(e.message));
     return () => {
       live = false;

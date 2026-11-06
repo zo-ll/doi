@@ -4,7 +4,7 @@ import type { Pin } from "../comments.ts";
 import { parseFrameMessage, trackMessage, type FrameMessage, type Layout, type Rect } from "../frame.ts";
 import { alignStyle, DEFAULT_SCALE, dropTarget, nudgeStyle, resizeStyle, sameSpot, type Axis, type Drop, type ElementStyle, type Handle, type Place, type SpacingScale } from "../edit.ts";
 import { arrangeRow, fitView, newFrameId, nextPosition, stepZoom, wheelFactor, zoomAt, ZOOM_MAX, ZOOM_MIN, type Point, type View } from "../viewport.ts";
-import { FRAME_LIMITS, MAX_SCREENS, PRESETS, screenFrames, type ScreenFrame as FrameSpec } from "../../workspace/frames.ts";
+import { flowFrames, FRAME_LIMITS, MAX_SCREENS, PRESETS, screenFrames, type ScreenFrame as FrameSpec } from "../../workspace/frames.ts";
 import { CHANGED_AFTER } from "../../workspace/edit-messages.ts";
 import { useResetOn } from "../reset-on.ts";
 import type { Selection } from "./ChatPanel.tsx";
@@ -406,6 +406,8 @@ export function Canvas({
   liveVars = NO_VARS,
   onEditSaving,
   screens = null,
+  flowPages = [],
+  hiddenPages = 0,
   onPage,
   onAddScreen,
 }: {
@@ -439,6 +441,10 @@ export function Canvas({
   onEditSaving?: () => void;
   /** A mobile app: its pages, each in its own phone frame (no stored layout). Null for other designs. */
   screens?: string[] | null;
+  /** The pages of a web design that get a frame; null while they load. A deck passes none. */
+  flowPages?: string[] | null;
+  /** The pages that have no frame, because a design has at most FRAME_LIMITS.count frames. */
+  hiddenPages?: number;
   /** A click in a screen selects in that screen's page. */
   onPage?: (page: string) => void;
   /** "+ Screen" in the toolbar of a mobile app. */
@@ -453,8 +459,8 @@ export function Canvas({
   const [menuOpen, setMenuOpen] = useState(false);
   const [tool, setTool] = useState<Tool>("select");
   const needsFit = useRef(true);
-  const state = useRef({ view, frames, active, tool, page, app: screens !== null });
-  state.current = { view, frames, active, tool, page, app: screens !== null };
+  const state = useRef({ view, frames, active, tool, page, app: screens !== null, preview: preview !== null });
+  state.current = { view, frames, active, tool, page, app: screens !== null, preview: preview !== null };
   const onAddScreenRef = useRef(onAddScreen);
   onAddScreenRef.current = onAddScreen;
   const [scale, setScale] = useState<SpacingScale>(DEFAULT_SCALE);
@@ -550,6 +556,9 @@ export function Canvas({
   // Load the frames of the design; a new design fits to the screen once they are there.
   // A mobile app has no stored layout: one phone frame per page.
   const screensKey = screens ? screens.join("\n") : null;
+  const flowKey = flowPages ? flowPages.join("\n") : null;
+  /** The design whose frames show: a new page list keeps them, so the open frames do not blink. */
+  const framesOf = useRef<string | null>(null);
   useEffect(() => {
     if (!active) return;
     let live = true;
@@ -558,11 +567,18 @@ export function Canvas({
     if (screensKey !== null) {
       setMenuOpen(false); // the "+ Frame" menu has no place in an app
       setFrames(screenFrames(screensKey ? screensKey.split("\n") : []));
+      framesOf.current = null;
       return;
     }
-    setFrames(null);
+    const design = `${active.project}/${active.design}`;
+    if (framesOf.current !== design) setFrames(null);
+    if (flowKey === null) return;
     getJSON<FrameSpec[]>(layoutUrl(active))
-      .then((f) => live && setFrames(f))
+      .then((f) => {
+        if (!live) return;
+        framesOf.current = design;
+        setFrames(flowFrames(f, flowKey ? flowKey.split("\n") : []));
+      })
       .catch((e) => {
         if (!live) return;
         setLayoutError(`The frame layout cannot load: ${(e as Error).message}`);
@@ -571,7 +587,7 @@ export function Canvas({
     return () => {
       live = false;
     };
-  }, [active?.project, active?.design, screensKey]);
+  }, [active?.project, active?.design, screensKey, flowKey]);
 
   const size = () => {
     const r = ref.current?.getBoundingClientRect();
@@ -597,7 +613,8 @@ export function Canvas({
   const changeFrames = useCallback((next: FrameSpec[]) => {
     const a = state.current.active;
     setFrames(next);
-    if (!a || next.some((f) => f.page)) return; // the screens of an app are not a stored layout
+    // The screens of an app are not a stored layout; a preview shows the frames of an old version.
+    if (!a || state.current.app || state.current.preview) return;
     sendJSON("PUT", layoutUrl(a), { frames: next })
       .then(() => setLayoutError(null))
       .catch((e) => setLayoutError(`The frame layout was not saved: ${(e as Error).message}`));
@@ -933,6 +950,11 @@ export function Canvas({
               {frames?.length ?? 0}/{FRAME_LIMITS.count}
             </span>
           </button>
+        )}
+        {hiddenPages > 0 && (
+          <span className="kbd" title="A design shows at most 12 frames. Open the other pages with the page picker in the top bar.">
+            +{hiddenPages} page{hiddenPages === 1 ? "" : "s"}
+          </span>
         )}
         <button className="tool-btn" onClick={() => frames && changeFrames(arrangeRow(frames))} title="Arrange all in a row" disabled={!frames?.length || preview !== null}>
           Arrange
