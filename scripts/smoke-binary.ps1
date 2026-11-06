@@ -51,7 +51,7 @@ try {
   if ((Answer "/api/projects").Content -notmatch '"sample"') { Fail "projects API" }
   if ((Answer "/design/sample/home/").Content -notmatch "/__doi/bridge.js") { Fail "design page" }
   $tools = Invoke-WebRequest -UseBasicParsing -Uri "$url/mcp" -Method Post -TimeoutSec 10 -ContentType "application/json" -Headers @{ Accept = "application/json, text/event-stream" } -Body '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
-  foreach ($tool in "list_designs", "get_design", "get_comments", "export_png") {
+  foreach ($tool in "list_designs", "get_design", "get_design_system", "get_comments", "export_png") {
     if ([Text.Encoding]::UTF8.GetString($tools.RawContentStream.ToArray()) -notmatch $tool) { Fail "MCP tool $tool" }
   }
   Invoke-WebRequest -UseBasicParsing -Uri "$url/api/projects" -Method Post -TimeoutSec 10 -ContentType "application/json" -Body '{"name":"Kept"}' | Out-Null
@@ -63,6 +63,7 @@ try {
 
   $other = Doi @("start", "--json", "--workspace", (Join-Path $dir "other"), "--port", "$Port")
   if ($other.Code -ne 5 -or $other.Text -notmatch "port_conflict") { Fail "another workspace on this port gave $($other.Code): $($other.Text)" }
+  if (Test-Path (Join-Path $dir "other")) { Fail "the refused start made the workspace" }
 
   $stopped = Doi @("stop", "--json")
   if ($stopped.Code -ne 0 -or -not ($stopped.Text | ConvertFrom-Json).stopped) { Fail "doi stop: $($stopped.Text)" }
@@ -83,7 +84,7 @@ try {
   if ((Doi @("stop", "--json")).Code -ne 0) { Fail "the last stop" }
 
   $doctor = Doi @("doctor", "--json")
-  if ($doctor.Text -notmatch '"name":"git"') { Fail "doi doctor: $($doctor.Text)" }
+  if ($doctor.Code -ne 0 -or $doctor.Text -notmatch '"name":"git"') { Fail "doi doctor gave $($doctor.Code): $($doctor.Text)" }
   Write-Output "smoke test passed: $bin"
 } finally {
   Doi @("stop", "--json") | Out-Null
