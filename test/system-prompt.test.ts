@@ -18,9 +18,9 @@ function elements(html: string): { tag: string; oid: string | null }[] {
 // Elements that the prompt says carry no data-oid.
 const NO_OID = new Set(["html", "head", "meta", "link", "title", "body", "strong", "em"]);
 
-describe("system prompt v2", () => {
+describe("system prompt", () => {
   test("is a versioned file with the required rules", () => {
-    expect(SYSTEM_PROMPT.version).toBe("v2");
+    expect(SYSTEM_PROMPT.version).toBe("v3");
     for (const rule of ["index.html", "styles.css", "plain HTML and CSS", "data-oid", "Keep existing ids", "`edit`", "`write`"]) {
       expect(text).toContain(rule);
     }
