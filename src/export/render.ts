@@ -1,6 +1,7 @@
 import { chromium, type Browser, type Page } from "playwright-core";
 import { PAGE_CSP } from "../server/security.ts";
 import type { Frame } from "../workspace/frames.ts";
+import { CHROMIUM_ARGS } from "./browser.ts";
 import { ExportError } from "./html.ts";
 
 /**
@@ -42,7 +43,7 @@ async function launch(): Promise<Browser> {
   try {
     // WebRTC sends UDP that neither the route nor the CSP sees. Without a proxy, this policy
     // gives WebRTC no UDP at all; the init script in openPage() also removes the API.
-    return await chromium.launch({ timeout: TIMEOUT_MS, args: ["--force-webrtc-ip-handling-policy=disable_non_proxied_udp"] });
+    return await chromium.launch({ timeout: TIMEOUT_MS, args: CHROMIUM_ARGS });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     if (/Executable doesn't exist/i.test(message)) {

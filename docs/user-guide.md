@@ -118,6 +118,46 @@ The binary and `bun run start` take the same options, for example `bun run start
 | `-h`, `--help` | Show the help |
 | `install-browser` | Install Chromium for PNG and PDF export, then stop |
 
+## Start doi from an agent
+
+An agent can start doi with one command. The command returns when the UI, the API and the MCP endpoint answer, and the server keeps running after it. doi does not start a coding agent, and this works the same way for any agent.
+
+```bash
+doi start --json     # one JSON object on stdout
+doi status --json
+doi stop --json
+doi doctor --json    # git, the model CLIs, gh and the renderer; no model request
+```
+
+`doi start --json` prints:
+
+```json
+{"ok":true,"reused":false,"url":"http://127.0.0.1:4317/","mcp":"http://127.0.0.1:4317/mcp","workspace":"/home/you/.local/share/doi/workspace","pid":1234,"instance":"…","version":"0.1.0","log":"…/logs/….log","renderer":{"ready":true,"detail":"Chromium starts."}}
+```
+
+- Give `url` to the person. The agent reads the design through `mcp`.
+- `renderer.ready` is false until `doi install-browser` ran. Without it, the agent gets no rendered images.
+- A second `doi start` for the same workspace returns the same server with `"reused":true`.
+- doi never attaches to another workspace. A port in use gives exit code 5. Use `--port` with a free port, or `--port 0` for any free port.
+- `doi stop` stops only the server of this workspace, after that server confirms its identity. On Linux the server ends cleanly. On Windows the stop ends the process at once, so stop a running turn first.
+- doi knows a workspace by its path text. A symbolic link, or on Windows a junction or an 8.3 short name, counts as another workspace, so keep to one spelling. The per-user config holds one path.
+- Server logs go to the `log` file. Without `--json`, the commands print words for a person.
+
+| Exit code | Meaning |
+| --- | --- |
+| 0 | Done |
+| 1 | `doi status`: doi does not run for this workspace |
+| 2 | Bad usage, or a bad config |
+| 3 | A required tool is missing |
+| 4 | The server did not get ready, or did not stop |
+| 5 | Port conflict, or this workspace already runs |
+
+With `--json`, a failure of the command prints `{"ok":false,"code":"…","message":"…"}` on stdout. Bad usage prints words on stderr.
+
+**What the agent needs.** The agent must run the `doi` command once, which its host can ask you to allow. It must also connect to the `mcp` URL as an MCP server with the Streamable HTTP transport. A URL alone gives no visual access: the images come through the MCP tools.
+
+**A remote agent cannot reach this server.** doi listens only on `127.0.0.1`, and it refuses other hosts. A cloud agent cannot reach your computer, and doi does not offer a public address. Use the handoff bundle for such an agent. An SSH tunnel that you start yourself is the only other path; a tunnel on the same computer keeps the same `127.0.0.1` address.
+
 ## Configure
 
 The binary reads the per-user `config.toml`. A source run reads `config.toml` from the folder where you start it. `--config` names another file. All keys are optional. A relative `workspace` path is relative to the folder of the config file. `config.example.toml` lists them with comments.

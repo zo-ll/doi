@@ -9,17 +9,24 @@ import { openCommand, parseCli } from "../src/server/cli.ts";
 
 describe("parseCli", () => {
   test("no arguments: start with the default config", () => {
-    expect(parseCli([])).toEqual({ command: "start", config: undefined, workspace: undefined, port: undefined, open: false });
+    expect(parseCli([])).toEqual({ command: "run", config: undefined, workspace: undefined, port: undefined, open: false, json: false });
   });
 
   test("start options", () => {
     expect(parseCli(["--config", "a/doi.toml", "--workspace", "~/w", "--port", "5000", "--open"])).toEqual({
-      command: "start",
+      command: "run",
       config: "a/doi.toml",
       workspace: "~/w",
       port: 5000,
       open: true,
+      json: false,
     });
+    expect(parseCli(["start", "--json", "--port", "0"])).toMatchObject({ command: "start", json: true, port: 0 });
+    expect(parseCli(["status"])).toMatchObject({ command: "status", json: false });
+    expect(parseCli(["stop"])).toMatchObject({ command: "stop" });
+    expect(parseCli(["doctor", "--json"])).toEqual({ command: "doctor", json: true });
+    expect(() => parseCli(["--port", "0"])).toThrow("--port");
+    expect(() => parseCli(["launch"])).toThrow("launch");
     expect(parseCli(["--port=4317"])).toMatchObject({ port: 4317 });
     expect(() => parseCli(["--config", ""])).toThrow("--config");
   });
@@ -35,7 +42,7 @@ describe("parseCli", () => {
     for (const port of ["0", "65536", "12ab", "-1", "1.5", ""]) expect(() => parseCli(["--port", port])).toThrow("--port");
     expect(() => parseCli(["--workspace", ""])).toThrow("--workspace");
     expect(() => parseCli(["--nope"])).toThrow();
-    expect(() => parseCli(["serve"])).toThrow('Unknown command "serve"');
+    expect(() => parseCli(["launch"])).toThrow('Unknown command "launch"');
     expect(() => parseCli(["install-browser", "x"])).toThrow("Unknown arguments");
     expect(() => parseCli(["--open=yes"])).toThrow();
   });

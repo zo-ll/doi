@@ -86,6 +86,37 @@ body=$(curl -sf "$url/api/projects") || fail "projects with no workspace line"
 has "$body" '"kept"' || fail "a config with no workspace line found another workspace"
 [ ! -e "$home/.config/doi/workspace" ] || fail "a workspace in the config folder"
 stop_it
+# The launch contract (#146): the background start, a reuse, status and stop.
+jq_field() { printf '%s' "$1" | sed -n "s/.*\"$2\":\([^,}]*\).*/\1/p"; }
+run_bin() { env -i HOME="$home" PATH=/usr/bin:/bin "$bin" "$@"; }
+info=$(cd "$one" && run_bin start --json --port "$port") || fail "doi start: $info"
+[ "$(printf '%s\n' "$info" | wc -l)" = 1 ] || fail "doi start printed more than one line"
+has "$info" '"ok":true' || fail "doi start: $info"
+has "$info" "\"url\":\"$url/\"" || fail "doi start url: $info"
+has "$info" "\"mcp\":\"$url/mcp\"" || fail "doi start mcp: $info"
+has "$info" '"renderer":{"ready":' || fail "doi start renderer: $info"
+curl -sf -o /dev/null "$url/" || fail "no UI after doi start"
+body=$(curl -sf "$url/api/projects") && has "$body" '"kept"' || fail "doi start used another workspace"
+server=$(jq_field "$info" pid)
+again=$(cd "$two" && run_bin start --json --port "$port") || fail "second doi start: $again"
+has "$again" '"reused":true' || fail "second doi start: $again"
+[ "$(jq_field "$again" pid)" = "$server" ] || fail "second doi start made another server"
+status=$(cd "$two" && run_bin status --json) || fail "doi status: $status"
+has "$status" '"running":true' || fail "doi status: $status"
+code=0
+other=$(cd "$one" && run_bin start --json --workspace "$dir/other" --port "$port") || code=$?
+[ "$code" = 5 ] || fail "exit code $code for a port with another workspace: $other"
+has "$other" "port_conflict" || fail "no port conflict: $other"
+[ ! -e "$dir/other" ] || fail "the refused start made the workspace"
+stopped=$(cd "$two" && run_bin stop --json) || fail "doi stop: $stopped"
+has "$stopped" '"stopped":true' || fail "doi stop: $stopped"
+if curl -sf -o /dev/null "$url/"; then fail "the server still answers after doi stop"; fi
+code=0
+status=$(run_bin status --json) || code=$?
+[ "$code" = 1 ] || fail "exit code $code for doi status after a stop"
+report=$(run_bin doctor --json) || fail "doi doctor: $report"
+has "$report" '"name":"git"' || fail "doi doctor: $report"
+
 # A home folder that doi cannot write to: exit code 2, and the message names the per-user file.
 if [ "$(id -u)" != 0 ]; then
   locked="$dir/locked"

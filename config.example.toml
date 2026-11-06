@@ -4,7 +4,8 @@
 #   claude-code:<model>  Claude subscription through `claude -p` (log in with `claude`)
 #   codex:<model>        ChatGPT plan through `codex exec` (log in with `codex login`)
 # These need no API key. The API providers below are optional. Add a key in Settings
-# (system keychain, else ~/.config/doi/credentials.json), or set the variable below; the variable wins.
+# (system keychain, else credentials.json in the per-user config folder), or set the variable below;
+# the variable wins.
 
 # A relative path counts from the folder of this file. For an installed doi, keep the absolute
 # path of its per-user config, or doi opens another, empty workspace.
