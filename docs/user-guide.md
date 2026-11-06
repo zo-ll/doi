@@ -201,6 +201,8 @@ Every meaningful element in a design has a `data-oid` attribute. Selection, comm
 
 ## Edit on the canvas
 
+A design with one page shows a Desktop frame and a Mobile frame. A design with several pages shows one Desktop frame for each page, in page order. A click in a frame opens that page. Drag a frame label to move the frame. doi keeps the place. "+ Frame" adds a frame at another size, for example Mobile. That frame shows the open page. A design shows at most 12 frames. Open the other pages with the page picker in the top bar.
+
 With the Select tool, you can change the selected element directly. doi writes each change as CSS in a `[data-oid="…"]` rule at the end of `styles.css`, or moves the element in the HTML. Each change is one version.
 
 - **Resize:** drag a handle on the right edge, the bottom edge or the corner. The size snaps to the spacing unit.
