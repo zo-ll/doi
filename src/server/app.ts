@@ -29,6 +29,7 @@ import { DesignLocks } from "./locks.ts";
 import { checkRequest, HOSTNAME, PAGE_HEADERS } from "./security.ts";
 import { deleteProject, patchDesign, patchProject, postDesign, postProject, postScreen, putDesignKind } from "./projects.ts";
 import { createTurnHandler, getChat } from "./turns.ts";
+import { version } from "../../package.json";
 
 const METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);
 type AnyHandler = (req: Request, server: Bun.Server<unknown>) => Response | Promise<Response>;
@@ -55,7 +56,8 @@ function guardRoutes<R extends string>(routes: Bun.Serve.Routes<unknown, R>): Bu
  * Starts doi: the workspace, the watcher and the HTTP server on 127.0.0.1. `port: 0` picks a
  * free port (tests).
  */
-export async function startServer(config: Config, options: { port?: number; development?: boolean } = {}) {
+export async function startServer(config: Config, options: { port?: number; development?: boolean; instanceId?: string } = {}) {
+  const instanceId = options.instanceId ?? crypto.randomUUID();
   await ensureWorkspace(config.workspace);
   // Without git, doi still works; only the version history is missing.
   await ensureRepo(config.workspace).catch((e) => console.error("Version history is off:", e instanceof Error ? e.message : e));
@@ -214,6 +216,8 @@ export async function startServer(config: Config, options: { port?: number; deve
       "/api/providers/:id/login": { POST: (req) => postProviderLogin(req.params) },
       "/api/providers/:id/models": (req) => getProviderModels(config, req.params),
       // The workspace path and its git state, for the projects navigator. `changes` is null without git.
+      // Who runs on this port: `doi status` and `doi stop` act only on a matching answer.
+      "/api/instance": () => Response.json({ id: instanceId, pid: process.pid, workspace: config.workspace, version }),
       "/api/workspace": async () => Response.json({ path: config.workspace, changes: await workspaceChanges(config.workspace) }),
       "/api/events": (req, srv) => designEvents(watcher, req, srv),
       "/api/design-systems": async () => Response.json(await listDesignSystems(config.workspace)),
@@ -324,6 +328,7 @@ export async function startServer(config: Config, options: { port?: number; deve
   return {
     server,
     workspace: config.workspace,
+    instanceId,
     stop() {
       watcher.close();
       server.stop(true);
