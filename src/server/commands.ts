@@ -6,7 +6,7 @@ import { loadConfig, type Config } from "../config.ts";
 import { rendererStatus } from "../export/browser.ts";
 import { ensureUserConfig, userPaths } from "../user-dirs.ts";
 import { version } from "../../package.json";
-import { CommandError, EXIT, type ServerCli } from "./cli.ts";
+import { CommandError, EXIT, openBrowser, type ServerCli } from "./cli.ts";
 import { findInstance, LOCAL, logFile, portInUse, probe, recordFile, readRecord, removeRecord, type InstanceRecord } from "./instance.ts";
 import { checkTools } from "./tools.ts";
 
@@ -75,6 +75,7 @@ export async function start(cli: ServerCli) {
     if (asked && asked !== existing.port) {
       throw new CommandError(EXIT.port, "port_conflict", `doi already runs for this workspace on port ${existing.port}, not ${asked}. Stop it with doi stop, or use that port.`);
     }
+    if (cli.open) openBrowser(`http://127.0.0.1:${existing.port}/`);
     return launchInfo(existing, true);
   }
   if (!checkTools().find((t) => t.name === "git")?.found) {
@@ -118,7 +119,10 @@ export async function start(cli: ServerCli) {
     if (ended !== undefined) {
       // Two starts at once: the other one has the port, and it serves this workspace.
       const winner = await findInstance(config.workspace);
-      if (winner) return finish(await launchInfo(winner, true));
+      if (winner) {
+        if (cli.open) openBrowser(`http://127.0.0.1:${winner.port}/`);
+        return finish(await launchInfo(winner, true));
+      }
       if (ended === EXIT.port) throw new CommandError(EXIT.port, "port_conflict", `Port ${config.port} is in use. Use --port with a free port, or --port 0.`);
       if (ended === EXIT.usage) throw new CommandError(EXIT.usage, "invalid_config", `doi could not use its config. See ${log}`);
       throw new CommandError(EXIT.readiness, "not_ready", `The server ${killedBy ? `was killed (${killedBy})` : `stopped with code ${ended}`} before it was ready. See ${log}`);

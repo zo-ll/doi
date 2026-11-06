@@ -151,7 +151,7 @@ const servers = (workspace: string) =>
   Bun.spawnSync(["ps", "-eo", "pid=,args="]).stdout.toString().split("\n").filter((line) => line.includes(" serve ") && line.includes(workspace));
 
 describe("one server for each workspace", () => {
-  test("six starts at once with any free port make one server, and all report it", async () => {
+  test.skipIf(process.platform === "win32")("six starts at once with any free port make one server, and all report it", async () => {
     const results = await Promise.all(Array.from({ length: 6 }, () => startDoi("one", "0")));
     expect(results.map((r) => r.code)).toEqual([0, 0, 0, 0, 0, 0]);
     expect(new Set(results.map((r) => r.info.instance)).size).toBe(1);
@@ -162,7 +162,7 @@ describe("one server for each workspace", () => {
     expect(servers(ws())).toHaveLength(0);
   }, 60_000);
 
-  test("a stopping server leaves the record of another server alone", async () => {
+  test.skipIf(process.platform === "win32")("a stopping server leaves the record of another server alone", async () => {
     const { info } = await startDoi();
     const file = recordFile(ws(), join(root, "data", "doi"));
     const foreign = { id: "foreign", pid: process.pid, port: 1, workspace: ws(), version: "0", log: null };
@@ -184,7 +184,7 @@ test("a proxy in the environment does not change what doi sees on its own comput
   expect(JSON.parse((await doi(["stop", ...common()], { env: proxied })).stdout)).toMatchObject({ stopped: true });
 }, 40_000);
 
-test("a stalled server keeps its identity: exit code 4, and it works again afterwards", async () => {
+test.skipIf(process.platform === "win32")("a stalled server keeps its identity: exit code 4, and it works again afterwards", async () => {
   const { info } = await startDoi();
   const file = recordFile(ws(), join(root, "data", "doi"));
   process.kill(info.pid, "SIGSTOP");
@@ -201,17 +201,50 @@ test("a stalled server keeps its identity: exit code 4, and it works again after
   expect(JSON.parse((await doi(["status", ...common()])).stdout)).toMatchObject({ running: true, pid: info.pid });
 }, 40_000);
 
-test("doi start --open opens the browser, through the server", async () => {
+test.skipIf(process.platform !== "linux")("doi start --open opens the browser, for a new server and for one that runs", async () => {
   const bin = join(root, "bin");
   const opened = join(root, "opened");
-  await Bun.write(join(bin, "xdg-open"), `#!/bin/sh\necho "$1" > "${opened}"\n`);
+  await Bun.write(join(bin, "xdg-open"), `#!/bin/sh\necho "$1" >> "${opened}"\n`);
   await Bun.$`chmod +x ${join(bin, "xdg-open")}`;
-  const result = await doi(["start", ...common(), "--port", "0", "--open"], { env: { ...env, PATH: `${bin}:${env.PATH}` } });
+  const withOpen = { env: { ...env, PATH: `${bin}:${env.PATH}` } };
+  const lines = async () => ((await Bun.file(opened).exists()) ? (await Bun.file(opened).text()).trim().split("\n") : []);
+  const result = await doi(["start", ...common(), "--port", "0", "--open"], withOpen);
   started.push({ workspace: ws() });
   expect(result.code).toBe(EXIT.ok);
-  for (let i = 0; i < 40 && !(await Bun.file(opened).exists()); i++) await Bun.sleep(50);
-  expect((await Bun.file(opened).text()).trim()).toBe(JSON.parse(result.stdout).url);
+  const url = JSON.parse(result.stdout).url;
+  for (let i = 0; i < 40 && (await lines()).length < 1; i++) await Bun.sleep(50);
+  expect(await lines()).toEqual([url]);
+  expect(JSON.parse((await doi(["start", ...common(), "--open"], withOpen)).stdout)).toMatchObject({ reused: true });
+  for (let i = 0; i < 40 && (await lines()).length < 2; i++) await Bun.sleep(50);
+  expect(await lines()).toEqual([url, url]);
 }, 40_000);
+
+test("a broken record claims nothing: the next start replaces it", async () => {
+  const file = recordFile(ws(), join(root, "data", "doi"));
+  await Bun.write(file, "not json");
+  const { code, info } = await startDoi();
+  expect(code).toBe(EXIT.ok);
+  expect((await readRecord(file))?.pid).toBe(info.pid);
+}, 40_000);
+
+test("the unreachable message advises only what doi knows", async () => {
+  if (process.platform === "win32") return;
+  const silent = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } });
+  const unrelated = Bun.spawn(["sleep", "30"]);
+  try {
+    const file = recordFile(ws(), join(root, "data", "doi"));
+    await writeRecord({ id: "old", pid: unrelated.pid, port: silent.port, workspace: ws(), version: "0", log: null }, file);
+    const result = await doi(["stop", ...common()]);
+    expect(result.code).toBe(EXIT.readiness);
+    const { message } = JSON.parse(result.stdout);
+    expect(message).toContain(file);
+    expect(message).not.toContain("end that process");
+    expect(alive(unrelated.pid)).toBe(true);
+  } finally {
+    unrelated.kill();
+    silent.stop(true);
+  }
+}, 30_000);
 
 test("a Windows workspace path ignores case in its key", () => {
   expect(workspaceKey("C:\\Work\\WS", "win32")).toBe(workspaceKey("c:\\work\\ws", "win32"));
@@ -237,7 +270,7 @@ describe("doi status and doi stop", () => {
     expect(JSON.parse(result.stdout)).toEqual({ ok: true, stopped: false, workspace: ws() });
   });
 
-  test("a stale record never stops an unrelated process", async () => {
+  test.skipIf(process.platform === "win32")("a stale record never stops an unrelated process", async () => {
     const unrelated = Bun.spawn(["sleep", "30"]);
     try {
       // The record names a live process, and nothing that proves it is doi answers on that port.

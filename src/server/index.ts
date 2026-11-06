@@ -1,7 +1,7 @@
 import { installBrowser, isDownloadChild, runDownloadChild } from "../export/browser.ts";
 import { version } from "../../package.json";
 import { startServer } from "./app.ts";
-import { CommandError, EXIT, openCommand, parseCli, USAGE, type Cli, type ServerCli } from "./cli.ts";
+import { CommandError, EXIT, openBrowser, parseCli, USAGE, type Cli, type ServerCli } from "./cli.ts";
 import { doctor, resolveConfig, start, status, stop } from "./commands.ts";
 import { claimRecord, findInstance, recordFile, releaseRecord } from "./instance.ts";
 
@@ -33,13 +33,7 @@ async function runServer(cli: ServerCli): Promise<void> {
   process.once("SIGTERM", end);
   const url = server.url.href;
   console.log(`doi is running at ${url}`);
-  if (cli.open) {
-    try {
-      Bun.spawn(openCommand(url), { stdio: ["ignore", "ignore", "ignore"] });
-    } catch {
-      console.log("Could not open a browser. Open the URL above.");
-    }
-  }
+  if (cli.open && !openBrowser(url)) console.log("Could not open a browser. Open the URL above.");
 }
 
 /** Machine output goes to stdout as one JSON object; words for a person go there without --json. */

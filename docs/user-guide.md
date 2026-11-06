@@ -140,6 +140,7 @@ doi doctor --json    # git, the model CLIs, gh and the renderer; no model reques
 - A second `doi start` for the same workspace returns the same server with `"reused":true`.
 - doi never attaches to another workspace. A port in use gives exit code 5. Use `--port` with a free port, or `--port 0` for any free port.
 - `doi stop` stops only the server of this workspace, after that server confirms its identity. On Linux the server ends cleanly. On Windows the stop ends the process at once, so stop a running turn first.
+- doi knows a workspace by its path text. A symbolic link, or on Windows a junction or an 8.3 short name, counts as another workspace, so keep to one spelling. The per-user config holds one path.
 - Server logs go to the `log` file. Without `--json`, the commands print words for a person.
 
 | Exit code | Meaning |

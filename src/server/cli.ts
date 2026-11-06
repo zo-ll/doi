@@ -79,6 +79,16 @@ export function parseCli(argv: string[]): Cli {
   return { command, config: values.config, workspace: values.workspace, port, open: values.open, json: values.json };
 }
 
+/** Opens a URL in the default browser. Returns false when it could not start the command. */
+export function openBrowser(url: string): boolean {
+  try {
+    Bun.spawn(openCommand(url), { stdio: ["ignore", "ignore", "ignore"] });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** The command that opens a URL in the default browser on this system. */
 export function openCommand(url: string, platform: NodeJS.Platform = process.platform): string[] {
   if (platform === "darwin") return ["open", url];

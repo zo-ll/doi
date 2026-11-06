@@ -44,6 +44,21 @@ export async function writeRecord(record: InstanceRecord, file = recordFile(reco
 }
 
 /**
+ * Creates the file only when it does not exist. `link` also shows a reader a whole file. A folder
+ * without hard links (a network share, FAT) falls back to an exclusive write; a reader that comes
+ * during that write sees a broken file, which counts as no record, and it tries again.
+ */
+async function exclusive(tmp: string, record: InstanceRecord, file: string): Promise<void> {
+  try {
+    await link(tmp, file);
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code !== "EPERM" && code !== "EACCES" && code !== "ENOTSUP" && code !== "ENOSYS") throw e;
+    await writeFile(file, JSON.stringify(record, null, 2) + "\n", { flag: "wx", mode: 0o600 });
+  }
+}
+
+/**
  * Makes this process the one server of its workspace. `link` fails when the file exists, so only
  * one of many servers can win, and a reader sees a whole file. The same process may renew its
  * record: `bun --hot` runs this again after a reload. Returns the other server when one is live.
@@ -53,12 +68,18 @@ export async function claimRecord(record: InstanceRecord, file = recordFile(reco
   try {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        await link(tmp, file);
+        await exclusive(tmp, record, file);
         return null;
       } catch (e) {
         if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
       }
-      if ((await readRecord(file))?.pid === record.pid) {
+      const current = await readRecord(file);
+      if (!current) {
+        // A file that cannot be read claims nothing. It must not block every later start.
+        await removeRecord(file);
+        continue;
+      }
+      if (current.pid === record.pid) {
         await writeRecord(record, file);
         return null;
       }
@@ -140,7 +161,7 @@ export async function findInstance(workspace: string, file = recordFile(workspac
   const live = await ask(record.port);
   if (live === "timeout" && processAlive(record.pid) && (await portInUse(record.port))) {
     // A stalled server keeps its identity: without the record, nothing could stop it later.
-    throw new CommandError(EXIT.readiness, "unreachable", `doi (process ${record.pid}) on port ${record.port} does not answer. Try again, or end that process yourself.`);
+    throw new CommandError(EXIT.readiness, "unreachable", `The record ${file} names process ${record.pid} on port ${record.port}, which does not answer. Try again in a moment. If doi is gone, remove that file.`);
   }
   if (typeof live !== "string" && live.id === record.id && live.pid === record.pid && workspaceKey(live.workspace) === workspaceKey(workspace)) return record;
   // A server writes its record only after it listens, so this record is an old one.
