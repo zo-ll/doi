@@ -83,6 +83,27 @@ try {
   if ((Get-Content -Raw $config) -ne $before) { Fail "the second start changed the config" }
   if ((Doi @("stop", "--json")).Code -ne 0) { Fail "the last stop" }
 
+  # The shared design (#146): an agent reads through MCP, a person edits, and the next read has the edit.
+  $started = Doi @("start", "--json", "--port", "$Port")
+  if ($started.Code -ne 0) { Fail "doi start for MCP gave $($started.Code)" }
+  function Mcp($tool, $arguments) {
+    $body = @{ jsonrpc = "2.0"; id = 1; method = "tools/call"; params = @{ name = $tool; arguments = $arguments } } | ConvertTo-Json -Depth 5
+    $answer = Invoke-WebRequest -UseBasicParsing -Uri "$url/mcp" -Method Post -TimeoutSec 120 -ContentType "application/json" -Headers @{ Accept = "application/json, text/event-stream" } -Body $body
+    return [Text.Encoding]::UTF8.GetString($answer.RawContentStream.ToArray())
+  }
+  $design = @{ project = "sample"; design = "home" }
+  $first = Mcp "get_design" $design
+  if ($first -notmatch "index.html") { Fail "MCP get_design: no page" }
+  if ($first -match "321px") { Fail "MCP get_design: the edit is there before the edit" }
+  Invoke-WebRequest -UseBasicParsing -Uri "$url/api/projects/sample/designs/home/edit" -Method Post -TimeoutSec 20 -ContentType "application/json" -Body '{"oid":"main","style":{"width":"321px"}}' | Out-Null
+  if ((Mcp "get_design" $design) -notmatch "321px") { Fail "the agent's next read has no edit" }
+  if ($env:DOI_SMOKE_RENDER -eq "1") {
+    if ((Doi @("install-browser")).Code -ne 0) { Fail "doi install-browser" }
+    if ((Doi @("status", "--json")).Text -notmatch '"renderer":\{"ready":true') { Fail "the renderer is not ready" }
+    if ((Mcp "export_png" $design) -notmatch '"type":"image"') { Fail "MCP export_png gave no image" }
+  }
+  if ((Doi @("stop", "--json")).Code -ne 0) { Fail "the stop after MCP" }
+
   $doctor = Doi @("doctor", "--json")
   if ($doctor.Code -ne 0 -or $doctor.Text -notmatch '"name":"git"') { Fail "doi doctor gave $($doctor.Code): $($doctor.Text)" }
   Write-Output "smoke test passed: $bin"

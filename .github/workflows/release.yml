@@ -36,7 +36,9 @@ jobs:
           CI: "1"
       - run: bun run build
       - name: Checksums
-        run: cd dist && sha256sum doi-* > SHA256SUMS && cat SHA256SUMS
+        run: |
+          cp scripts/install.sh scripts/install.ps1 dist/
+          cd dist && sha256sum doi-* install.* > SHA256SUMS && cat SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
           name: dist
@@ -60,6 +62,7 @@ jobs:
       - run: |
           chmod +x dist/doi-*-linux-${{ matrix.arch }}
           scripts/smoke-binary.sh dist/doi-*-linux-${{ matrix.arch }}
+          scripts/e2e-install.sh dist/doi-*-linux-${{ matrix.arch }}
 
   check-windows:
     needs: build
@@ -79,6 +82,7 @@ jobs:
         run: |
           $bin = (Get-ChildItem "dist\doi-*-windows-${{ matrix.arch }}.exe").FullName
           .\scripts\smoke-binary.ps1 $bin
+          .\scripts\test-install.ps1 $bin -ModifyPath
 
   publish:
     needs: [check-linux, check-windows]
