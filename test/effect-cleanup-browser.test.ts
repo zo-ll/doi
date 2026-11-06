@@ -125,7 +125,36 @@ test.skipIf(!hasBrowser)("N opens a focused comment form once, and it stays clos
     await page.getByRole("tab", { name: "History" }).click();
     await page.getByRole("tab", { name: "Comments" }).click();
     await page.getByText(OLD_COMMENT).waitFor();
+    // Enough time for an effect or a late update to open the form again.
+    await Bun.sleep(400);
     expect(await form.count()).toBe(0);
+  });
+}, 30_000);
+
+test.skipIf(!hasBrowser)("a late comment save does not close a newer form", async () => {
+  await drive(async ({ page, context, origin, oid }) => {
+    const held = Promise.withResolvers<void>();
+    let saves = 0;
+    await context.route(`**${DESIGNS}/home/comments`, async (route) => {
+      if (route.request().method() === "POST" && saves++ === 0) await held.promise;
+      await route.continue();
+    });
+    await page.goto(`${origin}/?project=sample&design=home&node=${oid}`, { waitUntil: "domcontentloaded" });
+    await page.locator(".node-link").waitFor();
+    await page.getByText(OLD_COMMENT).waitFor();
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await page.keyboard.press("n");
+    const form = page.getByLabel("Comment", { exact: true });
+    await form.fill("First comment");
+    const answer = page.waitForResponse((r) => r.url().endsWith(`${DESIGNS}/home/comments`) && r.request().method() === "POST");
+    await page.getByRole("button", { name: "Add comment" }).click();
+    await page.getByRole("tab", { name: "History" }).click();
+    await page.getByRole("tab", { name: "Comments" }).click();
+    await form.fill("Second unsaved comment");
+    held.resolve();
+    await answer;
+    await page.getByText("First comment", { exact: true }).waitFor();
+    expect(await form.inputValue()).toBe("Second unsaved comment");
   });
 }, 30_000);
 

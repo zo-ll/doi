@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CommentView, Load } from "../api.ts";
 import type { Selection } from "./ChatPanel.tsx";
 import { MOD } from "./TopBar.tsx";
@@ -40,6 +40,14 @@ export function CommentsPanel({
   const [confirm, setConfirm] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** The form state lives in the app: a save that ends after this panel left must not close a newer form. */
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   // Each action shows the server's message when it fails.
   const act = async (job: () => Promise<void>) => {
@@ -60,7 +68,7 @@ export function CommentsPanel({
     if (!selection || !draft.trim() || busy) return;
     if (await act(() => onAdd(selection.oid, draft.trim()))) {
       setDraft("");
-      onAdding(false);
+      if (mounted.current) onAdding(false);
     }
   };
   const saveEdit = async () => {

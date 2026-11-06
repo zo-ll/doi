@@ -792,6 +792,7 @@ export function App() {
               )}
               {!umlOpen && sideTab === "comments" && (
                 <CommentsPanel
+                  key={active ? `${active.project}/${active.design}` : ""}
                   comments={active ? comments.comments : { state: "ready", data: [] }}
                   selection={selection}
                   adding={addingComment}
