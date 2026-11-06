@@ -2,6 +2,7 @@ import { readdir } from "node:fs/promises";
 import { extname, join, relative, sep } from "node:path";
 import type { ContentPart, Message, Provider, ProviderCapabilities } from "../providers/types.ts";
 import { userText, type TurnComment } from "../workspace/chat.ts";
+import { MAX_SCREENS } from "../workspace/frames.ts";
 
 export interface DesignFile {
   /** Path relative to the design folder, with "/" separators. */
@@ -92,7 +93,8 @@ The canvas shows each page of this design as one phone screen, 390 by 844 px, si
 - When the user asks for more screens, add new pages with the write tool. Do not put several screens in one page.
 - Keep the shared styles in styles.css and link it from every page. Use the same tokens, navigation and action bar on each screen.
 - Where the app goes from one screen to another, use a plain link, for example <a href="files.html">.
-- Design for a phone only: 390 px wide, touch targets of at least 44 px, no desktop layout.`;
+- Design for a phone only: 390 px wide, touch targets of at least 44 px, no desktop layout.
+- An app has at most ${MAX_SCREENS} screens, not 12. These rules have priority over the page names and limits above.`;
 
 /**
  * Builds the request in the order of the design doc, so the prompt cache can reuse the start:

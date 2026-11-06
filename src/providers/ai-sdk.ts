@@ -147,16 +147,23 @@ export async function* streamDesign(
         throw part.error instanceof Error ? part.error : new ProviderError(String(part.error));
       case "abort":
         throw new DOMException("The generation was stopped.", "AbortError");
-      case "finish":
-        if (blocks) yield* parsed(() => blocks.end());
-        yield {
+      case "finish": {
+        const usage: GenerateEvent = {
           type: "usage",
           inputTokens: part.totalUsage.inputTokens ?? 0,
           outputTokens: part.totalUsage.outputTokens ?? 0,
           cachedTokens: part.totalUsage.inputTokenDetails?.cacheReadTokens ?? 0,
         };
+        // The last tool call is cut and gets no event: the turn must not look complete. Its tokens count.
+        if (part.finishReason === "length") {
+          yield usage;
+          throw new ProviderError("The model reached its output limit before the end of its answer. Ask for fewer pages, or use another model.");
+        }
+        if (blocks) yield* parsed(() => blocks.end());
+        yield usage;
         yield { type: "done" };
         break;
+      }
     }
   }
 }

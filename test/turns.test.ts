@@ -278,7 +278,7 @@ describe("POST turns", () => {
       model: "big-model",
       files: ["styles.css"],
       usage: { inputTokens: 10, outputTokens: 5, cachedTokens: 0 },
-      prompt: "v2",
+      prompt: "v3",
     });
 
     await events(await post({ text: "Now bigger", target: "title" }));

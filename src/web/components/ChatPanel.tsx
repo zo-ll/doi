@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { chatUrl, getJSON, turnUrl, uploadUrl, type Active, type ChatEntryView } from "../api.ts";
+import { parseAsk } from "../ask.ts";
+import { AskCard } from "./AskCard.tsx";
 import { isImageType, prepareImage, type PreparedImage } from "../images.ts";
 import { IMAGE_LIMITS } from "../../workspace/image-limits.ts";
 import {
@@ -277,17 +279,29 @@ export function ChatPanel({
     if (applied.length) onAppliedSent?.();
     void sendTurn(s);
   };
-  const retry = (id: number) => {
-    const s = sentRef.current.get(id);
-    if (!s || running) return;
-    // The composer is empty after Send, so its vision warning cannot show for a retry.
+  /** Sends a turn that the composer did not make, so its vision warning cannot show. */
+  const resend = (s: Sent) => {
     if (s.images.length && current?.vision === false) {
-      setImageError(`${shortModel(current.model)} cannot read images. Pick a model with vision, then retry.`);
+      setImageError(`${shortModel(current.model)} cannot read images. Pick a model with vision, then try again.`);
       setModelMenu(true);
       return;
     }
     setImageError(null);
     void sendTurn(s);
+  };
+  /**
+   * The answer to an `ask` block goes as the next message, with the element and the images of the
+   * request: the history keeps no old image. After a reload the panel has no images. The comments of
+   * the request do not go again: the history has their text, and one can be done or gone by now.
+   */
+  const answerAsk = (id: number, text: string) => {
+    if (running || !target) return;
+    const sent = sentRef.current.get(id);
+    resend({ text, target: sent?.target ?? null, images: sent?.images ?? [], comments: [] });
+  };
+  const retry = (id: number) => {
+    const s = sentRef.current.get(id);
+    if (s && !running) resend(s);
   };
 
   // Esc closes the model menu, wherever the focus is.
@@ -389,7 +403,7 @@ export function ChatPanel({
               </div>
             </div>
           ) : m.kind === "assistant" ? (
-            <AnswerView key={m.id} answer={m} running={running || !!readOnlyReason} onRetry={() => retry(m.id)} onOtherModel={() => setModelMenu(true)} />
+            <AnswerView key={m.id} answer={m} running={running || !!readOnlyReason} onRetry={() => retry(m.id)} onOtherModel={() => setModelMenu(true)} onAnswer={m.id === messages.at(-1)?.id && !running && !disabled ? (text) => answerAsk(m.id, text) : undefined} />
           ) : m.kind === "error" ? (
             <div key={m.id} className="banner banner-err" role="alert">
               <span className="dot dot-err" />
@@ -620,8 +634,9 @@ function useElapsed(since: string | undefined, on: boolean): number {
   return Math.max(0, Math.floor((now - start) / 1000));
 }
 
-function AnswerView({ answer: a, running, onRetry, onOtherModel }: { answer: Answer; running: boolean; onRetry: () => void; onOtherModel: () => void }) {
+function AnswerView({ answer: a, running, onRetry, onOtherModel, onAnswer }: { answer: Answer; running: boolean; onRetry: () => void; onOtherModel: () => void; onAnswer?: (text: string) => void }) {
   const streaming = a.status === "running";
+  const ask = parseAsk(a.text, streaming);
   const elapsed = useElapsed(a.at, streaming);
   const none = null as number | null;
   const files = (
@@ -636,12 +651,13 @@ function AnswerView({ answer: a, running, onRetry, onOtherModel }: { answer: Ans
         {a.task && <span>· {a.task}</span>}
         {a.at && <span>· {time(a.at)}</span>}
       </div>
-      {a.text && (
+      {ask.text && (
         <p className="msg-text">
-          {a.text}
+          {ask.text}
           {streaming && <span className="stream-cursor" />}
         </p>
       )}
+      {ask.questions && <AskCard questions={ask.questions} onAnswer={a.status === "done" ? onAnswer : undefined} />}
       {streaming && (
         <p className="turn-progress">
           <span className="spinner" />

@@ -176,8 +176,10 @@ Usage (top bar) shows the tokens of each answer. For an API model with an entry 
 
 1. Open the projects drawer (the doi logo, or Ctrl/⌘ + P). Make a project, then a design, a mobile app or a slide deck.
 2. Type a description in the chat on the left, and send it with Ctrl/⌘ + Enter.
-3. The model writes the pages. The canvas shows a single page in a Desktop and a Mobile frame, and several pages in one Desktop frame each.
+3. The model makes what the request needs. A request for one thing, for example a card, makes one page. A request for a product or a flow makes one linked page for each screen, up to 12 (24 in a mobile app). The canvas shows a single page in a Desktop and a Mobile frame, and several pages in one Desktop frame each.
 4. Send more messages to change the design. Each completed turn is a new version.
+
+If a request does not say enough, or if the model can read it as much more or much less than you want, the model asks first. The chat shows its questions with options and a field for your own answer. Select an option or write an answer, then select Send answer. You choose lets the model make the choices. The model is told to change no file in a turn with questions; doi does not check this.
 
 To rename a design, use its Rename control in the projects drawer. F2 also starts a rename when the design has focus.
 
@@ -311,7 +313,7 @@ The handoff includes the diagrams when the project uses UML: the agent prompt as
 Select an element and press N, or use the Comment tool (C). The Comments tab on the right lists the comments, and the canvas shows a pin on each element.
 
 - Apply puts a comment into your next message.
-- Done marks a comment as complete. When a turn includes an applied comment and changes its element, doi marks that comment as done.
+- Done marks a comment as complete. When a turn includes an applied comment and changes its element, doi marks that comment as done. If the model asks a question in that turn, your answer does not send the comment again, so the comment stays open. Select Done after the answer.
 
 ### History
 
