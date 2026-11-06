@@ -150,8 +150,8 @@ export function App() {
   const [running, setRunning] = useState(false);
   /** The restore question for the previewed version is open. */
   const [askRestore, setAskRestore] = useState(false);
-  /** Bumped to open the new-comment form (N, or the Comment tool). */
-  const [newComment, setNewComment] = useState(0);
+  /** The new-comment form is open (N, the Comment tool, or its button). It shows only with a selection. */
+  const [addingComment, setAddingComment] = useState(false);
   const [tweaksOpen, setTweaksOpen] = useState(false);
   /** Live tweak values, by CSS variable; they show in the frames until saved or reset. */
   const [liveVars, setLiveVars] = useState<Record<string, string>>({});
@@ -196,6 +196,7 @@ export function App() {
     setUmlOpen(null); setUmlDirty(false);
     setActive(a);
     setSelection(null);
+    setAddingComment(false);
     setApplied([]); // applied comments belong to the design they were made on
     setLiveVars({});
     setPage("index.html");
@@ -266,25 +267,22 @@ export function App() {
   const commentList = comments.comments.state === "ready" ? comments.comments.data : [];
   const pins = useMemo(() => pinsOf(commentList), [commentList]);
   // A comment that a turn marked done, or that someone deleted, leaves the next turn.
-  useEffect(() => {
-    if (comments.comments.state !== "ready") return;
+  // It stays out when the comment opens again, so this changes the state and is not only a filter.
+  if (comments.comments.state === "ready") {
     const open = new Set(comments.comments.data.filter((c) => c.status === "open" && !c.detached).map((c) => c.id));
-    setApplied((now) => (now.every((c) => open.has(c.id)) ? now : now.filter((c) => open.has(c.id))));
-  }, [comments.comments]);
+    if (!applied.every((c) => open.has(c.id))) setApplied(applied.filter((c) => open.has(c.id)));
+  }
   const openComments = commentList.filter((c) => c.status === "open").length;
 
   const [pages] = useLoad<string[]>(active ? `/api/projects/${active.project}/designs/${active.design}/pages?r=${revision}` : null);
   // A page that a node URL named but the design does not have: show the first page. A screen
   // that "+ Screen" just made is not in the list until it loads again.
-  const newScreen = useRef<string | null>(null);
-  useEffect(() => {
-    if (pages.state !== "ready" || !pages.data.length) return;
-    if (pages.data.includes(page)) {
-      if (newScreen.current === page) newScreen.current = null;
-      return;
-    }
-    if (newScreen.current !== page) setPage(pages.data[0]!);
-  }, [pages, page]);
+  const [newScreen, setNewScreen] = useState<string | null>(null);
+  if (pages.state === "ready" && pages.data.length) {
+    if (!pages.data.includes(page)) {
+      if (newScreen !== page) setPage(pages.data[0]!);
+    } else if (newScreen === page) setNewScreen(null);
+  }
 
   // The address bar follows the open design, page and selection, as a Figma link does.
   const nodeRef = active ? { project: active.project, design: active.design, page, node: selection?.oid ?? null } : null;
@@ -329,7 +327,7 @@ export function App() {
     while (have.has(`screen-${n}.html`)) n++;
     sendJSON<{ page: string }>("POST", `/api/projects/${a.project}/designs/${a.design}/screens`, { name: `screen-${n}` }).then(
       (r) => {
-        newScreen.current = r.page;
+        setNewScreen(r.page);
         setRevision((v) => v + 1);
         setPage(r.page);
         setSelection(null);
@@ -376,7 +374,7 @@ export function App() {
       if (!mod && !e.altKey && key === "n" && !typing(e) && selectionRef.current) {
         e.preventDefault();
         showSideRef.current("comments");
-        setNewComment((k) => k + 1);
+        setAddingComment(true);
         return;
       }
       if (!mod) return;
@@ -476,9 +474,10 @@ export function App() {
         theme={theme}
         onTheme={toggleTheme}
       />
-      {exportOpen === "file" && active && <ExportDialog project={active.project} design={active.design} onClose={() => setExportOpen(null)} />}
+      {exportOpen === "file" && active && <ExportDialog key={`${active.project}/${active.design}`} project={active.project} design={active.design} onClose={() => setExportOpen(null)} />}
       {exportOpen === "handoff" && active && (
         <HandoffDialog
+          key={`${active.project}/${active.design}`}
           project={active.project}
           design={active.design}
           version={versionCount}
@@ -690,7 +689,7 @@ export function App() {
           }}
           onComment={() => {
             showSide("comments");
-            setNewComment((k) => k + 1);
+            setAddingComment(true);
           }}
           onOpenHistory={() => showSide("history")}
           liveVars={liveVars}
@@ -795,7 +794,8 @@ export function App() {
                 <CommentsPanel
                   comments={active ? comments.comments : { state: "ready", data: [] }}
                   selection={selection}
-                  newKey={newComment}
+                  adding={addingComment}
+                  onAdding={setAddingComment}
                   applied={applied.map((c) => c.id)}
                   onSelect={(oid) => setSelection({ oid })}
                   onAdd={comments.add}

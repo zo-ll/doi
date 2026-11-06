@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { CommentView, Load } from "../api.ts";
 import type { Selection } from "./ChatPanel.tsx";
 import { MOD } from "./TopBar.tsx";
@@ -8,7 +8,8 @@ const time = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour
 export function CommentsPanel({
   comments,
   selection,
-  newKey,
+  adding,
+  onAdding,
   applied,
   onSelect,
   onAdd,
@@ -20,8 +21,9 @@ export function CommentsPanel({
 }: {
   comments: Load<CommentView[]>;
   selection: Selection | null;
-  /** Changes when the user asks for a new comment (N, or the Comment tool). */
-  newKey: number;
+  /** The new-comment form is open. */
+  adding: boolean;
+  onAdding: (adding: boolean) => void;
   /** Ids of the comments that go with the next turn. */
   applied: string[];
   onSelect: (oid: string) => void;
@@ -33,21 +35,11 @@ export function CommentsPanel({
   /** Puts a comment into the next turn, or takes it out. `n` is its number. */
   onToggleApply: (c: CommentView, n: number) => void;
 }) {
-  const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const newRef = useRef<HTMLTextAreaElement>(null);
-
-  // N or the Comment tool opens the form for the selected element.
-  useEffect(() => {
-    if (newKey && selection) setAdding(true);
-  }, [newKey]);
-  useEffect(() => {
-    if (adding) newRef.current?.focus();
-  }, [adding]);
 
   // Each action shows the server's message when it fails.
   const act = async (job: () => Promise<void>) => {
@@ -68,7 +60,7 @@ export function CommentsPanel({
     if (!selection || !draft.trim() || busy) return;
     if (await act(() => onAdd(selection.oid, draft.trim()))) {
       setDraft("");
-      setAdding(false);
+      onAdding(false);
     }
   };
   const saveEdit = async () => {
@@ -91,7 +83,7 @@ export function CommentsPanel({
         <button
           className="btn btn-secondary btn-md"
           disabled={!selection}
-          onClick={() => setAdding(true)}
+          onClick={() => onAdding(true)}
           title={selection ? `New comment on ${selection.oid} (N)` : "Select an element on the canvas first"}
         >
           New comment<span className="kbd">N</span>
@@ -109,7 +101,7 @@ export function CommentsPanel({
         <div className="comment-new">
           <div className="comment-new-target">on {selection.oid}</div>
           <textarea
-            ref={newRef}
+            autoFocus
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
@@ -118,7 +110,7 @@ export function CommentsPanel({
                 void add();
               } else if (e.key === "Escape") {
                 e.stopPropagation();
-                setAdding(false);
+                onAdding(false);
               }
             }}
             rows={3}
@@ -126,7 +118,7 @@ export function CommentsPanel({
             placeholder="What should change here?"
           />
           <div className="comment-new-actions">
-            <button className="btn btn-ghost btn-md" onClick={() => setAdding(false)}>
+            <button className="btn btn-ghost btn-md" onClick={() => onAdding(false)}>
               Cancel
             </button>
             <button className="btn btn-primary btn-md" disabled={!draft.trim() || busy} onClick={() => void add()} title={`Add (${MOD}↵)`}>
