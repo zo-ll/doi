@@ -89,7 +89,7 @@ test.skipIf(!hasBrowser)("an ask block shows as a card; the answer goes as the n
 test.skipIf(!hasBrowser)("the answer goes with the images of the request", async () => {
   await drive(async () => {}, async ({ page, bodies }) => {
     await page.locator(".chat input[type=file]").setInputFiles({ name: "sketch.png", mimeType: "image/png", buffer: PNG });
-    await page.locator(".composer img").first().waitFor();
+    await page.locator(".composer-thumb img").first().waitFor();
     await ask(page);
     await card(page).getByRole("button", { name: "You choose" }).click();
     await page.getByText("I made one screen.").waitFor();
