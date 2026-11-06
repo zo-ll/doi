@@ -1,6 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { designUrl, getJSON, sendJSON, versionPageUrl, type Active, type VersionView } from "../api.ts";
-import { formatTokens } from "../chat.ts";
 import type { Pin } from "../comments.ts";
 import { parseFrameMessage, trackMessage, type FrameMessage, type Layout, type Rect } from "../frame.ts";
 import { alignStyle, DEFAULT_SCALE, dropTarget, nudgeStyle, resizeStyle, sameSpot, type Axis, type Drop, type ElementStyle, type Handle, type Place, type SpacingScale } from "../edit.ts";
