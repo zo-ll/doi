@@ -26,7 +26,7 @@ const entry = (turn: string, role: "user" | "assistant", text: string, status: "
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 const sse = (events: object[]) => events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("");
 
-async function drive(prepare: (workspace: string) => Promise<void>, run: (d: { page: Page; context: BrowserContext; origin: string; bodies: { text: string; target?: string | null; images?: unknown[] }[]; answers: (string | object[] | Promise<void>)[] }) => Promise<void>) {
+async function drive(prepare: (workspace: string) => Promise<void>, run: (d: { page: Page; context: BrowserContext; origin: string; bodies: { text: string; target?: string | null; images?: unknown[]; comments?: unknown[] }[]; answers: (string | object[] | Promise<void>)[] }) => Promise<void>) {
   const workspace = await mkdtemp(join(tmpdir(), "doi-ask-"));
   const app = await startServer(parseConfig({ workspace }), { port: 0, development: false });
   const browser = await chromium.launch();
@@ -34,7 +34,7 @@ async function drive(prepare: (workspace: string) => Promise<void>, run: (d: { p
     await prepare(workspace);
     const context = await browser.newContext();
     await context.route("**/api/providers", (route) => route.fulfill({ json: [] }));
-    const bodies: { text: string; images?: unknown[] }[] = [];
+    const bodies: { text: string; images?: unknown[]; comments?: unknown[] }[] = [];
     const answers: (string | object[] | Promise<void>)[] = [`I need two answers.\n\n${BLOCK}`, "I made one screen."];
     await context.route(`**${HOME}/turns`, async (route) => {
       if (route.request().method() !== "POST") return route.continue();
@@ -116,11 +116,19 @@ test.skipIf(!hasBrowser)("own words stay in the field, also when they equal an o
   });
 }, 30_000);
 
-test.skipIf(!hasBrowser)("a repeated option shows as two buttons", async () => {
-  await drive(async () => {}, async ({ page, answers }) => {
-    answers[0] = '```ask\n{"questions":[{"question":"Which?","options":["Same","Same"]}]}\n```';
+test.skipIf(!hasBrowser)("the answer does not send the comments of the request again", async () => {
+  await drive(async () => {}, async ({ page, origin, bodies }) => {
+    const oid = /data-oid="([^"]+)"/.exec(await (await fetch(`${origin}/design/sample/home/`)).text())![1]!;
+    const added = await fetch(`${origin}${HOME}/comments`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ oid, text: "Make it blue" }) });
+    expect(added.ok).toBe(true);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.getByRole("button", { name: "Apply", exact: true }).click();
+    await page.locator(".chip-comment").waitFor();
     await ask(page);
-    expect(await card(page).getByRole("button", { name: "Same" }).count()).toBe(2);
+    await card(page).getByRole("button", { name: "You choose" }).click();
+    await page.getByText("I made one screen.").waitFor();
+    expect(bodies[0]!.comments).toHaveLength(1);
+    expect(bodies[1]!.comments).toBeUndefined();
   });
 }, 30_000);
 

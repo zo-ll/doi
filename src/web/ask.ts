@@ -29,7 +29,8 @@ function parseQuestions(json: string): AskQuestion[] | null {
   for (const item of list) {
     const { question, options = [] } = (item ?? {}) as { question?: unknown; options?: unknown };
     if (!short(question) || !Array.isArray(options) || options.length > LIMITS.options || !options.every(short)) return null;
-    out.push({ question: question.trim(), options: (options as string[]).map((o) => o.trim()) });
+    // A repeated option is one choice, and each button needs its own name.
+    out.push({ question: question.trim(), options: [...new Set((options as string[]).map((o) => o.trim()))] });
   }
   return out;
 }

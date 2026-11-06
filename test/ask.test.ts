@@ -37,6 +37,10 @@ describe("parseAsk", () => {
     expect(parseAsk(open, false)).toEqual({ text: open, questions: null });
   });
 
+  test("a repeated option counts once", () => {
+    expect(parseAsk('```ask\n{"questions":[{"question":"Which?","options":["Same"," Same ","Other"]}]}\n```', false).questions).toEqual([{ question: "Which?", options: ["Same", "Other"] }]);
+  });
+
   test("a question can have no options", () => {
     expect(parseAsk('```ask\n{"questions":[{"question":"Why?"}]}\n```', false).questions).toEqual([{ question: "Why?", options: [] }]);
   });

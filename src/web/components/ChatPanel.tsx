@@ -290,12 +290,14 @@ export function ChatPanel({
     void sendTurn(s);
   };
   /**
-   * The answer to an `ask` block goes as the next message, with the element, images and comments of
-   * the request: the history keeps no old image. After a reload the panel has only the text.
+   * The answer to an `ask` block goes as the next message, with the element and the images of the
+   * request: the history keeps no old image. After a reload the panel has no images. The comments of
+   * the request do not go again: the history has their text, and one can be done or gone by now.
    */
   const answerAsk = (id: number, text: string) => {
     if (running || !target) return;
-    resend({ target: null, images: [], comments: [], ...sentRef.current.get(id), text });
+    const sent = sentRef.current.get(id);
+    resend({ text, target: sent?.target ?? null, images: sent?.images ?? [], comments: [] });
   };
   const retry = (id: number) => {
     const s = sentRef.current.get(id);
