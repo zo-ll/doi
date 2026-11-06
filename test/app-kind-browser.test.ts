@@ -15,7 +15,7 @@ test.if(!!process.env.CI)("CI has Chromium for the mobile app checks", () => exp
 const HOME = "/api/projects/sample/designs/home";
 
 /** The sample design as a mobile app, open in a browser. */
-async function driveApp(prepare: (workspace: string) => Promise<void>, run: (d: { page: Page; context: BrowserContext; origin: string; workspace: string }) => Promise<void>) {
+async function driveApp(prepare: (d: { context: BrowserContext; workspace: string }) => Promise<void>, run: (d: { page: Page; origin: string; workspace: string }) => Promise<void>) {
   const workspace = await mkdtemp(join(tmpdir(), "doi-app-kind-browser-"));
   const app = await startServer(parseConfig({ workspace }), { port: 0, development: false });
   const browser = await chromium.launch();
@@ -23,12 +23,13 @@ async function driveApp(prepare: (workspace: string) => Promise<void>, run: (d: 
     const origin = `http://127.0.0.1:${app.server.port}`;
     const kind = await fetch(`${origin}${HOME}/kind`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ app: true }) });
     expect(kind.ok).toBe(true);
-    await prepare(workspace);
     const context = await browser.newContext();
     await context.route("**/api/providers", (route) => route.fulfill({ json: [] }));
+    // Before the page loads: its first requests must meet these routes.
+    await prepare({ context, workspace });
     const page = await context.newPage();
     await page.goto(`${origin}/?project=sample&design=home`, { waitUntil: "domcontentloaded" });
-    await run({ page, context, origin, workspace });
+    await run({ page, origin, workspace });
   } finally {
     await browser.close();
     app.stop();
@@ -37,7 +38,7 @@ async function driveApp(prepare: (workspace: string) => Promise<void>, run: (d: 
 }
 
 test.skipIf(!hasBrowser)("F adds a screen, but not during a version preview", async () => {
-  await driveApp(async () => {}, async ({ page, context, workspace }) => {
+  const prepare = async ({ context }: { context: BrowserContext }) => {
     const at = new Date().toISOString();
     await context.route(`**${HOME}/history`, (route) =>
       route.fulfill({
@@ -48,6 +49,8 @@ test.skipIf(!hasBrowser)("F adds a screen, but not during a version preview", as
       }),
     );
     await context.route(`**${HOME}/pages?sha=*`, (route) => route.fulfill({ json: ["index.html"] }));
+  };
+  await driveApp(prepare, async ({ page, workspace }) => {
     let adds = 0;
     page.on("request", (r) => {
       if (r.method() === "POST" && r.url().endsWith(`${HOME}/screens`)) adds++;
@@ -76,9 +79,9 @@ test.skipIf(!hasBrowser)("F adds a screen, but not during a version preview", as
   });
 }, 30_000);
 
-test.skipIf(!hasBrowser)("a design that is both an app and a deck can go back to a web page", async () => {
+test.skipIf(!hasBrowser)("a design that is both an app and a deck can drop the app mark and become a plain deck", async () => {
   await driveApp(
-    (workspace) => Bun.write(join(workspace, "projects/sample/designs/home/index.html"), '<!doctype html><section data-slide data-oid="s1">Slide</section>').then(() => {}),
+    ({ workspace }) => Bun.write(join(workspace, "projects/sample/designs/home/index.html"), '<!doctype html><section data-slide data-oid="s1">Slide</section>').then(() => {}),
     async ({ page, origin }) => {
       const toggle = page.getByRole("button", { name: "Mobile app" });
       await toggle.waitFor();
