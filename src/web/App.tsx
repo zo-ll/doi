@@ -14,7 +14,8 @@ import { Canvas } from "./components/Canvas.tsx";
 import { ArchitectureEditor } from "./components/ArchitectureEditor.tsx";
 import { ArchitecturePanel } from "./components/ArchitecturePanel.tsx";
 import { useArchitecture } from "./architecture.ts";
-import { ChatPanel, type AppliedComment, type Selection } from "./components/ChatPanel.tsx";
+import { ChatPanel, type AppliedComment, type FirstTurn, type Selection } from "./components/ChatPanel.tsx";
+import { StartScreen } from "./components/StartScreen.tsx";
 import { CommentsPanel } from "./components/CommentsPanel.tsx";
 import { NodeCssBlock } from "./components/NodeCssBlock.tsx";
 import { Confirm } from "./components/Confirm.tsx";
@@ -136,6 +137,10 @@ export function App() {
     setSelection(null); setUmlDirty(false); setUmlOpen(id); setSideTab("uml");
     if (!panels.side) togglePanel("side");
   }
+  /** The start screen is open (first start, or New project in the drawer). */
+  const [startOpen, setStartOpen] = useState(false);
+  /** The first message of the project that the start screen made; the chat takes it. */
+  const [firstTurn, setFirstTurn] = useState<FirstTurn | null>(null);
   const [dsOpen, setDsOpen] = useState(false);
   const [repoOpen, setRepoOpen] = useState(false);
   /** The export dialog for one project or the workspace (#114). */
@@ -193,6 +198,7 @@ export function App() {
   const open = useCallback((a: Active) => {
     if (umlDirty && !window.confirm("Open a UI design and discard unsaved diagram edits?")) return false;
     setUmlOpen(null); setUmlDirty(false);
+    setStartOpen(false);
     setActive(a);
     setSelection(null);
     setAddingComment(false);
@@ -207,6 +213,8 @@ export function App() {
   const deleted = useRef(new Set<string>());
   /** The node URL the app was opened with; used once, on the first project list. */
   const fromUrl = useRef(parseNodeQuery(location.search));
+  /** The user chose the sample on the start screen, so the first design opens as before. */
+  const skipStart = useRef(false);
   // When the project list arrives, open the last design again, or else the first one.
   useEffect(() => {
     if (projects.state !== "ready") return;
@@ -225,6 +233,8 @@ export function App() {
       return;
     }
     if (last && exists(last)) { open(last); return; }
+    // First start: nothing but the sample, and no design the user opened before.
+    if (!skipStart.current && list.every((p) => p.id === "sample")) { setStartOpen(true); return; }
     const first = list.find((p) => p.designs.length > 0);
     if (first) open({ project: first.id, design: first.designs[0]! });
   }, [projects, active, open]);
@@ -610,8 +620,35 @@ export function App() {
               onCollapse={() => togglePanel("chat")}
               repo={activeProject?.repo?.name ?? null}
               onOpenSettings={() => setScreen("settings")}
+              first={firstTurn}
+              onFirstTaken={() => setFirstTurn(null)}
             />
           </aside>
+        )}
+
+        {startOpen && (
+          <StartScreen
+            tasks={tasks}
+            onStarted={(a, first) => {
+              retryProjects();
+              retryWorkspace();
+              if (!panels.chat) togglePanel("chat");
+              if (open(a)) setFirstTurn(first);
+              else setStartOpen(false);
+            }}
+            onClose={active ? () => setStartOpen(false) : undefined}
+            onOpenSample={
+              !active && projects.state === "ready" && projects.data.some((p) => p.id === "sample" && p.designs.length > 0)
+                ? () => {
+                    skipStart.current = true;
+                    setStartOpen(false);
+                    retryProjects();
+                  }
+                : undefined
+            }
+            onImport={() => importInput.current?.click()}
+            onOpenSettings={() => setScreen("settings")}
+          />
         )}
 
         {navOpen && (
@@ -622,6 +659,10 @@ export function App() {
             onOpen={open}
             onRetry={retryProjects}
             onChanged={onProjectsChanged}
+            onNewProject={() => {
+              setNavOpen(false);
+              setStartOpen(true);
+            }}
             onDeleted={(project) => {
               deleted.current.add(project);
               // The open design went with its project: the app opens the first design left.

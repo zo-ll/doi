@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { cloneDir } from "../github/gh.ts";
 import { assertName, listProjects } from "../workspace/paths.ts";
-import { createDesign, createProject, createScreen, projectDir, renameDesign, renameProject, setAppKind, WorkspaceError } from "../workspace/projects.ts";
+import { createDesign, createProject, createScreen, freeProjectName, projectDir, renameDesign, renameProject, setAppKind, WorkspaceError } from "../workspace/projects.ts";
 import { designKey, type DesignLocks } from "./locks.ts";
 
 export interface ProjectDeps {
@@ -42,12 +42,16 @@ function fail(e: unknown): Response {
   throw e;
 }
 
-/** POST /api/projects { name, id? }: a new project with its first design, "home". */
+/**
+ * POST /api/projects { name, id?, kind?, free? }: a new project with its first design, "home", of
+ * that kind. With `free`, a taken name gets a number.
+ */
 export async function postProject(deps: ProjectDeps, req: Request): Promise<Response> {
   try {
     const b = await body(req);
-    const { id, paths } = await createProject(deps.workspace, b.name, b.id);
-    return Response.json({ id, design: "home", ...(await commit(deps, paths, `Create project ${String(b.name).trim()}`)) }, { status: 201 });
+    const wanted = b.free === true ? freeProjectName(deps.workspace, b.name) : { name: b.name, id: b.id };
+    const { id, paths } = await createProject(deps.workspace, wanted.name, wanted.id, b.kind ?? "page");
+    return Response.json({ id, design: "home", ...(await commit(deps, paths, `Create project ${String(wanted.name).trim()}`)) }, { status: 201 });
   } catch (e) {
     return fail(e);
   }

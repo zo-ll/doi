@@ -29,6 +29,24 @@ const json = (method: string, body: unknown) =>
   new Request("http://x/", { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
 describe("projects API", () => {
+  test("a new project can start with a kind, and an unknown kind leaves no project", async () => {
+    expect((await postProject(deps, json("POST", { name: "Phone", kind: "app" }))).status).toBe(201);
+    expect((await postProject(deps, json("POST", { name: "Talk", kind: "slides" }))).status).toBe(201);
+    const list = await listProjects(deps.workspace);
+    expect(list.find((p) => p.id === "phone")?.apps).toEqual(["home"]);
+    expect(list.find((p) => p.id === "talk")?.decks).toEqual(["home"]);
+    expect((await postProject(deps, json("POST", { name: "Poster", kind: "poster" }))).status).toBe(400);
+    expect((await listProjects(deps.workspace)).some((p) => p.id === "poster")).toBe(false);
+  });
+
+  test("with free, a taken name gets a number; without it, a taken name is refused", async () => {
+    expect(await (await postProject(deps, json("POST", { name: "Shop", free: true }))).json()).toEqual({ id: "shop", design: "home" });
+    expect((await postProject(deps, json("POST", { name: "Shop" }))).status).toBe(409);
+    expect(await (await postProject(deps, json("POST", { name: "Shop", free: true }))).json()).toEqual({ id: "shop-2", design: "home" });
+    expect((await listProjects(deps.workspace)).find((p) => p.id === "shop-2")?.name).toBe("Shop 2");
+    expect(await (await postProject(deps, json("POST", { name: "日本語", free: true }))).json()).toEqual({ id: "project", design: "home" });
+  });
+
   test("creates a project with a home design and commits it", async () => {
     const res = await postProject(deps, json("POST", { name: "My Shop!" }));
     expect(res.status).toBe(201);
