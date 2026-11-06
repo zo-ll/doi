@@ -45,6 +45,7 @@ async function drive(prepare: (workspace: string) => Promise<void>, run: (d: { p
       await route.fulfill({ status: 200, headers: { "content-type": "text/event-stream" }, body: sse(events) });
     });
     const page = await context.newPage();
+    page.setDefaultTimeout(8000);
     const origin = `http://127.0.0.1:${app.server.port}`;
     await page.goto(`${origin}/?project=sample&design=home`, { waitUntil: "domcontentloaded" });
     await run({ page, context, origin, bodies, answers });
@@ -88,6 +89,8 @@ test.skipIf(!hasBrowser)("an ask block shows as a card; the answer goes as the n
 
 test.skipIf(!hasBrowser)("the answer goes with the images of the request", async () => {
   await drive(async () => {}, async ({ page, bodies }) => {
+    // The chat panel starts again when the design opens, so the file waits for that.
+    await page.locator(".frame-name").first().waitFor();
     await page.locator(".chat input[type=file]").setInputFiles({ name: "sketch.png", mimeType: "image/png", buffer: PNG });
     await page.locator(".composer-thumb img").first().waitFor();
     await ask(page);
