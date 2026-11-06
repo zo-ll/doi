@@ -23,7 +23,7 @@ const entry = (turn: string, role: "user" | "assistant", text: string, status: "
   role === "user"
     ? { role, turn, design: "home", at, text, target: null }
     : { role, turn, design: "home", at, text, status, provider: "anthropic", model: "m", usage, files: [], prompt: "v3" };
-const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg==", "base64");
+const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 const sse = (events: object[]) => events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("");
 
 async function drive(prepare: (workspace: string) => Promise<void>, run: (d: { page: Page; context: BrowserContext; origin: string; bodies: { text: string; target?: string | null; images?: unknown[] }[]; answers: (string | object[] | Promise<void>)[] }) => Promise<void>) {
