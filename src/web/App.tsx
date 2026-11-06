@@ -317,7 +317,7 @@ export function App() {
   /** "+ Screen": a new empty page named screen-<n>, opened at once. */
   const addScreen = useCallback(() => {
     const a = activeRef.current;
-    if (!a) return;
+    if (!a || previewSha) return; // a version preview is read-only
     const have = new Set(pages.state === "ready" ? pages.data : []);
     if (have.size >= MAX_SCREENS) {
       setToast(`An app shows at most ${MAX_SCREENS} screens.`);
@@ -335,7 +335,7 @@ export function App() {
       },
       (e: Error) => setToast(e.message),
     );
-  }, [pages]);
+  }, [pages, previewSha]);
   const projectName = active ? (activeProject?.name ?? active.project) : null;
   const dsName = activeProject?.designSystem ?? null;
   const [ds] = useLoad<DesignSystemView>(dsName ? `/api/design-systems/${dsName}` : null);
@@ -447,7 +447,7 @@ export function App() {
         design={active?.design ?? null}
         isDeck={!!(active && activeProject?.decks.includes(active.design))}
         isApp={isApp}
-        onToggleApp={!umlOpen && active && !activeProject?.decks.includes(active.design) ? toggleApp : undefined}
+        onToggleApp={!umlOpen && active && (isApp || !activeProject?.decks.includes(active.design)) ? toggleApp : undefined}
         pages={pages.state === "ready" ? pages.data : [page]}
         page={page}
         onPage={(p) => {

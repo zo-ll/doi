@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-11-06. The UML work (#145) is merged and closed. Issue #148 (effect cleanup) is on `refactor/effect-cleanup`. The plan to remove xyflow comes next: show the plan to the user before any code. Section 6 records the details.
+Last update: 2026-11-06. The UML work (#145) and the effect cleanup (#148, PR #156) are merged and closed. The mobile app fixes (#144) are on `fix/mobile-app-review`. The removal of xyflow is on hold (user, 2026-11-06): do not plan it until the user asks. Section 6 records the details.
 
 PR #147 merged the TypeScript refactor and two browser fixes into `main` at `e95e541`. All 529 tests passed, with no skips or failures. The type check, Linux binary build and smoke test passed. The Usage gap for unpicked variants remains open.
 
@@ -130,6 +130,8 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 - CLI backends (`editsFiles: true`) change the files in `GenerateRequest.cwd` themselves. Their `edit`/`write` events only report the change. **The edit applier must skip them.**
 
 ## 6. State and next steps
+
+**2026-11-06: mobile app fixes (#144, branch `fix/mobile-app-review`).** `addScreen` in `App.tsx` stops during a version preview, so the F key is read-only there, as the "+ Screen" button is. The guard is in `addScreen` because the key and the button both call it. A design that is both an app and a deck keeps the Mobile app toggle until the app mark goes; it is then a plain deck, which has no toggle. The `designFrames` comment now matches the code. `test/app-kind-browser.test.ts` holds the checks.
 
 **2026-11-06: effect cleanup (#148, branch `refactor/effect-cleanup`).** `src/web/reset-on.ts` (`useResetOn`) resets state during the render in which a key changes, so no commit shows the old design: comments, variants, history, the Canvas undo stack and edit error, and the frame rects. The undo stack keeps its reset on a design change (not one stack per design); an edit that was in flight pushes to the stack of its own design. `App` adjusts `applied` and `page` during render; a comment that closes stays out of the next turn when it opens again, and `newScreen` is state. `App` owns the new-comment form (`addingComment`). The chat calls `onRunningChange` with each change. The zip tab loads the draft in `chooseTab`. `ExportDialog` and `HandoffDialog` have a `key` for the design. Stale-response guards are on the seven listed fetches.
 
