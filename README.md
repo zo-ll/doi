@@ -33,7 +33,7 @@ By default, doi uses your subscription through the official CLIs: `claude-code:<
 
 - Chat to make and change designs. Select an element to change only that element.
 - Edit on the canvas: resize, move among siblings, nudge margins and align. Each change is one version.
-- Comments on elements, 2–4 variants of one request, and a full version history.
+- Comments on elements, and a full version history.
 - Tweaks for the CSS variables of a design.
 - Design systems from a repo or from screenshots.
 - Export to a folder, one HTML file, PNG or PDF. Export and import projects as `.doi.zip`.
