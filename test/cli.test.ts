@@ -8,7 +8,7 @@ import { isDownloadChild } from "../src/export/browser.ts";
 import { openCommand, parseCli } from "../src/server/cli.ts";
 
 describe("parseCli", () => {
-  test("no arguments: start with ./config.toml", () => {
+  test("no arguments: start with the default config", () => {
     expect(parseCli([])).toEqual({ command: "start", config: undefined, workspace: undefined, port: undefined, open: false });
   });
 
@@ -21,6 +21,7 @@ describe("parseCli", () => {
       open: true,
     });
     expect(parseCli(["--port=4317"])).toMatchObject({ port: 4317 });
+    expect(() => parseCli(["--config", ""])).toThrow("--config");
   });
 
   test("help, version and install-browser", () => {

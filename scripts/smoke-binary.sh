@@ -79,4 +79,22 @@ has "$body" '"kept"' || fail "the second start found another workspace"
 [ "$(cat "$config")" = "$before" ] || fail "the second start changed the config"
 [ ! -e "$two/wrong" ] || fail "the second start used ./config.toml"
 stop_it
+# All keys are optional: a config with no workspace line keeps the same workspace.
+printf 'port = %s\n' "$port" > "$config"
+start "$one"
+body=$(curl -sf "$url/api/projects") || fail "projects with no workspace line"
+has "$body" '"kept"' || fail "a config with no workspace line found another workspace"
+[ ! -e "$home/.config/doi/workspace" ] || fail "a workspace in the config folder"
+stop_it
+# A home folder that doi cannot write to: exit code 2, and the message names the per-user file.
+if [ "$(id -u)" != 0 ]; then
+  locked="$dir/locked"
+  mkdir -p "$locked"
+  chmod 500 "$locked"
+  code=0
+  message=$(cd "$one" && env -i HOME="$locked" PATH=/usr/bin:/bin "$bin" --port "$port" 2>&1) || code=$?
+  chmod 700 "$locked"
+  [ "$code" = 2 ] || fail "exit code $code for a locked home folder"
+  has "$message" "$locked/.config/doi/config.toml" || fail "the message names another file: $message"
+fi
 echo "smoke test passed: $bin"

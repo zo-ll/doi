@@ -66,7 +66,7 @@ The binary works from any folder. The first start makes `config.toml` and the wo
 | System | Config and credentials | Workspace |
 | --- | --- | --- |
 | Linux | `$XDG_CONFIG_HOME/doi`, else `~/.config/doi` | `$XDG_DATA_HOME/doi/workspace`, else `~/.local/share/doi/workspace` |
-| Windows | `%APPDATA%\\doi` | `%LOCALAPPDATA%\\doi\\workspace` |
+| Windows | `%APPDATA%\doi` | `%LOCALAPPDATA%\doi\workspace` |
 
 From a source checkout, doi keeps using `./config.toml` and `./workspace`.
 
@@ -110,7 +110,7 @@ The binary and `bun run start` take the same options, for example `bun run start
 
 | Option | Description |
 | --- | --- |
-| `--config <file>` | The config file. The default is `config.toml` in the current folder |
+| `--config <file>` | The config file. The default is the per-user `config.toml` for the binary, and `config.toml` in the current folder for a source run |
 | `--workspace <dir>` | The workspace folder. It replaces `workspace` from the config |
 | `--port <n>` | The port on `127.0.0.1`. It replaces `port` from the config |
 | `--open` | Open doi in the default browser after the start |
@@ -120,7 +120,7 @@ The binary and `bun run start` take the same options, for example `bun run start
 
 ## Configure
 
-doi reads `config.toml` from the folder where you start it, or the file from `--config`. All keys are optional. A relative `workspace` path is relative to the folder of the config file. `config.example.toml` lists them with comments.
+The binary reads the per-user `config.toml`. A source run reads `config.toml` from the folder where you start it. `--config` names another file. All keys are optional. A relative `workspace` path is relative to the folder of the config file. `config.example.toml` lists them with comments.
 
 | Key | Default | Description |
 | --- | --- | --- |

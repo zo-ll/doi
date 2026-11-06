@@ -3,7 +3,7 @@ import { z } from "zod";
 import { loadConfig, type Config } from "../config.ts";
 import { installBrowser, isDownloadChild, runDownloadChild } from "../export/browser.ts";
 import { version } from "../../package.json";
-import { ensureUserConfig } from "../user-dirs.ts";
+import { ensureUserConfig, userPaths } from "../user-dirs.ts";
 import { startServer } from "./app.ts";
 import { openCommand, parseCli, USAGE, type Cli } from "./cli.ts";
 
@@ -27,10 +27,11 @@ if (isDownloadChild()) {
     let config: Config;
     // The build sets DOI_BINARY: an installed doi works from any folder. A source checkout keeps
     // its own ./config.toml and ./workspace.
-    let path = cli.config ?? "config.toml";
+    const perUser = !cli.config && process.env.DOI_BINARY ? userPaths() : null;
+    const path = perUser?.config ?? cli.config ?? "config.toml";
     try {
-      if (!cli.config && process.env.DOI_BINARY) path = await ensureUserConfig();
-      config = await loadConfig(path);
+      if (perUser) await ensureUserConfig();
+      config = await loadConfig(path, perUser?.workspace);
     } catch (error) {
       const details = error instanceof z.ZodError
         ? error.issues.map((issue) => `${issue.path.join(".") || "config"}: ${issue.message}`).join("; ")

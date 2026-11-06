@@ -43,6 +43,7 @@ export function parseCli(argv: string[]): Cli {
     if (!/^\d+$/.test(values.port) || port < 1 || port > 65535) throw new Error("--port must be a number from 1 to 65535.");
   }
   if (values.workspace === "") throw new Error("--workspace must be a folder.");
+  if (values.config === "") throw new Error("--config must be a file.");
   return { command: "start", config: values.config, workspace: values.workspace, port, open: values.open };
 }
 

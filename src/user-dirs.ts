@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { posix, win32 } from "node:path";
@@ -11,14 +12,16 @@ export interface UserDirs {
 
 /**
  * The per-user folders of doi. Windows: %APPDATA%\\doi and %LOCALAPPDATA%\\doi. Other systems:
- * the XDG base directories. A relative XDG path counts as missing, as the XDG specification says.
+ * the XDG base directories. A relative path counts as missing, as the XDG specification says, so
+ * the shell folder cannot decide where the state goes.
  */
 export function userDirs(env: Record<string, string | undefined> = process.env, platform: NodeJS.Platform = process.platform, home: string = homedir()): UserDirs {
   if (platform === "win32") {
-    const { join } = win32;
+    const { join, isAbsolute } = win32;
+    const base = (value: string | undefined, fallback: string) => (value && isAbsolute(value) ? value : join(home, "AppData", fallback));
     return {
-      config: join(env.APPDATA || join(home, "AppData", "Roaming"), "doi"),
-      data: join(env.LOCALAPPDATA || join(home, "AppData", "Local"), "doi"),
+      config: join(base(env.APPDATA, "Roaming"), "doi"),
+      data: join(base(env.LOCALAPPDATA, "Local"), "doi"),
     };
   }
   const { join, isAbsolute } = posix;
@@ -31,9 +34,28 @@ export function userDirs(env: Record<string, string | undefined> = process.env, 
 
 /** A config that names the default workspace. A TOML basic string has the escapes of a JSON string for these characters. */
 export function firstConfig(workspace: string): string {
-  return `# The config of doi. config.example.toml in the source lists all settings.
+  return `# The config of doi. The user guide lists all settings: docs/user-guide.md, "Configure".
+# Keep this path absolute. A relative path counts from this folder, and it is another workspace.
 workspace = ${JSON.stringify(workspace)}
 `;
+}
+
+/**
+ * The credentials file. A key that an older doi stored on Windows, under the profile, stays
+ * reachable there; only a new file goes to the config folder. Linux has one path.
+ */
+export function credentialsPath(env: Record<string, string | undefined> = process.env, platform: NodeJS.Platform = process.platform, home: string = homedir(), exists: (path: string) => boolean = existsSync): string {
+  const { join } = platform === "win32" ? win32 : posix;
+  const current = join(userDirs(env, platform, home).config, "credentials.json");
+  if (platform !== "win32") return current;
+  const older = join(home, ".config", "doi", "credentials.json");
+  return !exists(current) && exists(older) ? older : current;
+}
+
+/** The per-user config file and the workspace that a file with no `workspace` line uses. */
+export function userPaths(dirs: UserDirs = userDirs(), platform: NodeJS.Platform = process.platform): { config: string; workspace: string } {
+  const { join } = platform === "win32" ? win32 : posix;
+  return { config: join(dirs.config, "config.toml"), workspace: join(dirs.data, "workspace") };
 }
 
 /**
@@ -42,11 +64,9 @@ workspace = ${JSON.stringify(workspace)}
  * Windows ignores the modes: the folders inherit the private access of the user's profile.
  */
 export async function ensureUserConfig(dirs: UserDirs = userDirs(), platform: NodeJS.Platform = process.platform): Promise<string> {
-  const { join } = platform === "win32" ? win32 : posix;
-  const workspace = join(dirs.data, "workspace");
+  const { config: path, workspace } = userPaths(dirs, platform);
   await mkdir(dirs.config, { recursive: true, mode: 0o700 });
   await mkdir(dirs.data, { recursive: true, mode: 0o700 });
-  const path = join(dirs.config, "config.toml");
   try {
     await writeFile(path, firstConfig(workspace), { flag: "wx", mode: 0o600 });
   } catch (e) {
