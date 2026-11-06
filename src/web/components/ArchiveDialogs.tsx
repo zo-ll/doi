@@ -148,9 +148,13 @@ export function ImportArchiveDialog({ file, onImported, onClose }: {
   }, [onClose, busy]);
 
   useEffect(() => {
+    let live = true;
     postZip<Inspected>("/api/import/inspect", file)
-      .then(setPlan)
-      .catch((e: Error) => setError(e.message));
+      .then((p) => live && setPlan(p))
+      .catch((e: Error) => live && setError(e.message));
+    return () => {
+      live = false;
+    };
   }, [file]);
 
   const start = async () => {

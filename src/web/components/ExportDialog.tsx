@@ -45,9 +45,13 @@ export function ExportDialog({ project, design, onClose }: { project: string; de
   useEffect(() => () => abort.current?.abort(), []);
 
   useEffect(() => {
+    let live = true;
     getJSON<Frame[]>(`/api/projects/${project}/designs/${design}/layout`)
-      .then(setFrames)
-      .catch((e: Error) => setError(e.message));
+      .then((f) => live && setFrames(f))
+      .catch((e: Error) => live && setError(e.message));
+    return () => {
+      live = false;
+    };
   }, [project, design]);
 
   // "All frames" is a PNG choice only. A PDF shows one frame: the first one by default.

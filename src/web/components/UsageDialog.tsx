@@ -37,9 +37,13 @@ export function UsageDialog({ config, providers, projects, onClose }: {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   useEffect(() => {
+    let live = true;
     getJSON<UsageEntry[]>("/api/usage")
-      .then((data) => setEntries({ state: "ready", data }))
-      .catch((e: Error) => setEntries({ state: "error", message: e.message }));
+      .then((data) => live && setEntries({ state: "ready", data }))
+      .catch((e: Error) => live && setEntries({ state: "error", message: e.message }));
+    return () => {
+      live = false;
+    };
   }, []);
 
   const sources = providers.state === "ready" ? providers.data : [];
