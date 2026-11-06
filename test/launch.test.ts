@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EXIT } from "../src/server/cli.ts";
-import { recordFile, writeRecord } from "../src/server/instance.ts";
+import { readRecord, recordFile, workspaceKey, writeRecord } from "../src/server/instance.ts";
 
 const ENTRY = join(import.meta.dir, "../src/server/index.ts");
 let root: string;
@@ -144,6 +144,78 @@ describe("doi start", () => {
     expect(result.stderr).toContain("Unknown command");
     expect((await doi(["status", "--port", "0"])).code).toBe(EXIT.usage);
   });
+});
+
+/** The serve processes of a workspace, from the process list. */
+const servers = (workspace: string) =>
+  Bun.spawnSync(["ps", "-eo", "pid=,args="]).stdout.toString().split("\n").filter((line) => line.includes(" serve ") && line.includes(workspace));
+
+describe("one server for each workspace", () => {
+  test("six starts at once with any free port make one server, and all report it", async () => {
+    const results = await Promise.all(Array.from({ length: 6 }, () => startDoi("one", "0")));
+    expect(results.map((r) => r.code)).toEqual([0, 0, 0, 0, 0, 0]);
+    expect(new Set(results.map((r) => r.info.instance)).size).toBe(1);
+    await Bun.sleep(300); // a losing server exits right after its claim fails
+    expect(servers(ws())).toHaveLength(1);
+    expect(JSON.parse((await doi(["stop", ...common()])).stdout)).toMatchObject({ stopped: true });
+    await Bun.sleep(200);
+    expect(servers(ws())).toHaveLength(0);
+  }, 60_000);
+
+  test("a stopping server leaves the record of another server alone", async () => {
+    const { info } = await startDoi();
+    const file = recordFile(ws(), join(root, "data", "doi"));
+    const foreign = { id: "foreign", pid: process.pid, port: 1, workspace: ws(), version: "0", log: null };
+    await writeRecord(foreign, file);
+    process.kill(info.pid);
+    while (alive(info.pid)) await Bun.sleep(50);
+    expect(await readRecord(file)).toEqual(foreign);
+    await rm(file);
+  }, 30_000);
+});
+
+test("a proxy in the environment does not change what doi sees on its own computer", async () => {
+  const proxied = { ...env, HTTP_PROXY: "http://127.0.0.1:9", HTTPS_PROXY: "http://127.0.0.1:9", ALL_PROXY: "http://127.0.0.1:9", http_proxy: "http://127.0.0.1:9" };
+  const result = await doi(["start", ...common(), "--port", "0"], { env: proxied });
+  started.push({ workspace: ws() });
+  expect(result.code).toBe(EXIT.ok);
+  const status = await doi(["status", ...common()], { env: proxied });
+  expect(JSON.parse(status.stdout)).toMatchObject({ running: true });
+  expect(JSON.parse((await doi(["stop", ...common()], { env: proxied })).stdout)).toMatchObject({ stopped: true });
+}, 40_000);
+
+test("a stalled server keeps its identity: exit code 4, and it works again afterwards", async () => {
+  const { info } = await startDoi();
+  const file = recordFile(ws(), join(root, "data", "doi"));
+  process.kill(info.pid, "SIGSTOP");
+  try {
+    const status = await doi(["status", ...common()]);
+    expect(status.code).toBe(EXIT.readiness);
+    expect(JSON.parse(status.stdout)).toMatchObject({ ok: false, code: "unreachable" });
+    expect((await readRecord(file))?.pid).toBe(info.pid);
+    expect((await doi(["stop", ...common()])).code).toBe(EXIT.readiness);
+    expect(alive(info.pid)).toBe(true);
+  } finally {
+    process.kill(info.pid, "SIGCONT");
+  }
+  expect(JSON.parse((await doi(["status", ...common()])).stdout)).toMatchObject({ running: true, pid: info.pid });
+}, 40_000);
+
+test("doi start --open opens the browser, through the server", async () => {
+  const bin = join(root, "bin");
+  const opened = join(root, "opened");
+  await Bun.write(join(bin, "xdg-open"), `#!/bin/sh\necho "$1" > "${opened}"\n`);
+  await Bun.$`chmod +x ${join(bin, "xdg-open")}`;
+  const result = await doi(["start", ...common(), "--port", "0", "--open"], { env: { ...env, PATH: `${bin}:${env.PATH}` } });
+  started.push({ workspace: ws() });
+  expect(result.code).toBe(EXIT.ok);
+  for (let i = 0; i < 40 && !(await Bun.file(opened).exists()); i++) await Bun.sleep(50);
+  expect((await Bun.file(opened).text()).trim()).toBe(JSON.parse(result.stdout).url);
+}, 40_000);
+
+test("a Windows workspace path ignores case in its key", () => {
+  expect(workspaceKey("C:\\Work\\WS", "win32")).toBe(workspaceKey("c:\\work\\ws", "win32"));
+  expect(workspaceKey("/Work/WS", "linux")).not.toBe(workspaceKey("/work/ws", "linux"));
 });
 
 describe("doi status and doi stop", () => {

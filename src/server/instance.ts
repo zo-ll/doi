@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
-import { mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { link, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { connect } from "node:net";
 import { join } from "node:path";
 import { z } from "zod";
 import { userDirs } from "../user-dirs.ts";
+import { CommandError, EXIT } from "./cli.ts";
 
 /** What a running doi says about itself at GET /api/instance. */
 export interface InstanceInfo {
@@ -22,16 +23,57 @@ export interface InstanceRecord extends InstanceInfo {
 const infoSchema = z.object({ id: z.string(), pid: z.number(), workspace: z.string(), version: z.string() });
 const recordSchema = infoSchema.extend({ port: z.number(), log: z.string().nullable() });
 
+/** Windows paths ignore case, so C:\\ws and c:\\ws are one workspace. 8.3 short names are not handled. */
+export const workspaceKey = (workspace: string, platform: NodeJS.Platform = process.platform) => (platform === "win32" ? workspace.toLowerCase() : workspace);
+
 /** One file per workspace, so two workspaces can run side by side. */
-const stem = (workspace: string) => createHash("sha256").update(workspace).digest("hex").slice(0, 16);
+const stem = (workspace: string) => createHash("sha256").update(workspaceKey(workspace)).digest("hex").slice(0, 16);
 export const recordFile = (workspace: string, dataDir = userDirs().data) => join(dataDir, "instances", `${stem(workspace)}.json`);
 export const logFile = (workspace: string, dataDir = userDirs().data) => join(dataDir, "logs", `${stem(workspace)}.log`);
 
-export async function writeRecord(record: InstanceRecord, file = recordFile(record.workspace)): Promise<void> {
+async function writeTemp(record: InstanceRecord, file: string): Promise<string> {
   await mkdir(join(file, ".."), { recursive: true, mode: 0o700 });
   const tmp = `${file}.${crypto.randomUUID()}.tmp`;
   await writeFile(tmp, JSON.stringify(record, null, 2) + "\n", { mode: 0o600 });
-  await rename(tmp, file);
+  return tmp;
+}
+
+/** Replaces the record. Only for a process that already owns it, or for tests. */
+export async function writeRecord(record: InstanceRecord, file = recordFile(record.workspace)): Promise<void> {
+  await rename(await writeTemp(record, file), file);
+}
+
+/**
+ * Makes this process the one server of its workspace. `link` fails when the file exists, so only
+ * one of many servers can win, and a reader sees a whole file. The same process may renew its
+ * record: `bun --hot` runs this again after a reload. Returns the other server when one is live.
+ */
+export async function claimRecord(record: InstanceRecord, file = recordFile(record.workspace)): Promise<InstanceRecord | null> {
+  const tmp = await writeTemp(record, file);
+  try {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await link(tmp, file);
+        return null;
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      }
+      if ((await readRecord(file))?.pid === record.pid) {
+        await writeRecord(record, file);
+        return null;
+      }
+      const other = await findInstance(record.workspace, file);
+      if (other) return other;
+    }
+    throw new CommandError(EXIT.readiness, "not_ready", `Another start changes ${file}. Try again.`);
+  } finally {
+    await rm(tmp, { force: true });
+  }
+}
+
+/** Removes the record only when it is this process's own: a stopping server must not hide another. */
+export async function releaseRecord(pid: number, file: string): Promise<void> {
+  if ((await readRecord(file))?.pid === pid) await removeRecord(file);
 }
 
 export async function readRecord(file: string): Promise<InstanceRecord | null> {
@@ -44,13 +86,33 @@ export async function readRecord(file: string): Promise<InstanceRecord | null> {
 
 export const removeRecord = (file: string) => rm(file, { force: true });
 
-/** Asks a port what runs there. null: nothing answers, or it is not doi. */
-export async function probe(port: number, timeoutMs = 1500): Promise<InstanceInfo | null> {
+/**
+ * A loopback request never goes through a proxy from the environment: Bun reads HTTP_PROXY for each
+ * fetch, and a failed probe would look like a server that does not run.
+ */
+export const LOCAL = { proxy: false } as unknown as RequestInit;
+
+/** Asks a port what runs there. "none": nothing, or not doi. "timeout": no answer in time, so nothing is known. */
+export async function ask(port: number, timeoutMs = 1500): Promise<InstanceInfo | "none" | "timeout"> {
   try {
-    const res = await fetch(`http://127.0.0.1:${port}/api/instance`, { signal: AbortSignal.timeout(timeoutMs) });
-    return res.ok ? infoSchema.parse(await res.json()) : null;
-  } catch {
-    return null;
+    const res = await fetch(`http://127.0.0.1:${port}/api/instance`, { ...LOCAL, signal: AbortSignal.timeout(timeoutMs) });
+    return res.ok ? infoSchema.parse(await res.json()) : "none";
+  } catch (e) {
+    return e instanceof DOMException && e.name === "TimeoutError" ? "timeout" : "none";
+  }
+}
+
+export async function probe(port: number, timeoutMs = 1500): Promise<InstanceInfo | null> {
+  const answer = await ask(port, timeoutMs);
+  return typeof answer === "string" ? null : answer;
+}
+
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code !== "ESRCH";
   }
 }
 
@@ -75,9 +137,13 @@ export function portInUse(port: number, timeoutMs = 1000): Promise<boolean> {
 export async function findInstance(workspace: string, file = recordFile(workspace)): Promise<InstanceRecord | null> {
   const record = await readRecord(file);
   if (!record) return null;
-  const live = await probe(record.port);
-  if (live && live.id === record.id && live.pid === record.pid && live.workspace === workspace) return record;
-  // A server that is still starting has written no record yet, so this record is an old one.
+  const live = await ask(record.port);
+  if (live === "timeout" && processAlive(record.pid) && (await portInUse(record.port))) {
+    // A stalled server keeps its identity: without the record, nothing could stop it later.
+    throw new CommandError(EXIT.readiness, "unreachable", `doi (process ${record.pid}) on port ${record.port} does not answer. Try again, or end that process yourself.`);
+  }
+  if (typeof live !== "string" && live.id === record.id && live.pid === record.pid && workspaceKey(live.workspace) === workspaceKey(workspace)) return record;
+  // A server writes its record only after it listens, so this record is an old one.
   await removeRecord(file);
   return null;
 }

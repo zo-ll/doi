@@ -6,15 +6,9 @@ import { loadConfig, type Config } from "../config.ts";
 import { rendererStatus } from "../export/browser.ts";
 import { ensureUserConfig, userPaths } from "../user-dirs.ts";
 import { version } from "../../package.json";
-import { EXIT, type ServerCli } from "./cli.ts";
-import { findInstance, logFile, portInUse, probe, recordFile, readRecord, removeRecord, type InstanceRecord } from "./instance.ts";
+import { CommandError, EXIT, type ServerCli } from "./cli.ts";
+import { findInstance, LOCAL, logFile, portInUse, probe, recordFile, readRecord, removeRecord, type InstanceRecord } from "./instance.ts";
 import { checkTools } from "./tools.ts";
-
-export class CommandError extends Error {
-  constructor(readonly exitCode: number, readonly code: string, message: string) {
-    super(message);
-  }
-}
 
 const READY_MS = 30_000;
 
@@ -57,9 +51,10 @@ async function ready(port: number): Promise<boolean> {
   const base = `http://127.0.0.1:${port}`;
   const signal = () => AbortSignal.timeout(3000);
   try {
-    if (!(await fetch(`${base}/`, { signal: signal() })).ok) return false;
-    if (!(await fetch(`${base}/api/projects`, { signal: signal() })).ok) return false;
+    if (!(await fetch(`${base}/`, { ...LOCAL, signal: signal() })).ok) return false;
+    if (!(await fetch(`${base}/api/projects`, { ...LOCAL, signal: signal() })).ok) return false;
     const mcp = await fetch(`${base}/mcp`, {
+      ...LOCAL,
       method: "POST",
       signal: signal(),
       headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
@@ -96,7 +91,7 @@ export async function start(cli: ServerCli) {
   const out = openSync(log, "a", 0o600);
   const id = crypto.randomUUID();
   const entry = process.env.DOI_BINARY ? [] : [Bun.main];
-  const args = [...entry, "serve", "--workspace", config.workspace, "--port", String(config.port), ...(config.configPath ? ["--config", config.configPath] : [])];
+  const args = [...entry, "serve", "--workspace", config.workspace, "--port", String(config.port), ...(config.configPath ? ["--config", config.configPath] : []), ...(cli.open ? ["--open"] : [])];
   const child = spawn(process.execPath, args, {
     detached: true,
     windowsHide: true,
@@ -105,7 +100,11 @@ export async function start(cli: ServerCli) {
   });
   closeSync(out);
   let ended: number | null | undefined;
-  child.on("exit", (code) => void (ended = code));
+  let killedBy: string | null = null;
+  child.on("exit", (code, signal) => {
+    ended = code;
+    killedBy = signal;
+  });
   child.on("error", () => void (ended = -1));
   // This command waits for the child's exit event; after that, the server outlives the command.
   const finish = <T>(value: T): T => {
@@ -122,7 +121,7 @@ export async function start(cli: ServerCli) {
       if (winner) return finish(await launchInfo(winner, true));
       if (ended === EXIT.port) throw new CommandError(EXIT.port, "port_conflict", `Port ${config.port} is in use. Use --port with a free port, or --port 0.`);
       if (ended === EXIT.usage) throw new CommandError(EXIT.usage, "invalid_config", `doi could not use its config. See ${log}`);
-      throw new CommandError(EXIT.readiness, "not_ready", `The server stopped with code ${ended} before it was ready. See ${log}`);
+      throw new CommandError(EXIT.readiness, "not_ready", `The server ${killedBy ? `was killed (${killedBy})` : `stopped with code ${ended}`} before it was ready. See ${log}`);
     }
     const record = await readRecord(file);
     if (record?.id === id && (await ready(record.port))) return finish(await launchInfo(record, false));
@@ -152,10 +151,15 @@ export async function stop(cli: ServerCli) {
   const file = recordFile(config.workspace);
   const record = await findInstance(config.workspace, file);
   if (!record) return { ok: true as const, stopped: false as const, workspace: config.workspace };
-  process.kill(record.pid);
+  try {
+    process.kill(record.pid);
+  } catch (e) {
+    // It ended between the identity check and this signal: that is what the user asked for.
+    if ((e as NodeJS.ErrnoException).code !== "ESRCH") throw e;
+  }
   const until = Date.now() + 10_000;
   while (Date.now() < until) {
-    if (!(await probe(record.port, 500))) {
+    if (!(await portInUse(record.port, 500))) {
       await removeRecord(file);
       return { ok: true as const, stopped: true as const, workspace: config.workspace, pid: record.pid };
     }

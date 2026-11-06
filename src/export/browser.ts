@@ -16,10 +16,13 @@ export function runDownloadChild(): void {
   registry.runOopDownloadBrowserMain();
 }
 
+/** WebRTC sends UDP that neither the route nor the CSP sees. Without a proxy, this gives it no UDP at all. */
+export const CHROMIUM_ARGS = ["--force-webrtc-ip-handling-policy=disable_non_proxied_udp"];
+
 /** Whether Chromium really starts. A file on disk is not enough: this is what agent screenshots need. */
 export async function rendererStatus(): Promise<{ ready: boolean; detail: string }> {
   try {
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({ timeout: 10_000, args: CHROMIUM_ARGS });
     await browser.close();
     return { ready: true, detail: "Chromium starts." };
   } catch {

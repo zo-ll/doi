@@ -1,9 +1,9 @@
 import { installBrowser, isDownloadChild, runDownloadChild } from "../export/browser.ts";
 import { version } from "../../package.json";
 import { startServer } from "./app.ts";
-import { EXIT, openCommand, parseCli, USAGE, type Cli, type ServerCli } from "./cli.ts";
-import { CommandError, doctor, resolveConfig, start, status, stop } from "./commands.ts";
-import { findInstance, recordFile, removeRecord, writeRecord } from "./instance.ts";
+import { CommandError, EXIT, openCommand, parseCli, USAGE, type Cli, type ServerCli } from "./cli.ts";
+import { doctor, resolveConfig, start, status, stop } from "./commands.ts";
+import { claimRecord, findInstance, recordFile, releaseRecord } from "./instance.ts";
 
 /** Runs the server in this process, for the terminal or for a background start. */
 async function runServer(cli: ServerCli): Promise<void> {
@@ -23,8 +23,12 @@ async function runServer(cli: ServerCli): Promise<void> {
     throw e;
   }
   const { server, instanceId } = started;
-  await writeRecord({ id: instanceId, pid: process.pid, workspace: config.workspace, version, port: server.port!, log: process.env.DOI_LOG ?? null }, file);
-  const end = () => void removeRecord(file).finally(() => process.exit(0));
+  const winner = await claimRecord({ id: instanceId, pid: process.pid, workspace: config.workspace, version, port: server.port!, log: process.env.DOI_LOG ?? null }, file);
+  if (winner) {
+    started.stop();
+    throw new CommandError(EXIT.port, "already_running", `doi already runs for this workspace at http://127.0.0.1:${winner.port}/ (process ${winner.pid}).`);
+  }
+  const end = () => void releaseRecord(process.pid, file).finally(() => process.exit(0));
   process.once("SIGINT", end);
   process.once("SIGTERM", end);
   const url = server.url.href;

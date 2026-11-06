@@ -3,6 +3,13 @@ import { parseArgs } from "node:util";
 /** Exit codes. An agent can act on them, and they stay the same between versions. */
 export const EXIT = { ok: 0, notRunning: 1, usage: 2, tool: 3, readiness: 4, port: 5 } as const;
 
+/** A failure with its exit code and a stable code word for an agent. */
+export class CommandError extends Error {
+  constructor(readonly exitCode: number, readonly code: string, message: string) {
+    super(message);
+  }
+}
+
 export const USAGE = `Usage: doi [options]
        doi start | status | stop [options] [--json]
        doi doctor [--json]
