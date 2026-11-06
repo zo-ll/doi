@@ -8,7 +8,6 @@ export type { UsageEntry } from "../workspace/chat.ts";
 import type { Price } from "../config.ts";
 export type { Price };
 export type { CommentView } from "../server/comments.ts";
-export type { VariantSetView, VariantStreamEvent } from "../server/variants.ts";
 export type { VersionView } from "../server/history.ts";
 export type { DesignSystemView, ImportStreamEvent } from "../server/design-systems.ts";
 
@@ -78,16 +77,6 @@ export function uploadUrl(project: string, name: string): string {
 /** Comments of one design (#16); with an id, one comment. */
 export function commentsUrl(project: string, design: string, id?: string): string {
   return `/api/projects/${project}/designs/${design}/comments${id ? `/${id}` : ""}`;
-}
-
-/** Variants of one design (#19): the open set, a pick, a discard. */
-export function variantsUrl(project: string, design: string, path = ""): string {
-  return `/api/projects/${project}/designs/${design}/variants${path}`;
-}
-
-/** A file of one variant, for its frame. */
-export function variantPageUrl(project: string, design: string, set: string, n: number): string {
-  return `/variant/${project}/${design}/${set}/${n}/`;
 }
 
 /** Versions of one design (#20); with a commit id, its restore action. */

@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { getProvider } from "../providers/registry.ts";
 import { providerStatus } from "../providers/status.ts";
 import { designDir, designPages, ensureWorkspace, fileIn, listProjects, sortPages } from "../workspace/paths.ts";
-import { variantDir } from "../workspace/variants.ts";
 import { designSystemDir, listDesignSystems, loadDesignSystem, previewPage } from "../workspace/design-systems.ts";
 import { designEvents, watchDesigns } from "../workspace/watch.ts";
 import { commitPaths, commitStats, commitTurn, designFileAt, designFilesAt, designVersion, ensureRepo, isSha, workspaceChanges } from "../workspace/git.ts";
@@ -22,11 +21,10 @@ import { MAX_IMPORT_BYTES, postExport, postImport, postImportInspect } from "./a
 import { deleteProjectRepo, getGithubRepos, getGithubStatus, putProjectRepo, syncProjectRepo } from "./github.ts";
 import { excludeClones } from "../github/gh.ts";
 import { handleMcp, MCP_PATH } from "../mcp/server.ts";
-import { getHistory, reopenVariants, restoreVersion } from "./history.ts";
+import { getHistory, restoreVersion } from "./history.ts";
 import { getLayout, putLayout } from "./layout.ts";
 import { postArchitectureExport } from "./architecture-export.ts";
 import { getArchitecture, getArchitectureVersion, getArchitectureVersions, postArchitectureCheckpoint, putArchitecture } from "./architecture.ts";
-import { createVariantHandlers } from "./variants.ts";
 import { DesignLocks } from "./locks.ts";
 import { checkRequest, HOSTNAME, PAGE_HEADERS } from "./security.ts";
 import { deleteProject, patchDesign, patchProject, postDesign, postProject, postScreen, putDesignKind } from "./projects.ts";
@@ -75,12 +73,6 @@ export async function startServer(config: Config, options: { port?: number; deve
     locks,
     commit: (paths: string[], message: string) => commitPaths(config.workspace, paths, message),
   };
-  const variants = createVariantHandlers({
-    config,
-    locks,
-    getProvider,
-    commit: (paths, message) => commitPaths(config.workspace, paths, message),
-  });
   const importDeps = {
     config,
     locks,
@@ -90,17 +82,14 @@ export async function startServer(config: Config, options: { port?: number; deve
   const historyDeps = {
     workspace: config.workspace,
     locks,
-    variantsOpen: variants.isOpen,
     commit: (paths: string[], message: string) => commitPaths(config.workspace, paths, message),
   };
   const githubDeps = { workspace: config.workspace, locks, commit: (paths: string[], message: string) => commitPaths(config.workspace, paths, message) };
   const tweakDeps = { workspace: config.workspace, locks, commit: (paths: string[], message: string) => commitPaths(config.workspace, paths, message) };
-  const editDeps = { ...tweakDeps, variantsOpen: variants.isOpen };
   const chatStats = (project: string, design: string, shas: string[]) => commitStats(config.workspace, project, design, shas);
   const runTurnRequest = createTurnHandler({
     config,
     locks,
-    variantsOpen: variants.isOpen,
     getProvider,
     watcher,
     commit: (project, design, prompt) => commitTurn(config.workspace, project, design, prompt),
@@ -197,13 +186,6 @@ export async function startServer(config: Config, options: { port?: number; deve
     return servePage(url, () => designSystemDir(config.workspace, name), rest);
   }
 
-  /** /variant/<project>/<design>/<set>/<n>/<file> */
-  function serveVariant(url: URL): Promise<Response> | Response {
-    const [, , project, design, set, n, ...rest] = url.pathname.split("/");
-    if (!project || !design || !set || !n) return new Response("Not found", { status: 404 });
-    return servePage(url, () => variantDir(config.workspace, project, design, set, Number(n)), rest);
-  }
-
   const server: Bun.Server<unknown> = Bun.serve({
     port: options.port ?? config.port,
     hostname: HOSTNAME,
@@ -275,8 +257,8 @@ export async function startServer(config: Config, options: { port?: number; deve
         PUT: (req) => putTweaks(tweakDeps, req, req.params),
       },
       "/api/projects/:project/designs/:design/spacing": (req) => getSpacing(config.workspace, req.params),
-      "/api/projects/:project/designs/:design/edit": { POST: (req) => postEdit(editDeps, req, req.params) },
-      "/api/projects/:project/designs/:design/edit/undo": { POST: (req) => undoEdit(editDeps, req, req.params) },
+      "/api/projects/:project/designs/:design/edit": { POST: (req) => postEdit(tweakDeps, req, req.params) },
+      "/api/projects/:project/designs/:design/edit/undo": { POST: (req) => undoEdit(tweakDeps, req, req.params) },
       "/api/projects/:project/designs/:design/pages": async (req) => {
         try {
           const { project, design } = req.params;
@@ -296,12 +278,6 @@ export async function startServer(config: Config, options: { port?: number; deve
         }
       },
       "/api/projects/:project/designs/:design/chat": (req) => getChat(config.workspace, req.params, chatStats),
-      "/api/projects/:project/designs/:design/variants": {
-        GET: (req) => variants.get(req.params),
-        POST: (req, srv) => variants.post(req, req.params, srv),
-      },
-      "/api/projects/:project/designs/:design/variants/:set/pick": { POST: (req) => variants.pick(req, req.params) },
-      "/api/projects/:project/designs/:design/variants/:set": { DELETE: (req) => variants.discard(req.params) },
       "/api/projects/:project/designs/:design/export": (req) => getExport(config.workspace, req, req.params),
       "/api/projects/:project/designs/:design/handoff": { GET: (req) => getHandoff(config.workspace, req.params) },
       "/api/projects/:project/designs/:design/handoff/prompt": (req, srv) =>
@@ -309,7 +285,6 @@ export async function startServer(config: Config, options: { port?: number; deve
       "/api/projects/:project/designs/:design/handoff/bundle": { POST: (req) => postBundle(config.workspace, req, req.params) },
       "/api/projects/:project/designs/:design/history": (req) => getHistory(historyDeps, req.params),
       "/api/projects/:project/designs/:design/history/:sha/restore": { POST: (req) => restoreVersion(historyDeps, req.params) },
-      "/api/projects/:project/designs/:design/history/:sha/reopen-variants": { POST: (req) => reopenVariants(historyDeps, req.params) },
       "/api/projects/:project/designs/:design/layout": {
         GET: (req) => getLayout(config.workspace, req.params),
         PUT: (req) => putLayout(config.workspace, req, req.params),
@@ -339,7 +314,6 @@ export async function startServer(config: Config, options: { port?: number; deve
       if (refused) return refused;
       const url = new URL(req.url);
       if (url.pathname.startsWith("/design/")) return serveDesign(url);
-      if (url.pathname.startsWith("/variant/")) return serveVariant(url);
       if (url.pathname.startsWith("/ds/")) return serveDesignSystem(url);
       if (url.pathname.startsWith("/version/")) return serveVersion(url);
       return new Response("Not found", { status: 404 });

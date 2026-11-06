@@ -172,7 +172,7 @@ describe("edit routes", () => {
     await Bun.write(join(dir, "index.html"), '<main data-oid="m">\n  <h1 data-oid="t">T</h1>\n  <p data-oid="x">X</p>\n</main>\n');
     await Bun.write(join(dir, "styles.css"), ":root { --space-1: 4px; --space-2: 8px; }\n");
     await commitPaths(ws, [dir], "Start");
-    const deps = { workspace: ws, locks: new DesignLocks(), variantsOpen: async () => false, commit: (p: string[], m: string) => commitPaths(ws, p, m) };
+    const deps = { workspace: ws, locks: new DesignLocks(), commit: (p: string[], m: string) => commitPaths(ws, p, m) };
     return { ws, dir, deps };
   };
 
@@ -222,14 +222,13 @@ describe("edit routes", () => {
     expect((await designLog(ws, "p", "d"))[0]!.message).toBe("Edit x: move before t");
   });
 
-  test("bad bodies, locks, open variants and turns that are not edits", async () => {
+  test("bad bodies, locks and turns that are not edits", async () => {
     const { deps } = await setup();
     expect((await postEdit(deps, post({ oid: "t" }), params)).status).toBe(400);
     expect((await postEdit(deps, post({ oid: "t", style: { color: "red" } }), params)).status).toBe(400);
     expect((await postEdit(deps, post({ oid: "t", move: { target: "x", position: "inside" } }), params)).status).toBe(400);
     expect((await postEdit(deps, post({ oid: "t", move: { target: "x", position: "after", page: "../x.html" } }), params)).status).toBe(404);
     expect((await postEdit(deps, post({ oid: "t", style: { width: "1px" } }), { project: "p", design: "nope" })).status).toBe(404);
-    expect((await postEdit({ ...deps, variantsOpen: async () => true }, post({ oid: "t", style: { width: "1px" } }), params)).status).toBe(409);
     deps.locks.tryLock("p/d");
     expect((await postEdit(deps, post({ oid: "t", style: { width: "1px" } }), params)).status).toBe(409);
     deps.locks.unlock("p/d");

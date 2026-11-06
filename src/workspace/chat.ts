@@ -52,7 +52,7 @@ export type ChatEntry =
       stop?: "user" | "connection";
       /** Ids of the comments this turn marked done. */
       commentsDone?: string[];
-      /** The variant the user picked, when the answer came from a variants run. */
+      /** The variant the user picked. Only entries from before variants were removed have it. */
       variant?: number;
       /** The system prompt version, so a design's history names the prompt that made it. */
       prompt: string;

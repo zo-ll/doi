@@ -225,17 +225,6 @@ export async function designFilesAt(workspace: string, project: string, design: 
     .filter((p) => p && !p.split("/").some((part) => part.startsWith(".")));
 }
 
-/** The folders directly under `dir` that commit `sha` deleted files from (a picked variant set). */
-export function deletedFolders(workspace: string, sha: string, dir: string): Promise<string[]> {
-  if (!isSha(sha)) throw new Error("Invalid commit id.");
-  const rel = relPath(workspace, dir);
-  return serial(async () => {
-    const out = await git(workspace, ["diff-tree", "-r", "--no-commit-id", "--name-only", "--diff-filter=D", sha, "--", `${rel}/`]);
-    const names = out.split("\n").filter(Boolean).map((p) => p.slice(rel.length + 1).split("/")[0]!);
-    return [...new Set(names.filter(Boolean))];
-  });
-}
-
 /** The files under `dir` that commit `sha` changed, as paths in `dir`. */
 export function changedFiles(workspace: string, sha: string, dir: string): Promise<string[]> {
   if (!isSha(sha)) throw new Error("Invalid commit id.");
@@ -244,15 +233,6 @@ export function changedFiles(workspace: string, sha: string, dir: string): Promi
     // -z: paths as written, not quoted (git quotes non-ASCII names in its normal output).
     const out = await git(workspace, ["diff-tree", "-r", "-z", "--no-commit-id", "--name-only", sha, "--", `${rel}/`]);
     return out.split("\0").filter(Boolean).map((p) => p.slice(rel.length + 1));
-  });
-}
-
-/** Puts a folder back as it was in the parent of commit `sha`. The caller commits it. */
-export function checkoutBefore(workspace: string, sha: string, dir: string): Promise<void> {
-  if (!isSha(sha)) throw new Error("Invalid commit id.");
-  const rel = relPath(workspace, dir);
-  return serial(async () => {
-    await git(workspace, ["checkout", `${sha}^`, "--", `${rel}/`]);
   });
 }
 

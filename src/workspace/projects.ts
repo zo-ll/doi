@@ -3,7 +3,6 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { chatFile, renameInChat } from "./chat.ts";
 import { renameLayout, slideLayout, updateProjectMeta, writeAppKind, writeLayout } from "./layout.ts";
-import { renameVariants } from "./variants.ts";
 import { assertName, designDir } from "./paths.ts";
 import { projectDir, projectFile } from "./project-file.ts";
 
@@ -182,6 +181,5 @@ export async function renameDesign(workspace: string, project: unknown, from: un
 
   await renameInChat(workspace, p, a, b);
   await renameLayout(workspace, p, a, b);
-  const moved = await renameVariants(workspace, p, a, b);
-  return { paths: [src, dst, chatFile(workspace, p), projectFile(workspace, p), ...moved] };
+  return { paths: [src, dst, chatFile(workspace, p), projectFile(workspace, p)] };
 }

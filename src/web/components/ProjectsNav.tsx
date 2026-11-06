@@ -376,7 +376,7 @@ export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onCh
       {deleting && (
         <Confirm
           title={`Delete ${deleting.name}?`}
-          body={`doi removes the project with its ${deleting.designs.length === 1 ? "design" : `${deleting.designs.length} designs`}, variants, chat and uploads${deleting.repo ? `, and the clone of ${deleting.repo.name} when no other project links it` : ""}. The workspace history keeps the old versions, so git can bring the project back.`}
+          body={`doi removes the project with its ${deleting.designs.length === 1 ? "design" : `${deleting.designs.length} designs`}, chat and uploads${deleting.repo ? `, and the clone of ${deleting.repo.name} when no other project links it` : ""}. The workspace history keeps the old versions, so git can bring the project back.`}
           action="Delete project"
           danger
           busy={deleteBusy}

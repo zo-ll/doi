@@ -27,8 +27,6 @@ export interface TurnDeps {
   commit?: (project: string, design: string, prompt: string) => Promise<string | null>;
   /** Shared with the design rename, so a design cannot move while a turn runs on it. */
   locks?: DesignLocks;
-  /** True when the design has open variants; a turn then waits for a pick or a discard. */
-  variantsOpen?: (params: { project: string; design: string }) => Promise<boolean>;
   /** The changed lines per file of some commits of a design, for the chat. */
   stats?: (project: string, design: string, shas: string[]) => Promise<Map<string, FileStat[]>>;
 }
@@ -182,10 +180,6 @@ export function createTurnHandler(deps: TurnDeps) {
     } catch (e) {
       if (e instanceof CommentError) return Response.json({ error: e.message }, { status: e.status });
       throw e;
-    }
-
-    if (await deps.variantsOpen?.(params)) {
-      return Response.json({ error: "This design has open variants. Pick one or discard them first." }, { status: 409 });
     }
 
     const key = designKey(params.project, params.design);

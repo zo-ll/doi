@@ -11,7 +11,7 @@ export interface DesignRef {
   workspace: string;
   project: string;
   design: string;
-  /** The folder the changes go to, when it is not the design folder (a variant). */
+  /** The folder the changes go to, when it is not the design folder (a design system import). */
   dir?: string;
 }
 

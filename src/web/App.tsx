@@ -35,7 +35,6 @@ import { MAX_SCREENS } from "../workspace/frames.ts";
 import { nodeQuery, nodeUrl, parseNodeQuery } from "./node-url.ts";
 import { taskStatuses } from "./providers.ts";
 import { useTheme } from "./theme.ts";
-import { useVariants } from "./variants.ts";
 
 const LAST_DESIGN = "doi:last-design";
 const PANELS = "doi:panels";
@@ -257,13 +256,10 @@ export function App() {
   }, [retryWorkspace]);
 
   const comments = useComments(active, revision);
-  const variants = useVariants(active);
   const history = useHistory(active, revision);
   // A history preview of a mobile app shows the pages of that version.
   const previewSha = history.preview?.sha ?? null;
   const [previewPages] = useLoad<string[]>(active && previewSha ? `/api/projects/${active.project}/designs/${active.design}/pages?sha=${previewSha}` : null);
-  // Bumped after a pick: the chat loads again and shows the picked answer.
-  const [chatEpoch, setChatEpoch] = useState(0);
   const commentList = comments.comments.state === "ready" ? comments.comments.data : [];
   const pins = useMemo(() => pinsOf(commentList), [commentList]);
   // A comment that a turn marked done, or that someone deleted, leaves the next turn.
@@ -592,7 +588,7 @@ export function App() {
         {panels.chat && (
           <aside className="chat-pane" aria-label="Chat">
             <ChatPanel
-              key={active ? `${active.project}/${active.design}/${chatEpoch}` : ""}
+              key={active ? `${active.project}/${active.design}` : ""}
               target={active}
               readOnlyReason={umlOpen ? "Chat edits the UI design. Use the UML tools for this diagram, or return to the UI design to send a request." : undefined}
               selection={selection}
@@ -603,11 +599,6 @@ export function App() {
               onAppliedSent={() => setApplied([])}
               onRunningChange={setRunning}
               onCommentsChanged={comments.reload}
-              variantsOpen={variants.set !== null}
-              onVariantsChanged={variants.reload}
-              onDiscardVariants={() => {
-                variants.discard().catch(() => {});
-              }}
               onCollapse={() => togglePanel("chat")}
               repo={activeProject?.repo?.name ?? null}
               onOpenSettings={() => setScreen("settings")}
@@ -675,14 +666,6 @@ export function App() {
           onRestorePreview={() => setAskRestore(true)}
           previewLabel={previewLabel}
           onClosePreview={() => history.setPreview(null)}
-          variants={variants.set}
-          variantsError={variants.error}
-          onPickVariant={(n) => {
-            variants.pick(n).then(() => setChatEpoch((e) => e + 1), () => {});
-          }}
-          onDiscardVariants={() => {
-            variants.discard().catch(() => {});
-          }}
           onPin={(oid) => {
             setSelection({ oid });
             showSide("comments");
@@ -696,7 +679,7 @@ export function App() {
           onEditSaving={keepSelection}
           overlay={
             <>
-              {tweaksOpen && active && !variants.set && (
+              {tweaksOpen && active && (
                 <TweaksPanel
                   active={active}
                   revision={revision}
@@ -776,17 +759,6 @@ export function App() {
                   preview={history.preview?.sha ?? null}
                   onPreview={history.setPreview}
                   onRestore={() => setAskRestore(true)}
-                  busy={history.busy}
-                  onReopen={(v) => {
-                    history.reopenVariants(v).then(
-                      () => {
-                        history.setPreview(null);
-                        variants.reload();
-                        setToast("The variants are back. Pick one on the canvas.");
-                      },
-                      (e: Error) => setToast(e.message),
-                    );
-                  }}
                   onRetry={history.reload}
                 />
               )}

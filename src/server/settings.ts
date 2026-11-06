@@ -59,7 +59,7 @@ export async function putModels(config: Config, req: Request): Promise<Response>
       return fail(`config.toml could not be written: ${e instanceof Error ? e.message : String(e)}`, 500);
     }
   }
-  // The turn, variant and import routes read config.models at each request.
+  // The turn and import routes read config.models at each request.
   Object.assign(config.models, next);
   return Response.json(configView(config));
 }

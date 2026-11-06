@@ -13,17 +13,13 @@ export function timeAgo(iso: string, now = Date.now()): string {
   return new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
-export function HistoryPanel({ versions, preview, busy, onPreview, onRestore, onReopen, onRetry }: {
+export function HistoryPanel({ versions, preview, onPreview, onRestore, onRetry }: {
   versions: Load<VersionView[]>;
   /** The version shown on the canvas. */
   preview: string | null;
   onPreview: (v: VersionView | null) => void;
   /** Asks to restore the previewed version. */
   onRestore: () => void;
-  /** A history action runs. */
-  busy?: boolean;
-  /** Brings back the variant set of a pick, to pick another variant. */
-  onReopen?: (v: VersionView) => void;
   onRetry: () => void;
 }) {
   const list = versions.state === "ready" ? versions.data : [];
@@ -69,26 +65,14 @@ export function HistoryPanel({ versions, preview, busy, onPreview, onRestore, on
                   {v.model ? `${shortModel(v.model.split(":").slice(1).join(":"))} · ` : ""}
                   {v.sha.slice(0, 7)}
                 </p>
-                {(!current || (onReopen && versionKind(v.message) === "pick")) && (
+                {!current && (
                   <div className="version-actions">
-                    {!current && (
-                      <button className="btn btn-secondary btn-sm" onClick={() => onPreview(previewing ? null : v)} aria-pressed={previewing}>
-                        {previewing ? "Close preview" : "Preview"}
-                      </button>
-                    )}
-                    {!current && previewing && (
+                    <button className="btn btn-secondary btn-sm" onClick={() => onPreview(previewing ? null : v)} aria-pressed={previewing}>
+                      {previewing ? "Close preview" : "Preview"}
+                    </button>
+                    {previewing && (
                       <button className="btn btn-primary btn-sm" onClick={onRestore}>
                         Restore
-                      </button>
-                    )}
-                    {onReopen && versionKind(v.message) === "pick" && (
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        disabled={busy}
-                        title="Show the variants of this pick again, to pick another one"
-                        onClick={() => onReopen(v)}
-                      >
-                        Reopen variants
                       </button>
                     )}
                   </div>

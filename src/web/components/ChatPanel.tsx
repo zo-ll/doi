@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { chatUrl, getJSON, turnUrl, uploadUrl, variantsUrl, type Active, type ChatEntryView, type VariantStreamEvent } from "../api.ts";
+import { chatUrl, getJSON, turnUrl, uploadUrl, type Active, type ChatEntryView } from "../api.ts";
 import { isImageType, prepareImage, type PreparedImage } from "../images.ts";
 import { IMAGE_LIMITS } from "../../workspace/image-limits.ts";
 import {
   applyEvent,
-  applyVariantEvent,
   clock,
   formatTokens,
   fromEntries,
@@ -16,7 +15,6 @@ import {
   UNFINISHED,
   type ChatMessage,
   type Task,
-  type VariantsMessage,
 } from "../chat.ts";
 import { shortModel, type TaskStatus } from "../providers.ts";
 import { MOD, MOD_CLICK } from "./TopBar.tsx";
@@ -42,7 +40,6 @@ interface Sent {
   target: string | null;
   images: PreparedImage[];
   comments: AppliedComment[];
-  count: number;
 }
 
 const SAMPLES = [
@@ -70,9 +67,6 @@ export function ChatPanel({
   onAppliedSent,
   onRunningChange,
   onCommentsChanged,
-  variantsOpen = false,
-  onVariantsChanged,
-  onDiscardVariants,
   onCollapse,
   onOpenSettings,
   repo = null,
@@ -92,11 +86,6 @@ export function ChatPanel({
   onRunningChange?: (running: boolean) => void;
   /** A turn marked comments done. */
   onCommentsChanged?: () => void;
-  /** The design has open variants: no turn can start until one is picked or they are discarded. */
-  variantsOpen?: boolean;
-  /** A variants run changed the open set. */
-  onVariantsChanged?: () => void;
-  onDiscardVariants?: () => void;
   onCollapse: () => void;
   onOpenSettings: () => void;
   /** The project's linked repo: the samples start from the app's code. */
@@ -116,8 +105,6 @@ export function ChatPanel({
     setRunningState(on);
     onRunningChange?.(on);
   };
-  // 1 is a normal turn; 2 to 4 starts that many variants.
-  const [count, setCount] = useState(1);
   /** A model the user picked for this design's turns; null uses the config. */
   const [chosen, setChosen] = useState<TaskStatus | null>(null);
   const [modelMenu, setModelMenu] = useState(false);
@@ -142,9 +129,6 @@ export function ChatPanel({
   const push = (m: NewMessage) => setMessages((list) => [...list, { ...m, id: nextId.current++ } as ChatMessage]);
   const updateAnswer = (id: number, f: (a: Answer) => Answer) =>
     setMessages((list) => list.map((m) => (m.id === id && m.kind === "assistant" ? f(m) : m)));
-  const updateVariants = (id: number, f: (m: VariantsMessage) => VariantsMessage) =>
-    setMessages((list) => list.map((m) => (m.id === id && m.kind === "variants" ? f(m) : m)));
-
   // The model of the next turn: the user's pick, or the edit model for a target, else generate.
   const byTask = (task: "generate" | "edit") => tasks.find((t) => t.task === task) ?? null;
   const current = chosen ?? byTask(selection ? "edit" : "generate");
@@ -152,46 +136,6 @@ export function ChatPanel({
   const modelRef = current ? `${current.provider}:${current.model}` : null;
   // Ready models from the config, one entry per provider and model.
   const choices = tasks.filter((t, i) => tasks.findIndex((x) => x.provider === t.provider && x.model === t.model) === i);
-
-  /** Starts `n` variants of `text`. The answer streams into one message. */
-  const sendVariants = async (s: Sent) => {
-    if (!target || readOnlyReason) return;
-    push({ kind: "user", text: s.text, at: new Date().toISOString(), ...(s.target ? { target: s.target } : {}) });
-    const id = nextId.current++;
-    setMessages((list) => [...list, { id, kind: "variants", status: "running", items: [] }]);
-    sentRef.current.set(id, s);
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setRunning(true);
-    try {
-      const res = await fetch(variantsUrl(target.project, target.design), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text: s.text, target: s.target, count: s.count, ...(modelRef ? { models: Array(s.count).fill(modelRef) } : {}) }),
-        signal: controller.signal,
-      });
-      if (!res.ok || !res.body) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null;
-        updateVariants(id, (m) => ({ ...m, status: "error", error: body?.error ?? `The request failed: ${res.status} ${res.statusText}` }));
-        return;
-      }
-      let ended = false;
-      for await (const event of readEvents<VariantStreamEvent>(res.body)) {
-        updateVariants(id, (m) => applyVariantEvent(m, event));
-        if (event.type === "variants" || event.type === "variants-done") onVariantsChanged?.();
-        if (event.type === "variant" && (event.event.type === "done" || event.event.type === "error")) onVariantsChanged?.();
-        if (event.type === "variants-done") ended = true;
-      }
-      if (!ended) updateVariants(id, (m) => ({ ...m, status: "error", error: "The connection closed before the variants ended." }));
-    } catch (e) {
-      if (controller.signal.aborted) updateVariants(id, (m) => ({ ...m, status: "stopped" }));
-      else updateVariants(id, (m) => ({ ...m, status: "error", error: `The request failed: ${e instanceof Error ? e.message : String(e)}` }));
-    } finally {
-      if (abortRef.current === controller) abortRef.current = null;
-      setRunning(false);
-      onVariantsChanged?.();
-    }
-  };
 
   // Load the stored chat. Messages sent before it arrives stay after it.
   useEffect(() => {
@@ -212,7 +156,7 @@ export function ChatPanel({
         loaded.forEach((m, i) => {
           const before = loaded[i - 1];
           if (m.kind === "assistant" && before?.kind === "user") {
-            sentRef.current.set(m.id, { text: before.text, target: before.target ?? null, images: [], comments: [], count: 1 });
+            sentRef.current.set(m.id, { text: before.text, target: before.target ?? null, images: [], comments: [] });
           }
         });
         const before = shownIds;
@@ -326,12 +270,12 @@ export function ChatPanel({
   const send = () => {
     const text = draft.trim();
     if ((!text && !applied.length) || running || !target) return;
-    const s: Sent = { text, target: selection?.oid ?? null, images, comments: applied, count };
+    const s: Sent = { text, target: selection?.oid ?? null, images, comments: applied };
     setDraft("");
     setImages([]);
     setImageError(null);
     if (applied.length) onAppliedSent?.();
-    void (count > 1 ? sendVariants(s) : sendTurn(s));
+    void sendTurn(s);
   };
   const retry = (id: number) => {
     const s = sentRef.current.get(id);
@@ -343,7 +287,7 @@ export function ChatPanel({
       return;
     }
     setImageError(null);
-    void (s.count > 1 ? sendVariants(s) : sendTurn(s));
+    void sendTurn(s);
   };
 
   // Esc closes the model menu, wherever the focus is.
@@ -358,7 +302,7 @@ export function ChatPanel({
     return () => window.removeEventListener("keydown", onKey, true);
   }, [modelMenu]);
 
-  /** On the whole composer: Ctrl/⌘ Enter sends from the text, the variant count or any other control. */
+  /** On the whole composer: Ctrl/⌘ Enter sends from the text or any other control. */
   const onKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
@@ -369,15 +313,11 @@ export function ChatPanel({
     }
   };
 
-  // Variants take text only; images go with a normal turn.
-  const variantsWithImages = count > 1 && images.length > 0;
-  // The variants route takes text only: applied comments would be lost.
-  const variantsWithComments = count > 1 && applied.length > 0;
-  const hasInput = draft.trim().length > 0 || (applied.length > 0 && count === 1);
+  const hasInput = draft.trim().length > 0 || applied.length > 0;
   // The server refuses images for a model without vision; say so before Send.
-  const imagesUnread = images.length > 0 && !variantsWithImages && current?.vision === false;
+  const imagesUnread = images.length > 0 && current?.vision === false;
   const visionChoice = choices.some((t) => t.tone === "ok" && t.vision === true);
-  const canSend = hasInput && !disabled && !variantsOpen && !variantsWithImages && !variantsWithComments && !imagesUnread;
+  const canSend = hasInput && !disabled && !imagesUnread;
   const modelProblem = current && (current.tone === "err" || current.tone === "warn") ? current : null;
   const turns = messages.filter((m) => m.kind === "user").length;
   const hasChips = selection !== null || applied.length > 0 || images.length > 0;
@@ -450,8 +390,6 @@ export function ChatPanel({
             </div>
           ) : m.kind === "assistant" ? (
             <AnswerView key={m.id} answer={m} running={running || !!readOnlyReason} onRetry={() => retry(m.id)} onOtherModel={() => setModelMenu(true)} />
-          ) : m.kind === "variants" ? (
-            <VariantsLine key={m.id} message={m} />
           ) : m.kind === "error" ? (
             <div key={m.id} className="banner banner-err" role="alert">
               <span className="dot dot-err" />
@@ -467,18 +405,7 @@ export function ChatPanel({
 
       <div className="composer-wrap">
         {readOnlyReason && <p className="uml-hint" role="note">{readOnlyReason}</p>}
-        {variantsOpen && (
-          <div className="banner banner-warn" role="status">
-            <span className="dot dot-warn" />
-            <span className="spacer">A variant set is open. Pick one or discard all first.</span>
-            {onDiscardVariants && (
-              <button className="btn btn-secondary btn-sm" onClick={onDiscardVariants}>
-                Discard all
-              </button>
-            )}
-          </div>
-        )}
-        {!variantsOpen && modelProblem && (
+        {modelProblem && (
           <div className="banner banner-warn" role="status">
             <span className="dot dot-warn" />
             <span className="spacer">
@@ -546,11 +473,6 @@ export function ChatPanel({
               {imageError}
             </p>
           )}
-          {variantsWithImages && (
-            <p className="field-error composer-error" role="alert">
-              Variants do not take images. Remove the images, or make one design.
-            </p>
-          )}
           {imagesUnread && current && (
             <p className="field-error composer-error" role="alert">
               {shortModel(current.model)} cannot read images. Remove the images, or pick a model with vision.{" "}
@@ -559,11 +481,6 @@ export function ChatPanel({
                   Pick a model
                 </button>
               )}
-            </p>
-          )}
-          {variantsWithComments && (
-            <p className="field-error composer-error" role="alert">
-              Variants do not take comments. Remove the comments, or make one design.
             </p>
           )}
           <textarea
@@ -597,13 +514,6 @@ export function ChatPanel({
                 }}
               />
             </label>
-            <div className="seg" role="radiogroup" aria-label="Variants" title="One design or 2–4 variants">
-              {[1, 2, 3, 4].map((n) => (
-                <button key={n} className="seg-item" role="radio" aria-checked={count === n} disabled={disabled || running} onClick={() => setCount(n)}>
-                  {n === 1 ? "One" : n}
-                </button>
-              ))}
-            </div>
             <span className="spacer" />
             {current && (
               <button
@@ -623,7 +533,7 @@ export function ChatPanel({
               </button>
             ) : (
               <button className="btn btn-primary btn-md" onClick={send} disabled={!canSend} title={`Send (${MOD}↵)`}>
-                {count > 1 ? `Make ${count}` : "Send"}
+                Send
               </button>
             )}
           </div>
@@ -695,36 +605,6 @@ export function ChatPanel({
         </div>
       </div>
     </section>
-  );
-}
-
-function VariantsLine({ message: m }: { message: VariantsMessage }) {
-  const done = m.items.filter((v) => v.status === "done").length;
-  const state =
-    m.status === "running"
-      ? m.items.length
-        ? `${done} of ${m.items.length} done`
-        : "Starting…"
-      : m.status === "done"
-        ? "Pick one on the canvas"
-        : m.status === "stopped"
-          ? "Stopped"
-          : "Failed";
-  return (
-    <div className="turn-ai">
-      <div className="variants-line">
-        <span className="variants-line-label">Variants · {m.items.length || "…"}</span>
-        <span className="spacer" />
-        {m.status === "running" && <span className="spinner" />}
-        <span className="muted">{state}</span>
-      </div>
-      {m.error && (
-        <div className="banner banner-err" role="alert">
-          <span className="dot dot-err" />
-          {m.error}
-        </div>
-      )}
-    </div>
   );
 }
 

@@ -50,23 +50,10 @@ export function useHistory(active: Active | null, revision: number) {
     }
   };
 
-  /** Brings back the variant set that a pick removed. Throws the server's message. */
-  const reopenVariants = async (v: VersionView) => {
-    if (!project || !design) return;
-    setBusy(true);
-    try {
-      await sendJSON("POST", historyUrl(project, design, `/${v.sha}/reopen-variants`));
-    } finally {
-      setBusy(false);
-      reload();
-    }
-  };
-
   return {
     versions,
     preview,
     busy,
-    reopenVariants,
     error,
     reload,
     setPreview: (v: VersionView | null) => {
