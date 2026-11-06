@@ -7,6 +7,20 @@ on:
     branches: [main]
 
 jobs:
+  # The compiled binary on a real Windows. The test suite itself is for Linux.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+      - run: bun install --frozen-lockfile
+      - run: bun run build bun-windows-x64
+      - shell: powershell
+        run: |
+          $bin = (Get-ChildItem dist\doi-*-windows-x64.exe).FullName
+          .\scripts\smoke-binary.ps1 $bin
   test:
     runs-on: ubuntu-latest
     steps:

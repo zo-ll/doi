@@ -141,6 +141,7 @@ doi doctor --json    # git, the model CLIs, gh and the renderer; no model reques
 - doi never attaches to another workspace. A port in use gives exit code 5. Use `--port` with a free port, or `--port 0` for any free port.
 - `doi stop` stops only the server of this workspace, after that server confirms its identity. On Linux the server ends cleanly. On Windows the stop ends the process at once, so stop a running turn first.
 - doi knows a workspace by its path text. A symbolic link, or on Windows a junction or an 8.3 short name, counts as another workspace, so keep to one spelling. The per-user config holds one path.
+- `doi start --open` opens the URL in your browser, also when the server already runs.
 - Server logs go to the `log` file. Without `--json`, the commands print words for a person.
 
 | Exit code | Meaning |
@@ -149,7 +150,7 @@ doi doctor --json    # git, the model CLIs, gh and the renderer; no model reques
 | 1 | `doi status`: doi does not run for this workspace |
 | 2 | Bad usage, or a bad config |
 | 3 | A required tool is missing |
-| 4 | The server did not get ready, or did not stop |
+| 4 | The server did not get ready, or did not stop. `status` and `stop` also give it when the recorded server does not answer; the JSON code is then `unreachable` |
 | 5 | Port conflict, or this workspace already runs |
 
 With `--json`, a failure of the command prints `{"ok":false,"code":"…","message":"…"}` on stdout. Bad usage prints words on stderr.

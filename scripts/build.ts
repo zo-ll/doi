@@ -1,8 +1,10 @@
 // Builds doi as one binary for each target (#63): bun run build [target…]
-// Without targets: Linux and macOS, x64 and arm64. The binaries go to dist/.
+// Without targets: the release targets, Linux and Windows on x64 and arm64. The binaries go to dist/.
+// A macOS target works by name, for a source build on a Mac; no release or check covers it.
 import { version } from "../package.json";
 
-const ALL = ["bun-linux-x64", "bun-linux-arm64", "bun-darwin-x64", "bun-darwin-arm64"] as const;
+const RELEASE = ["bun-linux-x64", "bun-linux-arm64", "bun-windows-x64", "bun-windows-arm64"] as const;
+const ALL = [...RELEASE, "bun-darwin-x64", "bun-darwin-arm64"] as const;
 type Target = (typeof ALL)[number];
 
 const asked = process.argv.slice(2);
@@ -11,7 +13,7 @@ if (bad.length) {
   console.error(`Unknown target: ${bad.join(", ")}. Targets: ${ALL.join(", ")}`);
   process.exit(2);
 }
-const targets = (asked.length ? asked : ALL) as Target[];
+const targets = (asked.length ? asked : RELEASE) as Target[];
 
 /**
  * playwright-core 1.63.0 requires its package.json and browsers.json through a path that it
@@ -38,7 +40,7 @@ const playwrightFiles: Bun.BunPlugin = {
 };
 
 for (const target of targets) {
-  const outfile = `dist/doi-${version}-${target.slice("bun-".length)}`;
+  const outfile = `dist/doi-${version}-${target.slice("bun-".length)}${target.includes("windows") ? ".exe" : ""}`;
   const result = await Bun.build({
     entrypoints: ["src/server/index.ts"],
     compile: {
