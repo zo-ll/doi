@@ -102,8 +102,8 @@ export function writeAppKind(workspace: string, project: string, design: string,
 }
 
 /**
- * The frames that an agent sees (MCP): a mobile app has one phone frame for every page; other
- * designs have their layout.
+ * The frames that an agent sees (MCP): a mobile app has one phone frame, the same for all its
+ * pages; other designs have their layout.
  */
 export async function designFrames(workspace: string, project: string, design: string): Promise<Frame[]> {
   if (await isApp(workspace, project, design)) return [{ id: "phone", ...PRESETS[1], label: "Phone", x: 0, y: 0 }];
