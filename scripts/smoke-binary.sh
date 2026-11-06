@@ -41,4 +41,60 @@ done
 uml=$(curl -sf -X POST "$url/api/projects/sample/architecture/export" -H 'content-type: application/json' \
   -d '{"format":"svg","theme":"dark","background":true,"diagram":{"id":"d1","name":"Smoke","nodes":[{"id":"n1","name":"Box","position":{"x":0,"y":0}}]}}') || fail "UML SVG export"
 [ "$(printf '%s' "$uml" | grep -o '@font-face' | wc -l)" -eq 3 ] || fail "UML export fonts"
+
+# Per-user paths (#146): no --config and no --workspace, from two unrelated folders. A config.toml
+# in the shell folder is not doi's. The home folder has a space, as a real one can.
+kill "$pid" 2>/dev/null || true
+wait "$pid" 2>/dev/null || true
+home="$dir/home with space"
+one="$dir/one"
+two="$dir/two"
+mkdir -p "$home" "$one" "$two"
+printf 'workspace = "%s/wrong"\n' "$two" > "$two/config.toml"
+start() { # folder
+  (cd "$1" && exec env -i HOME="$home" PATH=/usr/bin:/bin "$bin" --port "$port") >> "$dir/log" 2>&1 &
+  pid=$!
+  for _ in $(seq 1 100); do
+    curl -sf -o /dev/null "$url/" && return 0
+    kill -0 "$pid" 2>/dev/null || { cat "$dir/log"; fail "no start in $1"; }
+    sleep 0.1
+  done
+  fail "no answer after a start in $1"
+}
+stop_it() { kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; }
+start "$one"
+workspace="$home/.local/share/doi/workspace"
+config="$home/.config/doi/config.toml"
+[ -f "$config" ] || fail "no per-user config"
+[ -d "$workspace/projects/sample" ] || fail "no per-user workspace"
+[ ! -e "$one/workspace" ] && [ ! -e "$one/config.toml" ] || fail "a file in the shell folder"
+[ "$(stat -c %a "$config" 2>/dev/null || stat -f %Lp "$config")" = 600 ] || fail "config mode"
+curl -sf -X POST "$url/api/projects" -H 'content-type: application/json' -d '{"name":"Kept"}' > /dev/null || fail "new project"
+stop_it
+printf '# my own line\n' >> "$config"
+before=$(cat "$config")
+start "$two"
+body=$(curl -sf "$url/api/projects") || fail "projects after the second start"
+has "$body" '"kept"' || fail "the second start found another workspace"
+[ "$(cat "$config")" = "$before" ] || fail "the second start changed the config"
+[ ! -e "$two/wrong" ] || fail "the second start used ./config.toml"
+stop_it
+# All keys are optional: a config with no workspace line keeps the same workspace.
+printf 'port = %s\n' "$port" > "$config"
+start "$one"
+body=$(curl -sf "$url/api/projects") || fail "projects with no workspace line"
+has "$body" '"kept"' || fail "a config with no workspace line found another workspace"
+[ ! -e "$home/.config/doi/workspace" ] || fail "a workspace in the config folder"
+stop_it
+# A home folder that doi cannot write to: exit code 2, and the message names the per-user file.
+if [ "$(id -u)" != 0 ]; then
+  locked="$dir/locked"
+  mkdir -p "$locked"
+  chmod 500 "$locked"
+  code=0
+  message=$(cd "$one" && env -i HOME="$locked" PATH=/usr/bin:/bin "$bin" --port "$port" 2>&1) || code=$?
+  chmod 700 "$locked"
+  [ "$code" = 2 ] || fail "exit code $code for a locked home folder"
+  has "$message" "$locked/.config/doi/config.toml" || fail "the message names another file: $message"
+fi
 echo "smoke test passed: $bin"

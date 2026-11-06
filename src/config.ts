@@ -116,11 +116,11 @@ const configSchema = z.object({
 });
 
 /** Validates external config values before it constructs the application config. */
-export function parseConfig(input: unknown, baseDir = process.cwd()): Config {
+export function parseConfig(input: unknown, baseDir = process.cwd(), defaultWorkspace: string = DEFAULTS.workspace): Config {
   const raw = configSchema.parse(input);
   const models = raw.models;
   return {
-    workspace: resolve(baseDir, raw.workspace ?? DEFAULTS.workspace),
+    workspace: resolve(baseDir, raw.workspace ?? defaultWorkspace),
     port: raw.port ?? DEFAULTS.port,
     providers: raw.providers ?? {},
     models: {
@@ -208,10 +208,11 @@ export function withPrices(text: string, prices: Record<string, Price>): string 
 
 /**
  * Loads config.toml (default: from the current directory). A missing file gives the defaults.
- * A relative workspace path is relative to the folder of the file.
+ * A relative workspace path is relative to the folder of the file. `defaultWorkspace` is for a
+ * file with no `workspace` line, because all keys of a config are optional.
  */
-export async function loadConfig(path = "config.toml"): Promise<Config> {
+export async function loadConfig(path = "config.toml", defaultWorkspace?: string): Promise<Config> {
   const file = Bun.file(path);
   const raw = (await file.exists()) ? Bun.TOML.parse(await file.text()) : {};
-  return { ...parseConfig(raw, dirname(resolve(path))), configPath: resolve(path) };
+  return { ...parseConfig(raw, dirname(resolve(path)), defaultWorkspace), configPath: resolve(path) };
 }
