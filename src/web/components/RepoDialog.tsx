@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { getJSON, sendJSON, type Load, type ProjectSummary } from "../api.ts";
-import type { GhStatus, RepoSummary } from "../../github/gh.ts";
+import { sendJSON, type ProjectSummary } from "../api.ts";
+import { RepoPicker, useGithub } from "./RepoPicker.tsx";
 import { timeAgo } from "./HistoryPanel.tsx";
-
-const REPO_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/(?!\.\.?$)[A-Za-z0-9._-]{1,100}$/;
 
 /**
  * The app's code (#112): link one GitHub repo to the project through the gh CLI. The model
@@ -16,12 +14,9 @@ export function RepoDialog({ project, onChanged, onClose }: {
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [status, setStatus] = useState<Load<GhStatus>>({ state: "loading" });
-  const [repos, setRepos] = useState<Load<RepoSummary[]>>({ state: "loading" });
-  const [filter, setFilter] = useState("");
+  const github = useGithub();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [checks, setChecks] = useState(0);
   const linked = project.repo;
 
   useEffect(() => {
@@ -30,25 +25,6 @@ export function RepoDialog({ project, onChanged, onClose }: {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, busy]);
-
-  useEffect(() => {
-    let live = true;
-    setStatus({ state: "loading" });
-    getJSON<GhStatus>("/api/github/status")
-      .then((s) => {
-        if (!live) return;
-        setStatus({ state: "ready", data: s });
-        if (!s.loggedIn) return;
-        setRepos({ state: "loading" });
-        getJSON<RepoSummary[]>("/api/github/repos")
-          .then((data) => live && setRepos({ state: "ready", data }))
-          .catch((e: Error) => live && setRepos({ state: "error", message: e.message }));
-      })
-      .catch((e: Error) => live && setStatus({ state: "error", message: e.message }));
-    return () => {
-      live = false;
-    };
-  }, [checks]);
 
   const run = async (label: string, job: () => Promise<unknown>) => {
     setBusy(label);
@@ -66,11 +42,7 @@ export function RepoDialog({ project, onChanged, onClose }: {
   const sync = () => run(`Updating ${linked?.name}…`, () => sendJSON("POST", `/api/projects/${project.id}/repo/sync`));
   const unlink = () => run("Unlinking…", () => sendJSON("DELETE", `/api/projects/${project.id}/repo`));
 
-  const q = filter.trim().toLowerCase();
-  const list = repos.state === "ready" ? repos.data.filter((r) => !q || r.name.toLowerCase().includes(q) || r.description.toLowerCase().includes(q)) : [];
-  // A full name that is not in the list (another owner, an organization) can be linked too.
-  const typed = REPO_NAME.test(filter.trim()) && !list.some((r) => r.name.toLowerCase() === q) ? filter.trim() : null;
-  const gh = status.state === "ready" ? status.data : null;
+  const gh = github.gh;
 
   return (
     <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
@@ -122,89 +94,7 @@ export function RepoDialog({ project, onChanged, onClose }: {
               </div>
             )}
 
-            {status.state === "loading" && <div className="skeleton comment-skeleton" aria-label="Checking gh" />}
-            {gh && !gh.installed && (
-              <div className="banner banner-warn" role="status">
-                <span className="dot dot-warn" />
-                <div className="spacer">
-                  <p className="banner-title">The GitHub CLI is not installed</p>
-                  <p>
-                    doi reaches GitHub only through the official <span className="mono">gh</span> CLI. Install it from cli.github.com, log in with{" "}
-                    <span className="mono">gh auth login</span>, then check again.
-                  </p>
-                </div>
-                <button className="btn btn-secondary btn-sm" onClick={() => setChecks((n) => n + 1)}>
-                  Check again
-                </button>
-              </div>
-            )}
-            {gh && gh.installed && !gh.loggedIn && (
-              <div className="banner banner-warn" role="status">
-                <span className="dot dot-warn" />
-                <div className="spacer">
-                  <p className="banner-title">gh is not logged in</p>
-                  <p>
-                    Run <span className="mono">gh auth login</span> in a terminal, then check again. doi never sees your GitHub token.
-                  </p>
-                </div>
-                <button className="btn btn-secondary btn-sm" onClick={() => setChecks((n) => n + 1)}>
-                  Check again
-                </button>
-              </div>
-            )}
-
-            {gh?.loggedIn && (
-              <>
-                <input
-                  className="input"
-                  value={filter}
-                  onChange={(e) => setFilter(e.target.value)}
-                  placeholder="Filter your repos, or type owner/repo"
-                  aria-label="Filter repos"
-                  spellCheck={false}
-                  autoFocus
-                />
-                <div className="repo-list">
-                  {repos.state === "loading" && <div className="skeleton comment-skeleton" aria-label="Loading your repos" />}
-                  {repos.state === "error" && <p className="field-error">{repos.message}</p>}
-                  {typed && (
-                    <div className="repo-row">
-                      <div className="repo-row-text">
-                        <strong className="mono">{typed}</strong>
-                        <span className="muted">A repo of another owner or an organization</span>
-                      </div>
-                      <button className="btn btn-primary btn-md" disabled={!!busy} onClick={() => void link(typed)}>
-                        Link
-                      </button>
-                    </div>
-                  )}
-                  {list.map((r) => {
-                    const current = linked?.name.toLowerCase() === r.name.toLowerCase();
-                    return (
-                      <div key={r.name} className="repo-row">
-                        <div className="repo-row-text">
-                          <strong className="mono truncate">{r.name}</strong>
-                          <span className="muted truncate">
-                            {[r.private ? "Private" : "Public", r.language, r.description].filter(Boolean).join(" · ")}
-                          </span>
-                        </div>
-                        {current ? (
-                          <span className="status">
-                            <span className="dot dot-ok" />
-                            Linked
-                          </span>
-                        ) : (
-                          <button className="btn btn-secondary btn-md" disabled={!!busy} onClick={() => void link(r.name)}>
-                            {linked ? "Link instead" : "Link"}
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                  {repos.state === "ready" && !list.length && !typed && <p className="comments-empty">No repo matches.</p>}
-                </div>
-              </>
-            )}
+            <RepoPicker github={github} busy={!!busy} linked={linked?.name ?? null} onPick={(name) => void link(name)} autoFocus />
           </div>
           <div className="dialog-foot">
             <span className="muted">doi makes a shallow copy in the workspace. It never changes the repo and never reads your gh token.</span>

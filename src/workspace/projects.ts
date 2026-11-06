@@ -88,14 +88,27 @@ export function slugify(title: string): string {
 }
 
 /** Creates a project with its first design, "home". Returns the paths to commit. */
-export async function createProject(workspace: string, title: unknown, id?: unknown): Promise<{ id: string; paths: string[] }> {
+export async function createProject(workspace: string, title: unknown, id?: unknown, kind: unknown = "page"): Promise<{ id: string; paths: string[] }> {
   const name = checkTitle(title);
   const projectId = checkName("project", id ?? slugify(name));
+  // Before the folder exists: a refused kind must not leave half a project.
+  if (!DESIGN_KINDS.includes(kind as DesignKind)) throw new WorkspaceError(400, `kind must be one of: ${DESIGN_KINDS.join(", ")}.`);
   if (existsSync(projectDir(workspace, projectId))) throw new WorkspaceError(409, `A project "${projectId}" already exists.`);
   await mkdir(join(projectDir(workspace, projectId), "designs"), { recursive: true });
   await Bun.write(projectFile(workspace, projectId), JSON.stringify({ name, designSystem: null, viewports: [1440, 390] }, null, 2) + "\n");
-  const { paths } = await createDesign(workspace, projectId, "home");
+  const { paths } = await createDesign(workspace, projectId, "home", kind);
   return { id: projectId, paths: [projectFile(workspace, projectId), ...paths] };
+}
+
+/** A project name and id that are free: a taken name gets a number. A name with no usable letters gets the id "project". */
+export function freeProjectName(workspace: string, title: unknown): { name: string; id: string } {
+  const name = checkTitle(title);
+  const slug = slugify(name) || "project";
+  for (let n = 1; ; n++) {
+    const suffix = n === 1 ? "" : `-${n}`;
+    const id = `${slug.slice(0, 40 - suffix.length)}${suffix}`;
+    if (!existsSync(projectDir(workspace, id))) return { name: n === 1 ? name : `${name.slice(0, 76)} ${n}`, id };
+  }
 }
 
 /** Changes the display name in project.json. The folder keeps its id. */

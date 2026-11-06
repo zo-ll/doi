@@ -174,8 +174,12 @@ Usage (top bar) shows the tokens of each answer. For an API model with an entry 
 
 ## Make a design
 
-1. Open the projects drawer (the doi logo, or Ctrl/⌘ + P). Make a project, then a design, a mobile app or a slide deck.
-2. Type a description in the chat on the left, and send it with Ctrl/⌘ + Enter.
+1. Start a project on the start screen. It opens on the first start. Later, open the projects drawer (the doi logo, or Ctrl/⌘ + P) and select New project.
+2. Select Web, Mobile app or Slide deck, and write what you want. You can attach images and pick a model, as in the chat. You can also link the GitHub repo of the app; the model then reads its code. Select Start, or press Ctrl/⌘ + Enter. The project takes its name from your first words, and you can rename it in the drawer.
+
+   ![The start screen: the project kind, the first prompt and the repo link](images/start.png)
+
+   doi makes the project, opens it, and sends your prompt in the chat on the left. To add a design to a project, use the drawer.
 3. The model makes what the request needs. A request for one thing, for example a card, makes one page. A request for a product or a flow makes one linked page for each screen, up to 12 (24 in a mobile app). The canvas shows a single page in a Desktop and a Mobile frame, and several pages in one Desktop frame each.
 4. Send more messages to change the design. Each completed turn is a new version.
 

@@ -13,7 +13,6 @@ const focusAndSelect = (input: HTMLInputElement | null) => {
 
 /** What the inline editor is open for, if anything. */
 type Editing =
-  | { kind: "new-project" }
   | { kind: "rename-project"; project: string }
   | { kind: "new-design"; project: string; designKind: DesignKind }
   | { kind: "rename-design"; project: string; design: string };
@@ -87,7 +86,7 @@ function InlineInput({ initial, label, placeholder, project, onSubmit, onCancel 
 }
 
 /** The projects drawer (⌘P): it opens over the chat, so navigation never takes canvas width. */
-export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onChanged, onDeleted, onClose, onExport, onImport }: {
+export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onChanged, onNewProject, onDeleted, onClose, onExport, onImport }: {
   projects: Load<ProjectSummary[]>;
   active: Active | null;
   workspace: Load<WorkspaceState>;
@@ -95,6 +94,8 @@ export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onCh
   onRetry: () => void;
   /** The project list changed; `open` is the design to open next, if any. */
   onChanged: (open?: Active) => void;
+  /** Opens the start screen, where a new project begins. */
+  onNewProject: () => void;
   /** A project was deleted. */
   onDeleted: (project: string) => void;
   onClose: () => void;
@@ -140,12 +141,6 @@ export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onCh
     }
   };
 
-  const createProject = async (name: string) => {
-    const r = await sendJSON<{ id: string; design: string }>("POST", "/api/projects", { name });
-    close();
-    onChanged({ project: r.id, design: r.design });
-    onClose(); // the new design opens empty: the next step is its first prompt in the chat
-  };
   const renameProject = async (project: string, name: string) => {
     await sendJSON("PATCH", `/api/projects/${project}`, { name });
     close();
@@ -166,7 +161,7 @@ export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onCh
   const is = (e: Editing) => JSON.stringify(e) === JSON.stringify(editing);
 
   const list = projects.state === "ready" ? projects.data : [];
-  const empty = projects.state === "ready" && list.length === 0 && editing?.kind !== "new-project";
+  const empty = projects.state === "ready" && list.length === 0;
 
   return (
     <>
@@ -179,16 +174,13 @@ export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onCh
             Import…
           </button>
           {!empty && (
-            <button className="btn btn-secondary btn-md" onClick={() => setEditing({ kind: "new-project" })}>
+            <button className="btn btn-secondary btn-md" onClick={onNewProject}>
               New project
             </button>
           )}
         </div>
 
         <div className="nav-body">
-          {editing?.kind === "new-project" && (
-            <InlineInput project initial="" label="New project name" placeholder="Project name" onSubmit={createProject} onCancel={close} />
-          )}
 
           {projects.state === "loading" && (
             <div aria-busy="true" aria-label="Loading projects">
@@ -223,7 +215,7 @@ export function ProjectsNav({ projects, active, workspace, onOpen, onRetry, onCh
               <h3>No projects yet</h3>
               <p>A project groups designs and can use one design system. doi stores it as a folder in your workspace.</p>
               <div className="nav-state-actions">
-                <button className="btn btn-primary" onClick={() => setEditing({ kind: "new-project" })}>
+                <button className="btn btn-primary" onClick={onNewProject}>
                   Create project
                 </button>
                 <button className="btn btn-secondary" onClick={onImport}>

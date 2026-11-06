@@ -953,6 +953,11 @@ a:hover { color: var(--text); }
   white-space: nowrap;
 }
 
+.start-screen { position: absolute; inset: 0; z-index: 40; display: flex; justify-content: center; overflow: auto; padding: var(--space-8) var(--space-4); background: var(--bg); }
+.start-inner { width: 100%; max-width: 760px; height: fit-content; display: flex; flex-direction: column; gap: var(--space-4); }
+.format-cards.start-kinds { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.start-repo { display: flex; flex-direction: column; gap: var(--space-2); }
+.start-foot { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
 .canvas-empty { display: grid; place-items: center; }
 .canvas-empty-text { display: grid; gap: var(--space-2); text-align: center; color: var(--text-3); }
 .canvas-empty-text h2 { font-size: var(--text-lg); font-weight: var(--weight-semibold); color: var(--text); }

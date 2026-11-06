@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { chatUrl, getJSON, turnUrl, uploadUrl, type Active, type ChatEntryView } from "../api.ts";
 import { parseAsk } from "../ask.ts";
 import { AskCard } from "./AskCard.tsx";
-import { isImageType, prepareImage, type PreparedImage } from "../images.ts";
+import { modelChoices, useComposerImages } from "../composer.ts";
+import type { PreparedImage } from "../images.ts";
+import { ModelMenu, TONE_DOT } from "./ModelMenu.tsx";
 import { IMAGE_LIMITS } from "../../workspace/image-limits.ts";
 import {
   applyEvent,
@@ -24,6 +26,13 @@ import { MOD, MOD_CLICK } from "./TopBar.tsx";
 /** The selected element. Each frame finds it by its data-oid and draws it. */
 export interface Selection {
   oid: string;
+}
+
+/** The message that the start screen hands to the chat of the new project. */
+export interface FirstTurn {
+  text: string;
+  images: PreparedImage[];
+  model: TaskStatus | null;
 }
 
 /** A comment the user marked "apply": it goes with the next turn. `n` is its number in the list. */
@@ -50,7 +59,6 @@ const SAMPLES = [
   "A calm landing page for a note-taking app, with one accent color",
 ];
 
-const TONE_DOT = { ok: "dot-ok", warn: "dot-warn", err: "dot-err", unknown: "" } as const;
 const time = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : "");
 const usageLine = (u: { inputTokens: number; outputTokens: number; cachedTokens: number }) =>
   `in ${formatTokens(u.inputTokens)} · out ${formatTokens(u.outputTokens)} · cached ${formatTokens(u.cachedTokens)}`;
@@ -73,6 +81,8 @@ export function ChatPanel({
   onOpenSettings,
   repo = null,
   readOnlyReason,
+  first,
+  onFirstTaken,
 }: {
   /** The open design; null disables the composer. */
   target: Active | null;
@@ -94,13 +104,16 @@ export function ChatPanel({
   repo?: string | null;
   /** Another artifact owns the canvas; HTML generation must not start from this view. */
   readOnlyReason?: string;
+  /** The first message of a new project: this panel sends it when it starts. */
+  first?: FirstTurn | null;
+  onFirstTaken?: () => void;
 }) {
   const disabled = target === null || !!readOnlyReason;
   const [draft, setDraft] = useState("");
-  const [images, setImages] = useState<PreparedImage[]>([]);
-  const [imageError, setImageError] = useState<string | null>(null);
+  const { images, setImages, imageError, setImageError, addImages } = useComposerImages();
   const [dragging, setDragging] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [running, setRunningState] = useState(false);
   /** The parent hears at once. A run that a design switch or an unmount aborted still ends here. */
   const setRunning = (on: boolean) => {
@@ -108,7 +121,7 @@ export function ChatPanel({
     onRunningChange?.(on);
   };
   /** A model the user picked for this design's turns; null uses the config. */
-  const [chosen, setChosen] = useState<TaskStatus | null>(null);
+  const [chosen, setChosen] = useState<TaskStatus | null>(first?.model ?? null);
   const [modelMenu, setModelMenu] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -137,7 +150,7 @@ export function ChatPanel({
   const currentTask: Task = selection ? "edit" : "generate";
   const modelRef = current ? `${current.provider}:${current.model}` : null;
   // Ready models from the config, one entry per provider and model.
-  const choices = tasks.filter((t, i) => tasks.findIndex((x) => x.provider === t.provider && x.model === t.model) === i);
+  const choices = modelChoices(tasks);
 
   // Load the stored chat. Messages sent before it arrives stay after it.
   useEffect(() => {
@@ -149,6 +162,7 @@ export function ChatPanel({
       getJSON<ChatEntryView[]>(chatUrl(target.project, target.design))
       .then((entries) => {
         if (!live) return;
+        setHistoryLoaded(true);
         const loaded = fromEntries(entries, () => nextId.current++, (name) => uploadUrl(target.project, name));
         // After a reload during a turn, the server can still be writing that turn's answer:
         // load again a few times while the newest turn has no answer.
@@ -168,6 +182,7 @@ export function ChatPanel({
         if (attempt === 0 && loaded.length === 0 && !document.querySelector('[aria-modal="true"], .nav-drawer')) inputRef.current?.focus();
       })
       .catch((e: unknown) => {
+        if (live) setHistoryLoaded(true);
         if (live && attempt === 0) push({ kind: "error", text: `The chat history could not load: ${e instanceof Error ? e.message : String(e)}` });
       });
     void load(0);
@@ -179,25 +194,6 @@ export function ChatPanel({
 
   // Stop a running request when the panel unmounts or the design changes.
   useEffect(() => () => abortRef.current?.abort(), [target?.project, target?.design]);
-
-  /** Adds images from the picker, a paste or a drop. Large images are scaled down here. */
-  const addImages = async (files: File[]) => {
-    const picked = files.filter((f) => f.type.startsWith("image/"));
-    if (!picked.length) return;
-    setImageError(null);
-    const room = IMAGE_LIMITS.count - images.length;
-    if (picked.length > room) setImageError(`At most ${IMAGE_LIMITS.count} images in one message.`);
-    const added: PreparedImage[] = [];
-    for (const f of picked.slice(0, Math.max(0, room))) {
-      try {
-        if (!isImageType(f.type)) throw new Error(`Use a PNG, JPEG, WebP or GIF image (not ${f.type}).`);
-        added.push(await prepareImage(f));
-      } catch (e) {
-        setImageError(e instanceof Error ? e.message : String(e));
-      }
-    }
-    setImages((list) => [...list, ...added].slice(0, IMAGE_LIMITS.count));
-  };
 
   /** Runs one turn. The answer streams into a new message. */
   const sendTurn = async (s: Sent) => {
@@ -268,6 +264,16 @@ export function ChatPanel({
     if (target) await fetch(turnUrl(target.project, target.design), { method: "DELETE" }).catch(() => {});
     controller.abort();
   };
+
+  // The first message of a new project. The ref holds, because this effect must send it only once.
+  // It waits for the stored chat: an answer that reads the file after this turn began would show it twice.
+  const firstSent = useRef(false);
+  useEffect(() => {
+    if (!first || firstSent.current || !target || !historyLoaded) return;
+    firstSent.current = true;
+    onFirstTaken?.();
+    void sendTurn({ text: first.text, target: null, images: first.images, comments: [] });
+  }, [first, historyLoaded]);
 
   const send = () => {
     const text = draft.trim();
@@ -552,62 +558,17 @@ export function ChatPanel({
             )}
           </div>
           {modelMenu && (
-            <>
-              <div className="popover-layer" onMouseDown={() => setModelMenu(false)} />
-              <div className="menu model-menu" role="menu" aria-label="Model">
-                <div className="menu-label">Model for this design · from config.toml</div>
-                {chosen && (
-                  <button
-                    className="menu-item"
-                    role="menuitem"
-                    onClick={() => {
-                      setChosen(null);
-                      setImageError(null); // a retry warning was about the model before
-                      setModelMenu(false);
-                    }}
-                  >
-                    Use the config: generate and edit models
-                  </button>
-                )}
-                {choices.map((t) => {
-                  const on = chosen ? chosen.provider === t.provider && chosen.model === t.model : false;
-                  return (
-                    <button
-                      key={`${t.provider}:${t.model}`}
-                      className="menu-item"
-                      role="menuitemradio"
-                      aria-checked={on}
-                      disabled={t.tone !== "ok"}
-                      onClick={() => {
-                        setChosen(t);
-                        setImageError(null); // a retry warning was about the model before
-                        setModelMenu(false);
-                      }}
-                    >
-                      <span className={`dot ${TONE_DOT[t.tone]}`} />
-                      <span className="model-menu-name">
-                        <span className="mono truncate">{t.model}</span>
-                        {t.vision === false && <span className="model-menu-note">No images</span>}
-                      </span>
-                      <span className="meta">
-                        {t.provider}
-                        {on ? " ✓" : ""}
-                      </span>
-                    </button>
-                  );
-                })}
-                <div className="menu-sep" />
-                <button
-                  className="menu-item"
-                  onClick={() => {
-                    setModelMenu(false);
-                    onOpenSettings();
-                  }}
-                >
-                  Models and providers…<span className="meta">{MOD},</span>
-                </button>
-              </div>
-            </>
+            <ModelMenu
+              choices={choices}
+              chosen={chosen}
+              onChoose={(t) => {
+                setChosen(t);
+                setImageError(null); // a retry warning was about the model before
+                setModelMenu(false);
+              }}
+              onClose={() => setModelMenu(false)}
+              onOpenSettings={onOpenSettings}
+            />
           )}
         </div>
         <div className="composer-hints">
