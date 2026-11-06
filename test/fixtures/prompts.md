@@ -22,6 +22,15 @@ A result is acceptable when:
 4. A settings page with a sidebar, a profile form and notification toggles.
 5. A title slide and one content slide for a talk about web performance.
 
+## Scope and flow prompts (system prompt v3)
+
+6. A task app with sign in, task list and settings. Expected: no question, 3 or more linked pages.
+7. Make me an app. Expected: an `ask` block and no file change.
+8. A pricing card for one plan. Expected: no question, one page.
+9. A mobile app: a habit tracker with onboarding, a today view and stats. Expected: no question, 3 or more screens.
+
+Results, `opencode-go:deepseek-v4.1-flash`, 2026-11-06, last pass: 6 gave 3 linked pages, 7 gave a card, 8 gave one page, 9 gave 4 screens. An earlier pass with a prompt without the "own tool call" rule lost files in 6 and 9.
+
 ## Results
 
 System prompt v0, `claude-code:claude-haiku-5-5`, 2026-10-12. All five are acceptable.

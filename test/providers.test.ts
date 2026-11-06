@@ -24,6 +24,15 @@ function mockModel(chunks: unknown[]) {
   return { model, calls };
 }
 
+test("a turn that reaches the output limit fails: it does not look complete with a file missing", async () => {
+  const { model } = mockModel([{ type: "stream-start", warnings: [] }, { ...finish, finishReason: { unified: "length", raw: "length" } }]);
+  const run = async () => {
+    for await (const _ of streamDesign(model, { ...req, signal: new AbortController().signal }, { toolUse: true })) void _;
+  };
+  await expect(run()).rejects.toBeInstanceOf(ProviderError);
+  await expect(run()).rejects.toThrow("output limit");
+});
+
 const req: GenerateRequest = {
   model: "test-model",
   system: ["rules", "design system and current files"],

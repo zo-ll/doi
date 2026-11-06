@@ -60,7 +60,7 @@ describe("system prompt v3", () => {
   const { text, version } = SYSTEM_PROMPT;
   test("has the scope rule and the flow rule", () => {
     expect(version).toBe("v3");
-    for (const rule of ["not less and not more", "A request for one thing stays one thing", "Do not ask again", "02-signup.html", "at most 12 pages", "names each screen", "plain `<a href>`", "A slide deck stays one"]) {
+    for (const rule of ["not less and not more", "A request for one thing stays one thing", "Do not ask again", "02-signup.html", "at most 12 pages", "names each screen", "Write your reply first", "must have its own tool call", "plain `<a href>`", "A slide deck stays one"]) {
       expect(text).toContain(rule);
     }
   });
