@@ -117,6 +117,30 @@ status=$(run_bin status --json) || code=$?
 report=$(run_bin doctor --json) || fail "doi doctor: $report"
 has "$report" '"name":"git"' || fail "doi doctor: $report"
 
+# The shared design (#146): an agent reads a design through MCP, a person edits it, and the agent's
+# next read has the edit. DOI_SMOKE_RENDER=1 also installs Chromium and asks for a rendered image.
+info=$(cd "$one" && run_bin start --json --port "$port") || fail "doi start for MCP: $info"
+mcp() { # tool, JSON arguments
+  curl -sf -X POST "$url/mcp" -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
+    -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"$1\",\"arguments\":$2}}"
+}
+design='{"project":"sample","design":"home"}'
+first=$(mcp get_design "$design") || fail "MCP get_design"
+has "$first" 'index.html' || fail "MCP get_design: no page"
+if has "$first" '321px'; then fail "MCP get_design: the edit is there before the edit"; fi
+curl -sf -X POST "$url/api/projects/sample/designs/home/edit" -H 'content-type: application/json' \
+  -d '{"oid":"main","style":{"width":"321px"}}' > /dev/null || fail "the edit of a person"
+next=$(mcp get_design "$design") || fail "MCP get_design after the edit"
+has "$next" '321px' || fail "the agent's next read has no edit"
+if [ "${DOI_SMOKE_RENDER:-}" = 1 ]; then
+  run_bin install-browser > /dev/null 2>&1 || fail "doi install-browser"
+  status=$(run_bin status --json) || fail "doi status for the renderer: $status"
+  has "$status" '"renderer":{"ready":true' || fail "the renderer is not ready: $status"
+  image=$(mcp export_png '{"project":"sample","design":"home"}') || fail "MCP export_png"
+  has "$image" '"type":"image"' || fail "MCP export_png gave no image: $(printf '%.300s' "$image")"
+fi
+stopped=$(run_bin stop --json) || fail "the last doi stop: $stopped"
+
 # A home folder that doi cannot write to: exit code 2, and the message names the per-user file.
 if [ "$(id -u)" != 0 ]; then
   locked="$dir/locked"

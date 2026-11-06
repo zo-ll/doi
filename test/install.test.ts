@@ -1,0 +1,236 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const SCRIPT = join(import.meta.dir, "../scripts/install.sh");
+const fakeBinary = (version: string, extra = "") => `#!/bin/sh\n${extra}\necho "doi ${version}"\n`;
+const sum = (text: string) => createHash("sha256").update(text).digest("hex");
+
+/** One fake release: its files by name. A function answers the request itself. */
+type Files = Record<string, string | (() => Response)>;
+const releases = new Map<string, Files>();
+function release(version: string, arch = "x64", body = fakeBinary(version)): Files {
+  const name = `doi-${version}-linux-${arch}`;
+  const files: Files = { [name]: body, SHA256SUMS: `${sum(body)}  ${name}\n` };
+  releases.set(version, files);
+  return files;
+}
+
+let server: ReturnType<typeof Bun.serve>;
+let root: string;
+let home: string;
+let dir: string;
+let bin: string;
+
+beforeEach(async () => {
+  releases.clear();
+  server = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    fetch(req) {
+      const [, version, name] = new URL(req.url).pathname.split("/");
+      const file = releases.get(version!.slice(1))?.[name!];
+      if (file === undefined) return new Response("no", { status: 404 });
+      return typeof file === "function" ? file() : new Response(file);
+    },
+  });
+  root = await mkdtemp(join(tmpdir(), "doi install "));
+  home = join(root, "home folder");
+  dir = join(root, "the bin");
+  bin = join(root, "stubs");
+  await mkdir(home, { recursive: true });
+  await mkdir(bin, { recursive: true });
+});
+
+afterEach(async () => {
+  server.stop(true);
+  await rm(root, { recursive: true, force: true });
+});
+
+async function install(args: string[] = [], env: Record<string, string> = {}) {
+  const proc = Bun.spawn(["sh", SCRIPT, "--dir", dir, ...args], {
+    cwd: root,
+    env: { HOME: home, PATH: `${bin}:${process.env.PATH}`, DOI_INSTALL_BASE_URL: `http://127.0.0.1:${server.port}`, ...env },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+  return { stdout, stderr, code };
+}
+const installed = () => Bun.file(join(dir, "doi"));
+const leftovers = async () => (await readdir(dir).catch(() => [] as string[])).filter((f) => f !== "doi");
+async function stub(name: string, body: string) {
+  await Bun.write(join(bin, name), `#!/bin/sh\n${body}\n`);
+  await Bun.$`chmod +x ${join(bin, name)}`;
+}
+const machine = (arch: string) => stub("uname", `case "$1" in -s) echo Linux ;; -m) echo ${arch} ;; esac`);
+
+describe("a new install", () => {
+  test("verifies, installs in a folder with spaces, runs from an unrelated folder, and leaves no temp files", async () => {
+    await machine("x86_64");
+    release("1.2.3");
+    const result = await install(["--version", "1.2.3"]);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("Installed doi 1.2.3");
+    expect(await leftovers()).toEqual([]);
+    expect((await Bun.$`${join(dir, "doi")} --version`.cwd(home).text()).trim()).toBe("doi 1.2.3");
+    expect(await Bun.file(join(home, ".profile")).text()).toContain(dir);
+  });
+
+  test("takes a v in the version, and the environment form for curl | sh", async () => {
+    await machine("x86_64");
+    release("1.2.3");
+    expect((await install(["--version", "v1.2.3"])).code).toBe(0);
+    await rm(join(dir, "doi"));
+    expect((await install([], { DOI_VERSION: "1.2.3" })).code).toBe(0);
+  });
+
+  test("the CPU picks the artifact", async () => {
+    await machine("aarch64");
+    release("1.2.3", "arm64");
+    expect((await install(["--version", "1.2.3"])).code).toBe(0);
+    await machine("riscv64");
+    const other = await install(["--version", "1.2.3"]);
+    expect(other.code).toBe(1);
+    expect(other.stderr).toContain("riscv64");
+  });
+
+  test("macOS gets a clear message, and no download", async () => {
+    await stub("uname", 'case "$1" in -s) echo Darwin ;; -m) echo arm64 ;; esac');
+    const result = await install(["--version", "1.2.3"]);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("not for macOS");
+    expect(result.stderr).toContain("source");
+    expect(await installed().exists()).toBe(false);
+  });
+
+  test("musl libc gets a clear message", async () => {
+    await machine("x86_64");
+    await stub("ldd", "echo 'musl libc (x86_64)'");
+    const result = await install(["--version", "1.2.3"]);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("musl");
+  });
+
+  test("the PATH line goes in once, and not when the folder is on PATH or with --no-modify-path", async () => {
+    await machine("x86_64");
+    release("1.2.3");
+    await Bun.write(join(home, ".bashrc"), "# mine\n");
+    await install(["--version", "1.2.3"]);
+    await install(["--version", "1.2.3"]);
+    for (const rc of [".profile", ".bashrc"]) {
+      const lines = (await Bun.file(join(home, rc)).text()).split("\n").filter((l) => l.includes("doi installer"));
+      expect(lines).toHaveLength(1);
+    }
+    expect(await Bun.file(join(home, ".zshrc")).exists()).toBe(false);
+    await rm(join(home, ".profile"));
+    const off = await install(["--version", "1.2.3", "--no-modify-path"]);
+    expect(off.stdout).toContain("Add ");
+    expect(await Bun.file(join(home, ".profile")).exists()).toBe(false);
+    const on = await install(["--version", "1.2.3"], { PATH: `${dir}:${bin}:${process.env.PATH}` });
+    expect(on.stdout).not.toContain("Added ");
+    expect(await Bun.file(join(home, ".profile")).exists()).toBe(false);
+  });
+});
+
+describe("a failed install or upgrade changes nothing", () => {
+  const data = () => join(home, ".local/share/doi/workspace/kept.txt");
+  async function withOld() {
+    await machine("x86_64");
+    release("1.0.0");
+    expect((await install(["--version", "1.0.0"])).code).toBe(0);
+    await Bun.write(data(), "my design");
+  }
+  async function expectOldKept(result: { code: number }) {
+    expect(result.code).toBe(1);
+    expect((await Bun.$`${join(dir, "doi")} --version`.text()).trim()).toBe("doi 1.0.0");
+    expect(await leftovers()).toEqual([]);
+    expect(await Bun.file(data()).text()).toBe("my design");
+  }
+
+  test("a good upgrade replaces only the binary", async () => {
+    await withOld();
+    release("2.0.0");
+    expect((await install(["--version", "2.0.0"])).code).toBe(0);
+    expect((await Bun.$`${join(dir, "doi")} --version`.text()).trim()).toBe("doi 2.0.0");
+    expect(await Bun.file(data()).text()).toBe("my design");
+  });
+
+  test("a wrong checksum", async () => {
+    await withOld();
+    const files = release("2.0.0");
+    files["doi-2.0.0-linux-x64"] = fakeBinary("2.0.0", "# changed");
+    const result = await install(["--version", "2.0.0"]);
+    expect(result.stderr).toContain("does not match");
+    await expectOldKept(result);
+  });
+
+  test("checksums that do not list the file", async () => {
+    await withOld();
+    release("2.0.0").SHA256SUMS = "abc  another-file\n";
+    await expectOldKept(await install(["--version", "2.0.0"]));
+  });
+
+  test("an interrupted download", async () => {
+    await withOld();
+    const files = release("2.0.0");
+    files["doi-2.0.0-linux-x64"] = () => {
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("#!/bin/sh\n"));
+          setTimeout(() => controller.error(new Error("cut")), 50);
+        },
+      });
+      return new Response(stream, { headers: { "content-length": "100000" } });
+    };
+    const result = await install(["--version", "2.0.0"]);
+    expect(result.stderr).toContain("Nothing changed");
+    await expectOldKept(result);
+  });
+
+  test("a missing version", async () => {
+    await withOld();
+    const result = await install(["--version", "9.9.9"]);
+    expect(result.stderr).toContain("9.9.9");
+    await expectOldKept(result);
+  });
+
+  test("a binary that does not run, or that reports another version", async () => {
+    await withOld();
+    release("2.0.0", "x64", "#!/bin/sh\nexit 7\n");
+    await expectOldKept(await install(["--version", "2.0.0"]));
+    release("2.0.0", "x64", fakeBinary("3.3.3"));
+    const result = await install(["--version", "2.0.0"]);
+    expect(result.stderr).toContain("doi 3.3.3");
+    await expectOldKept(result);
+  });
+
+  test("a version with shell characters is refused before any download", async () => {
+    await withOld();
+    const result = await install(["--version", "1;touch x"]);
+    expect(result.stderr).toContain("not a version");
+    await expectOldKept(result);
+  });
+});
+
+test("uninstall removes the binary and the PATH line, and keeps the user's data and lines", async () => {
+  await machine("x86_64");
+  release("1.2.3");
+  await Bun.write(join(home, ".bashrc"), "# mine\n");
+  await install(["--version", "1.2.3"]);
+  const data = join(home, ".local/share/doi/workspace/kept.txt");
+  const config = join(home, ".config/doi/config.toml");
+  await Bun.write(data, "my design");
+  await Bun.write(config, "port = 1\n");
+  const result = await install(["--uninstall"]);
+  expect(result.code).toBe(0);
+  expect(await installed().exists()).toBe(false);
+  expect(await Bun.file(join(home, ".bashrc")).text()).toBe("# mine\n");
+  expect(await Bun.file(join(home, ".profile")).text()).not.toContain("doi installer");
+  expect(await Bun.file(data).text()).toBe("my design");
+  expect(await Bun.file(config).text()).toBe("port = 1\n");
+  expect(result.stdout).toContain(".local/share/doi");
+  expect((await install(["--uninstall"])).code).toBe(0);
+});

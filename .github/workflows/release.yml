@@ -24,7 +24,9 @@ jobs:
           [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "Tag $GITHUB_REF_NAME, but package.json has $version"; exit 1; }
       - run: bun run build
       - name: Checksums
-        run: cd dist && sha256sum doi-* > SHA256SUMS && cat SHA256SUMS
+        run: |
+          cp scripts/install.sh scripts/install.ps1 dist/
+          cd dist && sha256sum doi-* install.* > SHA256SUMS && cat SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
           name: dist
