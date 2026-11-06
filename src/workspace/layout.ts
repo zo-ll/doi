@@ -1,7 +1,7 @@
 import { rename, writeFile } from "node:fs/promises";
 import { withFileLock } from "./file-lock.ts";
 import { assertName } from "./paths.ts";
-import { defaultLayout, parseLayout, PRESETS, type Frame } from "./frames.ts";
+import { defaultLayout, parseLayout, PRESETS, viewportFrames, type Frame, type ScreenFrame } from "./frames.ts";
 import { projectFile } from "./project-file.ts";
 
 export * from "./frames.ts";
@@ -46,14 +46,14 @@ function layoutsOf(meta: Record<string, unknown>): Record<string, unknown> {
 }
 
 /** The frames of a design: the stored ones, or the default layout. */
-export async function readLayout(workspace: string, project: string, design: string): Promise<Frame[]> {
+export async function readLayout(workspace: string, project: string, design: string): Promise<ScreenFrame[]> {
   assertName("design", design);
   const stored = layoutsOf(await readMeta(workspace, project))[design];
   const parsed = stored === undefined ? null : parseLayout(stored);
   return parsed && typeof parsed !== "string" ? parsed : defaultLayout();
 }
 
-export function writeLayout(workspace: string, project: string, design: string, frames: Frame[]): Promise<void> {
+export function writeLayout(workspace: string, project: string, design: string, frames: ScreenFrame[]): Promise<void> {
   assertName("design", design);
   return updateProjectMeta(workspace, project, (meta) => ({ ...meta, layouts: { ...layoutsOf(meta), [design]: frames } }));
 }
@@ -107,5 +107,5 @@ export function writeAppKind(workspace: string, project: string, design: string,
  */
 export async function designFrames(workspace: string, project: string, design: string): Promise<Frame[]> {
   if (await isApp(workspace, project, design)) return [{ id: "phone", ...PRESETS[1], label: "Phone", x: 0, y: 0 }];
-  return readLayout(workspace, project, design);
+  return viewportFrames(await readLayout(workspace, project, design));
 }

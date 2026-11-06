@@ -31,7 +31,7 @@ import { ProjectsNav, type WorkspaceState } from "./components/ProjectsNav.tsx";
 import { MOD, TopBar, type DesignSystemChip } from "./components/TopBar.tsx";
 import { useHistory } from "./history.ts";
 import { pinsOf, useComments } from "./comments.ts";
-import { MAX_SCREENS } from "../workspace/frames.ts";
+import { MAX_SCREENS, shownPages } from "../workspace/frames.ts";
 import { nodeQuery, nodeUrl, parseNodeQuery } from "./node-url.ts";
 import { taskStatuses } from "./providers.ts";
 import { useTheme } from "./theme.ts";
@@ -298,6 +298,13 @@ export function App() {
   };
   const activeProject = active && projects.state === "ready" ? (projects.data.find((p) => p.id === active.project) ?? null) : null;
   const isApp = !!(active && activeProject?.apps.includes(active.design));
+  // The page list loads again after each change. Until then, the frames keep the last list.
+  const knownPages = useRef<{ design: string; pages: string[] } | null>(null);
+  const designId = active ? `${active.project}/${active.design}` : null;
+  if (designId && pages.state === "ready") knownPages.current = { design: designId, pages: pages.data };
+  const framePages = history.preview && previewPages.state === "ready" ? previewPages.data : knownPages.current?.design === designId ? (knownPages.current?.pages ?? null) : pages.state === "error" ? [] : null;
+  const isPlainWeb = !isApp && !(active && activeProject?.decks.includes(active.design));
+  const flowPages = !isPlainWeb ? [] : framePages && shownPages(framePages, page);
   const toggleApp = useCallback(() => {
     const a = activeRef.current;
     if (!a) return;
@@ -659,6 +666,8 @@ export function App() {
           screens={isApp ? (history.preview ? (previewPages.state === "ready" ? previewPages.data : []) : pages.state === "ready" ? pages.data : []) : null}
           onPage={setPage}
           onAddScreen={addScreen}
+          flowPages={flowPages}
+          hiddenPages={isPlainWeb && framePages && flowPages ? framePages.length - flowPages.length : 0}
           onClear={clearSelection}
           preview={history.preview}
           previewBusy={history.busy}
