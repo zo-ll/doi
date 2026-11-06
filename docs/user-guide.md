@@ -179,7 +179,7 @@ Usage (top bar) shows the tokens of each answer. For an API model with an entry 
 3. The model makes what the request needs. A request for one thing, for example a card, makes one page. A request for a product or a flow makes one linked page for each screen, up to 12 (24 in a mobile app). The canvas shows a single page in a Desktop and a Mobile frame, and several pages in one Desktop frame each.
 4. Send more messages to change the design. Each completed turn is a new version.
 
-If a request does not say enough, or if the model can read it as much more or much less than you want, the model asks first. The chat shows its questions with options and a field for your own answer. Select an option or write an answer, then select Send answer. You choose lets the model make the choices. A turn with questions changes no files.
+If a request does not say enough, or if the model can read it as much more or much less than you want, the model asks first. The chat shows its questions with options and a field for your own answer. Select an option or write an answer, then select Send answer. You choose lets the model make the choices. The model is told to change no file in a turn with questions; doi does not check this.
 
 To rename a design, use its Rename control in the projects drawer. F2 also starts a rename when the design has focus.
 

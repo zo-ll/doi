@@ -24,12 +24,14 @@ function mockModel(chunks: unknown[]) {
   return { model, calls };
 }
 
-test("a turn that reaches the output limit fails: it does not look complete with a file missing", async () => {
+test("a turn that reaches the output limit fails after it reports its tokens", async () => {
   const { model } = mockModel([{ type: "stream-start", warnings: [] }, { ...finish, finishReason: { unified: "length", raw: "length" } }]);
+  const seen: string[] = [];
   const run = async () => {
-    for await (const _ of streamDesign(model, { ...req, signal: new AbortController().signal }, { toolUse: true })) void _;
+    for await (const e of streamDesign(model, { ...req, signal: new AbortController().signal }, { toolUse: true })) seen.push(e.type);
   };
   await expect(run()).rejects.toBeInstanceOf(ProviderError);
+  expect(seen).toEqual(["usage"]);
   await expect(run()).rejects.toThrow("output limit");
 });
 

@@ -279,22 +279,27 @@ export function ChatPanel({
     if (applied.length) onAppliedSent?.();
     void sendTurn(s);
   };
-  /** The answer to an `ask` block goes as the next message, about the same element as the request. */
-  const answerAsk = (id: number, text: string) => {
-    if (running || !target) return;
-    void sendTurn({ text, target: sentRef.current.get(id)?.target ?? null, images: [], comments: [] });
-  };
-  const retry = (id: number) => {
-    const s = sentRef.current.get(id);
-    if (!s || running) return;
-    // The composer is empty after Send, so its vision warning cannot show for a retry.
+  /** Sends a turn that the composer did not make, so its vision warning cannot show. */
+  const resend = (s: Sent) => {
     if (s.images.length && current?.vision === false) {
-      setImageError(`${shortModel(current.model)} cannot read images. Pick a model with vision, then retry.`);
+      setImageError(`${shortModel(current.model)} cannot read images. Pick a model with vision, then try again.`);
       setModelMenu(true);
       return;
     }
     setImageError(null);
     void sendTurn(s);
+  };
+  /**
+   * The answer to an `ask` block goes as the next message, with the element, images and comments of
+   * the request: the history keeps no old image. After a reload the panel has only the text.
+   */
+  const answerAsk = (id: number, text: string) => {
+    if (running || !target) return;
+    resend({ target: null, images: [], comments: [], ...sentRef.current.get(id), text });
+  };
+  const retry = (id: number) => {
+    const s = sentRef.current.get(id);
+    if (s && !running) resend(s);
   };
 
   // Esc closes the model menu, wherever the focus is.

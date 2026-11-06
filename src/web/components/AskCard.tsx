@@ -6,10 +6,12 @@ import { askAnswerText, type AskQuestion } from "../ask.ts";
  * answered it, or a turn runs. The card then only shows the questions.
  */
 export function AskCard({ questions, onAnswer }: { questions: AskQuestion[]; onAnswer?: (text: string) => void }) {
-  const [answers, setAnswers] = useState<string[]>(() => questions.map(() => ""));
-  const set = (i: number, value: string) => setAnswers((list) => list.map((a, n) => (n === i ? value : a)));
-  const send = () => onAnswer?.(askAnswerText(questions, answers));
-  const hasAnswer = answers.some((a) => a.trim());
+  // One answer per question: an option or the user's own words, so a typed word is never an option.
+  const [answers, setAnswers] = useState<{ option: string; own: string }[]>(() => questions.map(() => ({ option: "", own: "" })));
+  const set = (i: number, value: { option: string; own: string }) => setAnswers((list) => list.map((a, n) => (n === i ? value : a)));
+  const texts = answers.map((a) => a.own.trim() || a.option);
+  const send = () => onAnswer?.(askAnswerText(questions, texts));
+  const hasAnswer = texts.some(Boolean);
   return (
     <div
       className="ask-card"
@@ -29,14 +31,14 @@ export function AskCard({ questions, onAnswer }: { questions: AskQuestion[]; onA
             <>
               {q.options.length > 0 && (
                 <div className="ask-options">
-                  {q.options.map((option) => (
-                    <button key={option} type="button" className="btn btn-secondary btn-sm ask-option" aria-pressed={answers[i] === option} onClick={() => set(i, answers[i] === option ? "" : option)}>
+                  {q.options.map((option, n) => (
+                    <button key={n} type="button" className="btn btn-secondary btn-sm ask-option" aria-pressed={answers[i]!.option === option} onClick={() => set(i, { option: answers[i]!.option === option ? "" : option, own: "" })}>
                       {option}
                     </button>
                   ))}
                 </div>
               )}
-              <input className="input" value={q.options.includes(answers[i]!) ? "" : answers[i]} onChange={(e) => set(i, e.target.value)} placeholder="Or write your own answer" aria-label={`Your answer: ${q.question}`} />
+              <input className="input" value={answers[i]!.own} onChange={(e) => set(i, { option: "", own: e.target.value })} placeholder="Or write your own answer" aria-label={`Your answer: ${q.question}`} />
             </>
           )}
           {!onAnswer && q.options.length > 0 && <p className="ask-given">{q.options.join(" · ")}</p>}
