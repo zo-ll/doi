@@ -7,6 +7,7 @@ import { alignStyle, DEFAULT_SCALE, dropTarget, nudgeStyle, resizeStyle, sameSpo
 import { arrangeRow, fitView, newFrameId, nextPosition, stepZoom, wheelFactor, zoomAt, ZOOM_MAX, ZOOM_MIN, type Point, type View } from "../viewport.ts";
 import { FRAME_LIMITS, MAX_SCREENS, PRESETS, screenFrames, type ScreenFrame as FrameSpec } from "../../workspace/frames.ts";
 import { CHANGED_AFTER } from "../../workspace/edit-messages.ts";
+import { useResetOn } from "../reset-on.ts";
 import type { Selection } from "./ChatPanel.tsx";
 
 type FrameState = "loading" | "ready" | "error";
@@ -187,7 +188,7 @@ const Frame = memo(function Frame({
   }, [liveVars]);
 
   // A new page has no rects until its bridge reports them.
-  useEffect(() => setRects({ selected: null, layout: null, hover: null, pins: {} }), [url]);
+  useResetOn(url, () => setRects({ selected: null, layout: null, hover: null, pins: {} }));
 
   const post = useCallback((message: object) => ref.current?.contentWindow?.postMessage(message, "*"), []);
   const canEdit = editable && !readOnly && oid !== null && rects.selected !== null && rects.layout !== null;
@@ -620,10 +621,10 @@ export function Canvas({
     queue.current = queue.current.then(run, run);
   }, []);
 
-  useEffect(() => {
+  useResetOn(active ? `${active.project}/${active.design}` : null, () => {
     undoStack.current = [];
     setEditError(null);
-  }, [active?.project, active?.design]);
+  });
 
   // The spacing scale that resizes and nudges snap to; styles.css can change it.
   useEffect(() => {
@@ -643,10 +644,12 @@ export function Canvas({
       const a = state.current.active;
       if (!a) return;
       onEditSaving?.();
+      // The stack of this design: an answer that comes after a design switch must not enter the new one.
+      const stack = undoStack.current;
       enqueue(() =>
         sendJSON<{ commit: string | null; commitError?: string }>("POST", `/api/projects/${a.project}/designs/${a.design}/edit`, body)
           .then((r) => {
-            if (r.commit) undoStack.current.push(r.commit);
+            if (r.commit) stack.push(r.commit);
             setEditError(r.commitError ? `The edit is saved, but not in the history: ${r.commitError}` : null);
           })
           .catch((e) => {
@@ -661,19 +664,20 @@ export function Canvas({
   /** ⌘Z: the newest canvas edit of this session goes back, as a new version. */
   const undoEdit = useCallback(() => {
     const a = state.current.active;
-    if (!a || !undoStack.current.length) return false;
+    const stack = undoStack.current;
+    if (!a || !stack.length) return false;
     onEditSaving?.();
     // The edit to undo is taken when the request starts, so an edit still in the queue comes first.
     enqueue(async () => {
-      const commit = undoStack.current.pop();
+      const commit = stack.pop();
       if (!commit) return;
       await sendJSON<{ commit: string | null; commitError?: string }>("POST", `/api/projects/${a.project}/designs/${a.design}/edit/undo`, { commit })
         .then((r) => setEditError(r.commitError ? `The undo is saved, but not in the history: ${r.commitError}` : null))
         .catch((e) => {
           const message = (e as Error).message;
           // A later change (a turn, a tweak) makes the older edits stay; else the edit can be undone again.
-          if (message.startsWith(CHANGED_AFTER)) undoStack.current = [];
-          else undoStack.current.push(commit);
+          if (message.startsWith(CHANGED_AFTER)) stack.length = 0;
+          else stack.push(commit);
           setEditError(`The edit was not undone: ${message}`);
         });
     });
