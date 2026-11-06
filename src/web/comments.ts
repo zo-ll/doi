@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { commentsUrl, getJSON, sendJSON, type CommentView, type Load } from "./api.ts";
 import type { Active } from "./api.ts";
+import { useResetOn } from "./reset-on.ts";
 
 /** A pin on the canvas: one element and the numbers of its open comments. */
 export interface Pin {
@@ -29,7 +30,7 @@ export function useComments(active: Active | null, revision: number) {
   const design = active?.design;
 
   // A new design starts empty, not with the comments of the old one.
-  useEffect(() => setComments({ state: "loading" }), [project, design]);
+  useResetOn(active ? `${active.project}/${active.design}` : null, () => setComments({ state: "loading" }));
 
   useEffect(() => {
     if (!project || !design) return;

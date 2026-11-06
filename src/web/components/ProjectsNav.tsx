@@ -1,9 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { sendJSON, type Active, type Load, type ProjectSummary } from "../api.ts";
 import { Confirm } from "./Confirm.tsx";
 
 type DesignKind = "page" | "app" | "slides";
 const KIND_LABEL: Record<DesignKind, string> = { page: "design", app: "mobile app", slides: "slide deck" };
+
+/** A ref callback outside the component: React calls it once, when the input mounts. */
+const focusAndSelect = (input: HTMLInputElement | null) => {
+  input?.focus();
+  input?.select();
+};
 
 /** What the inline editor is open for, if anything. */
 type Editing =
@@ -34,11 +40,6 @@ function InlineInput({ initial, label, placeholder, project, onSubmit, onCancel 
   const [value, setValue] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    ref.current?.focus();
-    ref.current?.select();
-  }, []);
 
   const submit = async () => {
     const v = value.trim();
@@ -56,7 +57,7 @@ function InlineInput({ initial, label, placeholder, project, onSubmit, onCancel 
   return (
     <div className={`nav-edit ${project ? "is-project" : ""}`}>
       <input
-        ref={ref}
+        ref={focusAndSelect}
         value={value}
         aria-label={label}
         placeholder={placeholder}

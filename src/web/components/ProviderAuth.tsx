@@ -29,14 +29,14 @@ export function ProviderAuth({ providers, initial, onRecheck }: {
   const p = providers.find((x) => x.id === providerId);
   const s = statusOf(p);
 
+  if (login.state === "waiting" && p?.ready) {
+    setLogin({ state: "idle" });
+    setNote("Logged in.");
+  }
+
   // While the user logs in in the browser, check the status until the CLI reports a login.
   useEffect(() => {
-    if (login.state !== "waiting") return;
-    if (p?.ready) {
-      setLogin({ state: "idle" });
-      setNote("Logged in.");
-      return;
-    }
+    if (login.state !== "waiting" || p?.ready) return;
     if (Date.now() - login.since > LOGIN_WAIT_MS) {
       setLogin({ state: "idle" });
       setError("No login after 5 minutes. Try again.");

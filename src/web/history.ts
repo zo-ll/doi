@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getJSON, historyUrl, sendJSON, type Load, type VersionView } from "./api.ts";
 import type { Active } from "./api.ts";
+import { useResetOn } from "./reset-on.ts";
 
 /** The versions of the open design and the one in the preview frame. */
 export function useHistory(active: Active | null, revision: number) {
@@ -12,11 +13,11 @@ export function useHistory(active: Active | null, revision: number) {
   const project = active?.project;
   const design = active?.design;
 
-  useEffect(() => {
+  useResetOn(active ? `${active.project}/${active.design}` : null, () => {
     setVersions({ state: "loading" });
     setPreview(null);
     setError(null);
-  }, [project, design]);
+  });
 
   // A turn makes a new version: the list loads again when the design files change.
   useEffect(() => {

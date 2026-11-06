@@ -110,7 +110,12 @@ export function ChatPanel({
   const [imageError, setImageError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [running, setRunning] = useState(false);
+  const [running, setRunningState] = useState(false);
+  /** The parent hears at once. A run that a design switch or an unmount aborted still ends here. */
+  const setRunning = (on: boolean) => {
+    setRunningState(on);
+    onRunningChange?.(on);
+  };
   // 1 is a normal turn; 2 to 4 starts that many variants.
   const [count, setCount] = useState(1);
   /** A model the user picked for this design's turns; null uses the config. */
@@ -317,7 +322,6 @@ export function ChatPanel({
     if (target) await fetch(turnUrl(target.project, target.design), { method: "DELETE" }).catch(() => {});
     controller.abort();
   };
-  useEffect(() => onRunningChange?.(running), [running]);
 
   const send = () => {
     const text = draft.trim();

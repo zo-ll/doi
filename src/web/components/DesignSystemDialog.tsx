@@ -51,13 +51,18 @@ export function DesignSystemDialog({ project, projects, editorUrl, extract, onCl
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    let live = true;
     getJSON<string[]>("/api/design-systems")
       .then((names) => {
+        if (!live) return;
         setList(names);
         // Show the project's design system, or else the first one.
         setMode((m) => (m.kind === "view" && m.name === null && names.length ? { kind: "view", name: names[0]! } : m));
       })
-      .catch((e) => setError(`The design systems cannot load: ${(e as Error).message}`));
+      .catch((e) => live && setError(`The design systems cannot load: ${(e as Error).message}`));
+    return () => {
+      live = false;
+    };
   }, [reloads]);
 
   useEffect(() => {
@@ -181,9 +186,13 @@ function DesignSystemDetails({ name, inUse, projectName, editorUrl, onUse, onSto
   const [copied, setCopied] = useState<string | null>(null);
 
   useEffect(() => {
+    let live = true;
     getJSON<DesignSystemView>(`/api/design-systems/${name}`)
-      .then(setView)
-      .catch((e) => setError((e as Error).message));
+      .then((v) => live && setView(v))
+      .catch((e) => live && setError((e as Error).message));
+    return () => {
+      live = false;
+    };
   }, [name]);
 
   const head = (

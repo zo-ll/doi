@@ -32,17 +32,22 @@ export function RepoDialog({ project, onChanged, onClose }: {
   }, [onClose, busy]);
 
   useEffect(() => {
+    let live = true;
     setStatus({ state: "loading" });
     getJSON<GhStatus>("/api/github/status")
       .then((s) => {
+        if (!live) return;
         setStatus({ state: "ready", data: s });
         if (!s.loggedIn) return;
         setRepos({ state: "loading" });
         getJSON<RepoSummary[]>("/api/github/repos")
-          .then((data) => setRepos({ state: "ready", data }))
-          .catch((e: Error) => setRepos({ state: "error", message: e.message }));
+          .then((data) => live && setRepos({ state: "ready", data }))
+          .catch((e: Error) => live && setRepos({ state: "error", message: e.message }));
       })
-      .catch((e: Error) => setStatus({ state: "error", message: e.message }));
+      .catch((e: Error) => live && setStatus({ state: "error", message: e.message }));
+    return () => {
+      live = false;
+    };
   }, [checks]);
 
   const run = async (label: string, job: () => Promise<unknown>) => {

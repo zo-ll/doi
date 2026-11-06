@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { getJSON, sendJSON, variantsUrl, type VariantSetView } from "./api.ts";
+import { useResetOn } from "./reset-on.ts";
 import type { Active } from "./api.ts";
 
 /** The open variant set of the design, or null. `reload` loads it again. */
@@ -10,7 +11,10 @@ export function useVariants(active: Active | null) {
   const project = active?.project;
   const design = active?.design;
 
-  useEffect(() => setSet(null), [project, design]);
+  useResetOn(active ? `${active.project}/${active.design}` : null, () => {
+    setSet(null);
+    setError(null);
+  });
 
   useEffect(() => {
     if (!project || !design) return;

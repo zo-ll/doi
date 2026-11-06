@@ -43,22 +43,34 @@ export function HandoffDialog({ project, design, version, pages, openComments, h
   useEffect(() => () => abort.current?.abort(), []);
 
   useEffect(() => {
+    let live = true;
     getJSON<unknown[]>(`/api/projects/${project}/designs/${design}/layout`)
-      .then((f) => setFrames(f.length))
+      .then((f) => live && setFrames(f.length))
       .catch(() => {}); // only the footer and the checklist count frames
     getJSON<{ prompt: string; url: string }>(`${base}/prompt`)
       .then((r) => {
+        if (!live) return;
         setDefaults(r);
         setPrompt(r.prompt);
       })
-      .catch((e: Error) => setError(e.message));
+      .catch((e: Error) => live && setError(e.message));
+    return () => {
+      live = false;
+    };
   }, [base]);
-  useEffect(() => {
-    if (tab !== "zip" || handoff !== null) return;
+  /** The first visit to the zip tab loads the draft. A later visit must not replace the user's text. */
+  const draftAsked = useRef(false);
+  const chooseTab = (next: Tab) => {
+    setTab(next);
+    if (next !== "zip" || handoff !== null || draftAsked.current) return;
+    draftAsked.current = true;
     getJSON<{ markdown: string }>(base)
       .then((r) => setHandoff(r.markdown))
-      .catch((e: Error) => setError(e.message));
-  }, [tab, handoff, base]);
+      .catch((e: Error) => {
+        draftAsked.current = false;
+        setError(e.message);
+      });
+  };
 
   const copy = async (what: "url" | "prompt", text: string) => {
     setError(null);
@@ -109,10 +121,10 @@ export function HandoffDialog({ project, design, version, pages, openComments, h
             </button>
           </div>
           <div className="tabs handoff-tabs" role="tablist">
-            <button className="tab" role="tab" aria-selected={tab === "prompt"} onClick={() => setTab("prompt")}>
+            <button className="tab" role="tab" aria-selected={tab === "prompt"} onClick={() => chooseTab("prompt")}>
               Prompt for a coding agent
             </button>
-            <button className="tab" role="tab" aria-selected={tab === "zip"} onClick={() => setTab("zip")}>
+            <button className="tab" role="tab" aria-selected={tab === "zip"} onClick={() => chooseTab("zip")}>
               Handoff bundle (ZIP)
             </button>
           </div>
