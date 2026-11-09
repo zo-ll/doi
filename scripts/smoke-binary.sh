@@ -91,7 +91,7 @@ stop_it
 jq_field() { printf '%s' "$1" | sed -n "s/.*\"$2\":\([^,}]*\).*/\1/p"; }
 run_bin() { env -i HOME="$home" PATH=/usr/bin:/bin "$bin" "$@"; }
 info=$(cd "$one" && run_bin start --json --port "$port") || fail "doi start: $info"
-[ "$(printf '%s\n' "$info" | wc -l)" = 1 ] || fail "doi start printed more than one line"
+[ "$(printf '%s\n' "$info" | wc -l)" -eq 1 ] || fail "doi start printed more than one line"
 has "$info" '"ok":true' || fail "doi start: $info"
 has "$info" "\"url\":\"$url/\"" || fail "doi start url: $info"
 has "$info" "\"mcp\":\"$url/mcp\"" || fail "doi start mcp: $info"
