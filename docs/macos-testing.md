@@ -2,13 +2,14 @@
 
 This branch adds native macOS binaries for Intel and Apple silicon. The owner will merge it after a test on a Mac. The published v0.1.0 release contains no macOS binary. The candidate also reports `0.1.0`, but it is not that published release.
 
-## Get the candidate
+## Download the candidate
 
 1. Open the CI run for `feature/macos-installation` on GitHub.
 2. Make sure the macOS job for your CPU passed.
-3. Download `macos-installation-arm64` for Apple silicon, or `macos-installation-x64` for Intel.
-4. Extract the ZIP into a new folder whose path has no spaces.
-5. Open Terminal in that folder.
+3. For Apple silicon, download `macos-installation-arm64`.
+4. For Intel, download `macos-installation-x64`.
+5. Extract the ZIP into a new folder whose path has no spaces.
+6. Open Terminal in that folder.
 
 The artifact contains `install.sh`, this document, checksums and a local release folder. You do not need Bun or a source checkout. If the artifact expired, repeat the macOS job. Standard `macos-15` and `macos-15-intel` runners are free for this public repository.
 
@@ -90,4 +91,4 @@ The config stays in `~/.config/doi`. The default workspace stays in `~/.local/sh
 6. Make sure the installer removed only its own PATH lines.
 7. Make sure `test-workspace` and the existing config remain.
 
-Record the macOS version, CPU, CI run and any errors in the PR. Do not merge until the hands-on test passes. A later versioned release must include the macOS files before the normal public install command can work on a Mac.
+Record the macOS version, CPU, CI run and any errors in the PR. Do not merge until the test on a Mac passes. A later versioned release must include the macOS files before the normal public install command can work on a Mac.
