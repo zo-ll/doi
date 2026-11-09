@@ -93,6 +93,10 @@ try {
             $stream.Write($header, 0, $header.Length)
             $stream.Write($bytes, 0, $bytes.Length)
             $stream.Flush()
+            # .NET Framework accepts a short response after a normal close. Reset the connection instead.
+            if ($request -notlike "*SHA256SUMS*") {
+              $client.Client.LingerState = [Net.Sockets.LingerOption]::new($true, 0)
+            }
           } finally { $reader.Dispose() }
         } finally { $client.Dispose() }
       }
