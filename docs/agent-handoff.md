@@ -2,7 +2,11 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-11-07. The UML work (#145) and the effect cleanup (#148, PR #156) are merged and closed. The mobile app fixes (#144, PR #157) are merged. Issue #153 (full user flow) is merged and closed (PRs #158, #159, #160). The start screen (#141, PR #161) is merged and closed. The installer (#146) is complete and closed. PRs #162–#165 merged. Release v0.1.0 is public for Linux and Windows on x64 and ARM64. The macOS work is on `feature/macos-installation` and supports Apple silicon only. The owner will merge it after a test on a Mac; agents must not merge or publish this branch. The removal of xyflow is on hold (user, 2026-11-06): do not plan it until the user asks. Section 6 records the details.
+Last update: 2026-11-07. The UML work (#145) and the effect cleanup (#148, PR #156) are merged and closed. The mobile app fixes (#144, PR #157) are merged. Issue #153 (full user flow) is merged and closed (PRs #158, #159, #160). The start screen (#141, PR #161) is merged and closed.
+
+The installer (#146) is complete and closed. PRs #162–#165 merged. Release v0.1.0 is public for Linux and Windows on x64 and ARM64. The macOS work is on `feature/macos-installation` and supports Apple silicon only. The owner will merge it after a test on a Mac; agents must not merge or publish this branch.
+
+The removal of xyflow is on hold (user, 2026-11-06): do not plan it until the user asks. Section 6 records the details.
 
 PR #147 merged the TypeScript refactor and two browser fixes into `main` at `e95e541`. All 529 tests passed, with no skips or failures. The type check, Linux binary build and smoke test passed. The Usage gap for unpicked variants remains open.
 
@@ -149,6 +153,10 @@ Critic report `review.dFXcm9Yn/REPORT-2.md` approves `5f31bde` under the Apple-s
 The public Linux installer selected v0.1.0 without a version override or authentication. It used a temporary home folder. A new shell found the installed command through its PATH entry. The installed binary passed the shared-design smoke check with `DOI_SMOKE_RENDER=1`, including the next MCP read after an edit and a rendered image. Evidence: `/tmp/doi-release-v0.1.0.WTS1GOco/`.
 
 The first Windows ARM64 install check failed at a file move. A retry passed without code changes. The cause remains unproven. Issue #146 records this limit and the completion evidence. Its checklist follows the owner's Linux-and-Windows scope decision.
+
+**Deferred backlog closed as not planned.** At the owner's request, #55, #56, #57, #67, #68 and #75 are closed as not planned. These features are no longer required. The repository has no open issues after this closure. Unless the owner requests them again, do not reopen these issues. The remaining acceptance work is the real-project handoff and the owner's Mac test.
+
+The Mac installer remains in [draft PR #166](https://github.com/zo-ll/doi/pull/166). The owner will test an Apple silicon Mac before merge. The candidate guide and CI artifacts are linked from that PR.
 
 **2026-11-07: fourth review of PR #165.** The report and completion marker approve `f62d4f5`. Exact-head CI run `42596216560` passed on Windows and Linux. P1 and P2 have corrections. Two new low-severity items concern an absent empty-response test and a proxy's relative redirect.
 
