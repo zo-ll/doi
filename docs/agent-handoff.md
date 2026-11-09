@@ -140,9 +140,9 @@ The shared shell installer supports only Apple silicon on macOS, including nativ
 
 The build includes only the ARM64 macOS target. The standard ARM64 Mac runner executes the Linux-cross-compiled binary, then the full install check and a real zsh login. It provides `macos-installation-arm64` for the owner. `docs/macos-testing.md` gives the manual check without Bun or a source checkout. Future release tags require the native ARM64 macOS check before publication; v0.1.0 remains unchanged.
 
-Local checks: installer tests, `bun check`, actionlint, both Mach-O builds and the rebuilt Linux install check passed. Use the draft PR's CI results for native execution evidence. The owner must still test a Mac. Do not merge or publish this branch automatically.
+Local checks: installer tests, `bun check`, actionlint, the ARM64 Mach-O build and the rebuilt Linux install check passed. Use the draft PR's CI results for native execution evidence. The owner must still test a Mac. Do not merge or publish this branch automatically.
 
-Critic report `review.dFXcm9Yn/REPORT.md` approves `751f3b6` with two low documentation notes. The Mac test guide now includes a Rosetta check against the local candidate. The user guide now names the macOS shell installer explicitly. CI run `42607256457` passed on `751f3b6`, including both native Mac jobs. The revised branch requires a re-review. The owner test remains separate from CI.
+Critic report `review.dFXcm9Yn/REPORT-2.md` approves `5f31bde` under the Apple-silicon-only scope. CI run `42611631517` passed on that exact head, including the native ARM64 Mac job. The report found one stale reference to two Mac builds. This documentation revision names only the ARM64 build. The owner test remains separate from CI.
 
 **v0.1.0 released; #146 closed.** The user authorized the first release. Tag `v0.1.0` names merge commit `680e9db`. Release run `42600484394` passed on all four native platforms and published the binaries, both installer scripts and `SHA256SUMS`. Release: https://github.com/zo-ll/doi/releases/tag/v0.1.0. All downloaded files matched their checksums.
 
