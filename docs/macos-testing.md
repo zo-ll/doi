@@ -44,6 +44,27 @@ The default install folder is `~/.local/bin`. The installer adds it to `.profile
 
 If git is absent, install the Command Line Tools before you start doi. macOS may offer that install after `git --version`.
 
+### Rosetta on Apple silicon
+
+This check applies only to Apple silicon with Rosetta. If Rosetta is absent, record that limit in the PR.
+
+1. Confirm the translated shell:
+
+   ```sh
+   arch -x86_64 /usr/bin/uname -m
+   ```
+
+2. Make sure the output is `x86_64`.
+3. Repeat the local install through that shell:
+
+   ```sh
+   DOI_INSTALL_BASE_URL="file://$PWD/release" arch -x86_64 /bin/sh install.sh --version 0.1.0 &&
+     file "$(command -v doi)"
+   ```
+
+4. Make sure the install succeeds and its message names `macOS arm64`.
+5. Make sure the `file` output identifies `arm64`.
+
 ## Test the app
 
 1. Install the renderer:

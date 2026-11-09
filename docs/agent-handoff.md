@@ -140,6 +140,8 @@ The build includes both macOS targets. Standard macOS CI runners execute the Lin
 
 Local checks: installer tests, `bun check`, actionlint, both Mach-O builds and the rebuilt Linux install check passed. Use the draft PR's CI results for native execution evidence. The owner must still test a Mac. Do not merge or publish this branch automatically.
 
+Critic report `review.dFXcm9Yn/REPORT.md` approves `751f3b6` with two low documentation notes. The Mac test guide now includes a Rosetta check against the local candidate. The user guide now names the macOS shell installer explicitly. CI run `42607256457` passed on `751f3b6`, including both native Mac jobs. The documentation revision requires a re-review. The owner test remains separate from CI.
+
 **v0.1.0 released; #146 closed.** The user authorized the first release. Tag `v0.1.0` names merge commit `680e9db`. Release run `42600484394` passed on all four native platforms and published the binaries, both installer scripts and `SHA256SUMS`. Release: https://github.com/zo-ll/doi/releases/tag/v0.1.0. All downloaded files matched their checksums.
 
 The public Linux installer selected v0.1.0 without a version override or authentication. It used a temporary home folder. A new shell found the installed command through its PATH entry. The installed binary passed the shared-design smoke check with `DOI_SMOKE_RENDER=1`, including the next MCP read after an edit and a rendered image. Evidence: `/tmp/doi-release-v0.1.0.WTS1GOco/`.

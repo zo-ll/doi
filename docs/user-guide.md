@@ -48,7 +48,7 @@ The script installs the `doi` command for your user, with no administrator acces
 
 The macOS candidate remains on `feature/macos-installation` until the owner tests it on a Mac and merges it. Release v0.1.0 contains no macOS binary. Follow [the Mac test guide](macos-testing.md) for an install without Bun or a source checkout. A later release will add the public macOS files after all platform checks pass.
 
-Linux with musl libc, for example Alpine, needs a source build. The installers select native binaries, including ARM64 from a Rosetta shell.
+Linux with musl libc, for example Alpine, needs a source build. On Apple silicon, the macOS shell installer selects native ARM64 even from a Rosetta shell.
 
 **Linux:**
 
