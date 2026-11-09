@@ -1,5 +1,5 @@
 #!/bin/sh
-# Installs the doi command for this user, without administrator access. Linux only.
+# Installs the doi command for this user, without administrator access. Linux and macOS.
 #
 #   curl -fsSL https://raw.githubusercontent.com/zo-ll/doi/main/scripts/install.sh | sh
 #   sh install.sh --version 0.1.0 --dir "$HOME/bin"
@@ -38,12 +38,15 @@ case "$DIR" in *'
 '*) fail "the folder name has a line break." ;; esac
 # One line for each folder, so an uninstall of one folder leaves the line of another.
 LINE_MARK="$MARK: $DIR"
+os=$(uname -s)
 
-# The shell files that can set PATH. .profile is the one that a new line can always go to.
+# A new macOS login shell reads .zprofile, not .profile. Both files can receive a new line.
 rc_candidates() {
   [ -n "$HOME" ] || return 0
   for rc in "$HOME/.profile" "$HOME/.bash_profile" "$HOME/.bashrc" "$HOME/.zprofile" "$HOME/.zshrc"; do
-    if [ "$rc" = "$HOME/.profile" ] || [ -f "$rc" ]; then printf '%s\n' "$rc"; fi
+    if [ "$rc" = "$HOME/.profile" ] || { [ "$os" = Darwin ] && [ "$rc" = "$HOME/.zprofile" ]; } || [ -f "$rc" ]; then
+      printf '%s\n' "$rc"
+    fi
   done
 }
 
@@ -75,19 +78,23 @@ if [ "$UNINSTALL" = 1 ]; then
   exit 0
 fi
 
-os=$(uname -s)
 case "$os" in
-  Linux) ;;
-  Darwin) fail "doi publishes binaries for Linux and Windows, and not for macOS. On a Mac, build it from the source: see the user guide." ;;
-  *) fail "doi has no binary for $os. It publishes for Linux and Windows." ;;
+  Linux) platform=linux; label=Linux ;;
+  Darwin) platform=darwin; label=macOS ;;
+  *) fail "doi has no binary for $os. It publishes for Linux, macOS and Windows." ;;
 esac
 machine=$(uname -m)
 case "$machine" in
   x86_64 | amd64) arch=x64 ;;
   aarch64 | arm64) arch=arm64 ;;
-  *) fail "doi has no Linux binary for the CPU $machine. It publishes x64 and arm64." ;;
+  *) fail "doi has no $label binary for the CPU $machine. It publishes x64 and arm64." ;;
 esac
-if [ -e /etc/alpine-release ] || { command -v ldd >/dev/null 2>&1 && ldd --version 2>&1 | grep -qi musl; }; then
+if [ "$platform" = darwin ] && [ "$arch" = x64 ]; then
+  # Rosetta reports x86_64. Select the native ARM64 artifact for the computer instead.
+  translated=$(PATH="${PATH:-}:/usr/sbin" sysctl -in sysctl.proc_translated 2>/dev/null || true)
+  [ "$translated" != 1 ] || arch=arm64
+fi
+if [ "$platform" = linux ] && { [ -e /etc/alpine-release ] || { command -v ldd >/dev/null 2>&1 && ldd --version 2>&1 | grep -qi musl; }; }; then
   fail "this system uses musl libc, and the doi binaries need glibc. Build doi from the source: see the user guide."
 fi
 
@@ -122,19 +129,19 @@ case "$VERSION" in
   '' | *[!0-9A-Za-z.-]*) fail "'$VERSION' is not a version." ;;
 esac
 
-name="doi-$VERSION-linux-$arch"
+name="doi-$VERSION-$platform-$arch"
 mkdir -p "$DIR" || fail "cannot make $DIR."
 # In the install folder, so the last step is an atomic rename on one file system.
 tmp=$(mktemp -d "$DIR/.doi-install.XXXXXX") || fail "cannot write to $DIR."
 trap 'rm -rf "$tmp"' EXIT
 trap 'exit 130' INT TERM
 
-printf 'Downloading doi %s for Linux %s…\n' "$VERSION" "$arch"
+printf 'Downloading doi %s for %s %s…\n' "$VERSION" "$label" "$arch"
 fetch "$BASE/v$VERSION/SHA256SUMS" "$tmp/SHA256SUMS" || fail "cannot download the checksums of version $VERSION. Check the version and your connection."
+want=$(awk -v f="$name" '$2 == f || $2 == "*" f { print $1 }' "$tmp/SHA256SUMS")
+[ -n "$want" ] || fail "version $VERSION has no $label $arch binary. Nothing changed."
 fetch "$BASE/v$VERSION/$name" "$tmp/doi" || fail "the download of $name failed. Nothing changed."
 
-want=$(awk -v f="$name" '$2 == f || $2 == "*" f { print $1 }' "$tmp/SHA256SUMS")
-[ -n "$want" ] || fail "the checksums do not list $name. Nothing changed."
 have=$(sha "$tmp/doi")
 [ "$have" = "$want" ] || fail "the checksum of $name does not match, so the file is incomplete or changed. Nothing changed."
 
@@ -165,6 +172,9 @@ if [ "$on_path" = 0 ]; then
 fi
 
 printf 'Installed doi %s at %s.\n' "$VERSION" "$DIR/doi"
+if [ "$platform" = darwin ]; then
+  printf 'doi has no Developer ID signature or notarization. See the user guide if macOS blocks it.\n'
+fi
 printf 'A doi that still runs keeps the old version until you run doi stop.\n'
 printf 'Next: run doi doctor to check the tools, and doi install-browser for PNG, PDF and agent screenshots.\n'
 printf 'Then start it with doi --open.\n'
