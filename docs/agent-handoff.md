@@ -2,7 +2,7 @@
 
 This file is for the next coding agent on doi. Read it before you start an issue. Update it when you stop.
 
-Last update: 2026-11-06. The UML work (#145) and the effect cleanup (#148, PR #156) are merged and closed. The mobile app fixes (#144, PR #157) are merged. Issue #153 (full user flow) is merged and closed (PRs #158, #159, #160). The start screen (#141, PR #161) is merged and closed. The installer (#146) is in progress in four PRs: persistent paths are merged (PR #162), the launch contract (PR #163) and the release workflow (PR #164) are merged, and the installer scripts are on `feature/install-scripts`. The removal of xyflow is on hold (user, 2026-11-06): do not plan it until the user asks. Section 6 records the details.
+Last update: 2026-11-07. The UML work (#145) and the effect cleanup (#148, PR #156) are merged and closed. The mobile app fixes (#144, PR #157) are merged. Issue #153 (full user flow) is merged and closed (PRs #158, #159, #160). The start screen (#141, PR #161) is merged and closed. The installer (#146) is in progress in four PRs: persistent paths are merged (PR #162), the launch contract (PR #163) and the release workflow (PR #164) are merged, and the installer scripts are on `feature/install-scripts`. The removal of xyflow is on hold (user, 2026-11-06): do not plan it until the user asks. Section 6 records the details.
 
 PR #147 merged the TypeScript refactor and two browser fixes into `main` at `e95e541`. All 529 tests passed, with no skips or failures. The type check, Linux binary build and smoke test passed. The Usage gap for unpicked variants remains open.
 
@@ -131,6 +131,16 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 - CLI backends (`editsFiles: true`) change the files in `GenerateRequest.cwd` themselves. Their `edit`/`write` events only report the change. **The edit applier must skip them.**
 
 ## 6. State and next steps
+
+**2026-11-07: PR #165 review corrections.** The pending report was `~/.local/state/spawn-critic/review.PxBPrZWz/REPORT-2.md`. It approved `d5ac6ff` but reported five new low-severity defects. All five have corrections.
+
+The shell installer reports each successful PATH edit separately. Without HOME, the uninstall message gives no assumed data paths. The read-only test skips root. The complete install test now accepts `shasum` when `sha256sum` is absent.
+
+The Windows test uses a TCP listener with an automatic port and an explicit readiness signal. It needs no HTTP URL reservation. Its cleanup stops the job even after a failure.
+
+Checks: `CI=1 bun test` passed all 765 tests. `bun check` passed. The Linux install-to-shared-design test passed with each checksum command. PowerShell 7.6.9 on Linux verified the actual TCP fixture with immediate and delayed starts, a truncated response and a startup error.
+
+Windows PowerShell 5.1 still needs CI on the new head. The same critic must review the new head before merge. No tag, release or visibility change occurred. Issue #146 stays open for the public release and ARM64 checks.
 
 **2026-11-06: installer scripts (#146, part 4, branch `feature/install-scripts`).** `scripts/install.sh` (Linux) and `scripts/install.ps1` (Windows). Each one verifies `SHA256SUMS`, runs the new binary once, and only then replaces the old one, in the install folder. `DOI_INSTALL_BASE_URL` points the scripts at a test release. `test/install.test.ts` and `scripts/test-install.ps1` cover failures, an upgrade and an uninstall. `install.ps1` writes the raw registry value of the user Path, because `[Environment]` expands `%USERPROFILE%` and would damage it. `test-install.ps1` touches the user PATH only with `-ModifyPath`, which only CI uses. The smoke scripts now run the shared design flow: MCP read, a person's edit, the next read; `DOI_SMOKE_RENDER=1` adds a rendered image. CI renders on Linux x64 and Windows x64. The release checks do not render: a clean Linux arm64 runner has no system libraries for Chromium. `scripts/e2e-install.sh` and `test-install.ps1 -ModifyPath` run the whole way: the install script from a local release, then the smoke test on the installed command. One PATH line per folder carries the folder in its mark, so an uninstall touches only its own.
 

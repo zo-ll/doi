@@ -71,34 +71,56 @@ try {
   if ($cut.Text -notmatch "does not match") { Fail "cut download: $($cut.Text)" }
 
   # A transfer that breaks: the server promises more bytes, and it closes the connection.
-  $cutPort = 4496
-  $server = Start-Job -ArgumentList $cutPort, (Join-Path $dir "release good\v$version\SHA256SUMS") -ScriptBlock {
-    param($port, $sums)
-    $listener = New-Object Net.HttpListener
-    $listener.Prefixes.Add("http://127.0.0.1:$port/")
-    $listener.Start()
-    for ($i = 0; $i -lt 2; $i++) {
-      $context = $listener.GetContext()
-      if ($context.Request.Url.AbsolutePath -like "*SHA256SUMS") {
-        $bytes = [IO.File]::ReadAllBytes($sums)
-        $context.Response.OutputStream.Write($bytes, 0, $bytes.Length)
-        $context.Response.Close()
-      } else {
-        $context.Response.ContentLength64 = 1000000
-        $context.Response.OutputStream.Write([byte[]](1..10), 0, 10)
-        $context.Response.OutputStream.Flush()
-        $context.Response.Abort()
+  # A TCP listener needs no HTTP URL reservation. Port 0 selects a free port.
+  $server = Start-Job -ArgumentList (Join-Path $dir "release good\v$version\SHA256SUMS") -ScriptBlock {
+    param($sums)
+    $ErrorActionPreference = "Stop"
+    $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+    try {
+      $listener.Start()
+      Write-Output $listener.LocalEndpoint.Port
+      for ($i = 0; $i -lt 2; $i++) {
+        $client = $listener.AcceptTcpClient()
+        try {
+          $stream = $client.GetStream()
+          $reader = [IO.StreamReader]::new($stream)
+          try {
+            $request = $reader.ReadLine()
+            while ($reader.ReadLine()) {} # Read the remaining HTTP headers.
+            $bytes = if ($request -like "*SHA256SUMS*") { [IO.File]::ReadAllBytes($sums) } else { [byte[]](1..10) }
+            $length = if ($request -like "*SHA256SUMS*") { $bytes.Length } else { 1000000 }
+            $header = [Text.Encoding]::ASCII.GetBytes("HTTP/1.1 200 OK`r`nContent-Length: $length`r`nConnection: close`r`n`r`n")
+            $stream.Write($header, 0, $header.Length)
+            $stream.Write($bytes, 0, $bytes.Length)
+            $stream.Flush()
+          } finally { $reader.Dispose() }
+        } finally { $client.Dispose() }
       }
-    }
-    $listener.Stop()
+    } finally { $listener.Stop() }
   }
-  Start-Sleep -Seconds 2
-  $env:DOI_INSTALL_BASE_URL = "http://127.0.0.1:$cutPort"
-  $saved = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-  $broken = (& powershell -NoProfile -ExecutionPolicy Bypass -File $script -Version $version -InstallDir $target @pathFlag 2>&1) -join "`n"
-  $ErrorActionPreference = $saved
-  Stop-Job $server -ErrorAction SilentlyContinue; Remove-Job $server -Force -ErrorAction SilentlyContinue
-  if ($broken -notmatch "failed. Nothing changed") { Fail "a broken transfer: $broken" }
+  try {
+    $deadline = [DateTime]::UtcNow.AddSeconds(20)
+    $cutPort = $null
+    do {
+      $ready = @(Receive-Job $server -Keep -ErrorAction SilentlyContinue)
+      if ($ready.Count -gt 0) { $cutPort = [int]$ready[0]; break }
+      if ($server.State -in @("Failed", "Completed", "Stopped")) {
+        Fail "the transfer server did not start: $($server.ChildJobs[0].JobStateInfo.Reason) $($server.ChildJobs[0].Error)"
+      }
+      Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $deadline)
+    if (-not $cutPort) { Fail "the transfer server did not start within 20 seconds" }
+    $env:DOI_INSTALL_BASE_URL = "http://127.0.0.1:$cutPort"
+    $saved = $ErrorActionPreference
+    try {
+      $ErrorActionPreference = "Continue"
+      $broken = (& powershell -NoProfile -ExecutionPolicy Bypass -File $script -Version $version -InstallDir $target @pathFlag 2>&1) -join "`n"
+    } finally { $ErrorActionPreference = $saved }
+    if ($broken -notmatch "failed. Nothing changed") { Fail "a broken transfer: $broken" }
+  } finally {
+    Stop-Job $server -ErrorAction SilentlyContinue
+    Remove-Job $server -Force -ErrorAction SilentlyContinue
+  }
 
   $gone = Install "no-such-release" $pathFlag
   if ($gone.Text -notmatch "cannot download") { Fail "missing release: $($gone.Text)" }
