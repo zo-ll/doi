@@ -140,7 +140,7 @@ The Windows test uses a TCP listener with an automatic port and an explicit read
 
 Checks: `CI=1 bun test` passed all 765 tests. `bun check` passed. The Linux install-to-shared-design test passed with each checksum command. PowerShell 7.6.9 on Linux verified the actual TCP fixture with immediate and delayed starts, a truncated response and a startup error.
 
-Windows CI at `9feeaa9` accepted a short HTTP response after a normal TCP close. The fixture now sends a TCP reset, which tests a broken transfer without a weaker assertion.
+Windows CI at `9feeaa9` accepted a short HTTP response after a normal TCP close. The first reset attempt at `9c90eb8` also failed. The framework source shows that `NetworkStream.Dispose` sends a normal shutdown before socket disposal. The fixture now calls `Socket.Close(0)` before stream disposal. A raw socket probe on Linux observed `ConnectionReset`. The assertion still requires a failed transfer, not a later checksum error.
 
 Windows PowerShell 5.1 still needs CI on the new head. The same critic must review the new head before merge. No tag, release or visibility change occurred. Issue #146 stays open for the public release and ARM64 checks.
 
