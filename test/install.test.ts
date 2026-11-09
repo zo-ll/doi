@@ -77,6 +77,7 @@ describe.skipIf(process.platform === "win32")("a new install", () => {
     expect(await leftovers()).toEqual([]);
     expect((await Bun.$`${join(dir, "doi")} --version`.cwd(home).text()).trim()).toBe("doi 1.2.3");
     expect(await Bun.file(join(home, ".profile")).text()).toContain(dir);
+    expect(result.stdout).toContain(`Added ${dir} to your PATH in ${join(home, ".profile")}.`);
   });
 
   test("takes a v in the version, and the environment form for curl | sh", async () => {
@@ -243,7 +244,7 @@ describe.skipIf(process.platform === "win32")("shell files", () => {
     expect(result.stderr).toContain("line break");
   });
 
-  test("a shell file that cannot change does not fail the install or the uninstall", async () => {
+  test.skipIf(process.getuid?.() === 0)("a shell file that cannot change does not fail the install or the uninstall", async () => {
     await machine("x86_64");
     release("1.2.3");
     const rc = join(home, ".profile");
@@ -252,6 +253,7 @@ describe.skipIf(process.platform === "win32")("shell files", () => {
     const result = await install(["--version", "1.2.3"]);
     expect(result.code).toBe(0);
     expect(result.stderr).toContain("cannot write");
+    expect(result.stdout).not.toContain("Added ");
     expect(result.stdout).toContain("Installed doi 1.2.3");
     expect(await installed().exists()).toBe(true);
 
@@ -296,6 +298,13 @@ describe.skipIf(process.platform === "win32")("shell files", () => {
     const without = Bun.spawn(["sh", SCRIPT, "--version", "1.2.3"], { env: clean, stdout: "pipe", stderr: "pipe" });
     expect(await without.exited).toBe(1);
     expect(await new Response(without.stderr).text()).toContain("HOME is not set");
+    const removed = Bun.spawn(["sh", SCRIPT, "--dir", dir, "--uninstall"], { env: clean, stdout: "pipe", stderr: "pipe" });
+    expect(await removed.exited).toBe(0);
+    const message = await new Response(removed.stdout).text();
+    expect(message).toContain("Your designs, config and credentials stay.");
+    expect(message).not.toContain("/.local/share/doi");
+    expect(message).not.toContain("/.config/doi");
+    expect(await installed().exists()).toBe(false);
   });
 
   test("the uninstall message names the folder that doi uses, also with a relative XDG path", async () => {

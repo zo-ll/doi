@@ -66,8 +66,12 @@ if [ "$UNINSTALL" = 1 ]; then
     fi
   done || true
   printf 'doi is removed from %s.\n' "$DIR"
-  printf 'Your designs, config and credentials stay. To delete them, remove %s and %s.\n' \
-    "$(xdg_or "${XDG_DATA_HOME:-}" "$HOME/.local/share")/doi" "$(xdg_or "${XDG_CONFIG_HOME:-}" "$HOME/.config")/doi"
+  if [ -n "$HOME" ]; then
+    printf 'Your designs, config and credentials stay. To delete them, remove %s and %s.\n' \
+      "$(xdg_or "${XDG_DATA_HOME:-}" "$HOME/.local/share")/doi" "$(xdg_or "${XDG_CONFIG_HOME:-}" "$HOME/.config")/doi"
+  else
+    printf 'Your designs, config and credentials stay.\n'
+  fi
   exit 0
 fi
 
@@ -144,11 +148,12 @@ if [ "$on_path" = 0 ]; then
     # The binary is in place by now, so a shell file that cannot change must not fail the install.
     rc_candidates | while IFS= read -r rc; do
       if grep -qF "$LINE_MARK" "$rc" 2>/dev/null; then continue; fi
-      if ! { printf '%s\n' "$line" >> "$rc"; } 2>/dev/null; then
+      if { printf '%s\n' "$line" >> "$rc"; } 2>/dev/null; then
+        printf 'Added %s to your PATH in %s. Open a new terminal to use it.\n' "$DIR" "$rc"
+      else
         printf 'doi install: cannot write %s. Add %s to your PATH yourself.\n' "$rc" "$DIR" >&2
       fi
     done || true
-    printf 'Added %s to your PATH in your shell files. Open a new terminal to use it.\n' "$DIR"
   else
     printf 'Add %s to your PATH to use the doi command.\n' "$DIR"
   fi
