@@ -1,16 +1,14 @@
 // Builds doi as one binary for each target (#63): bun run build [target…]
-// Without targets: the release targets, Linux and Windows on x64 and arm64. The binaries go to dist/.
-// A macOS target works by name, for a source build on a Mac; no release or check covers it.
+// Without targets: Linux, macOS and Windows on x64 and arm64. The binaries go to dist/.
 import { version } from "../package.json";
 
-const RELEASE = ["bun-linux-x64", "bun-linux-arm64", "bun-windows-x64", "bun-windows-arm64"] as const;
-const ALL = [...RELEASE, "bun-darwin-x64", "bun-darwin-arm64"] as const;
-type Target = (typeof ALL)[number];
+const RELEASE = ["bun-linux-x64", "bun-linux-arm64", "bun-windows-x64", "bun-windows-arm64", "bun-darwin-x64", "bun-darwin-arm64"] as const;
+type Target = (typeof RELEASE)[number];
 
 const asked = process.argv.slice(2);
-const bad = asked.filter((t) => !(ALL as readonly string[]).includes(t));
+const bad = asked.filter((t) => !(RELEASE as readonly string[]).includes(t));
 if (bad.length) {
-  console.error(`Unknown target: ${bad.join(", ")}. Targets: ${ALL.join(", ")}`);
+  console.error(`Unknown target: ${bad.join(", ")}. Targets: ${RELEASE.join(", ")}`);
   process.exit(2);
 }
 const targets = (asked.length ? asked : RELEASE) as Target[];
