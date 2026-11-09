@@ -1,7 +1,7 @@
 name: Release
 
 # A tag v<version> builds, checks and publishes one release. Nothing publishes until every check
-# passes on a real system of that platform. macOS is out on purpose: see issue #146.
+# passes on a real system of that platform.
 on:
   push:
     tags: ["v*"]
@@ -84,8 +84,24 @@ jobs:
           .\scripts\smoke-binary.ps1 $bin
           .\scripts\test-install.ps1 $bin -ModifyPath
 
+  check-macos:
+    needs: build
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Require the native CPU
+        run: test "$(uname -m)" = arm64
+      - run: |
+          chmod +x dist/doi-*-darwin-arm64
+          scripts/smoke-binary.sh dist/doi-*-darwin-arm64
+          scripts/e2e-install.sh dist/doi-*-darwin-arm64
+
   publish:
-    needs: [check-linux, check-windows]
+    needs: [check-linux, check-windows, check-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write

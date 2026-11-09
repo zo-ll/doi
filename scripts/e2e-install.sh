@@ -20,5 +20,9 @@ env -i HOME="$dir/home with space" PATH=/usr/bin:/bin DOI_INSTALL_BASE_URL="file
 installed="$dir/home with space/.local/bin/doi"
 [ -x "$installed" ] || { echo "FAIL: no installed doi"; exit 1; }
 grep -q "doi installer" "$dir/home with space/.profile" || { echo "FAIL: no PATH line"; exit 1; }
+if [ "$(uname -s)" = Darwin ]; then
+  found=$(env -i HOME="$dir/home with space" PATH=/usr/bin:/bin /bin/zsh -lc 'command -v doi')
+  [ "$found" = "$installed" ] || { echo "FAIL: the zsh login shell found another doi"; exit 1; }
+fi
 "$here/smoke-binary.sh" "$installed"
 echo "install to shared design passed: $name"

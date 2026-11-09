@@ -11,8 +11,8 @@ const sum = (text: string) => createHash("sha256").update(text).digest("hex");
 /** One fake release: its files by name. A function answers the request itself. */
 type Files = Record<string, string | (() => Response)>;
 const releases = new Map<string, Files>();
-function release(version: string, arch = "x64", body = fakeBinary(version)): Files {
-  const name = `doi-${version}-linux-${arch}`;
+function release(version: string, arch = "x64", body = fakeBinary(version), os: "linux" | "darwin" = "linux"): Files {
+  const name = `doi-${version}-${os}-${arch}`;
   const files: Files = { [name]: body, SHA256SUMS: `${sum(body)}  ${name}\n` };
   releases.set(version, files);
   return files;
@@ -65,7 +65,7 @@ async function stub(name: string, body: string) {
   await Bun.write(join(bin, name), `#!/bin/sh\n${body}\n`);
   await Bun.$`chmod +x ${join(bin, name)}`;
 }
-const machine = (arch: string) => stub("uname", `case "$1" in -s) echo Linux ;; -m) echo ${arch} ;; esac`);
+const machine = (arch: string, os = "Linux") => stub("uname", `case "$1" in -s) echo ${os} ;; -m) echo ${arch} ;; esac`);
 
 describe.skipIf(process.platform === "win32")("a new install", () => {
   test("verifies, installs in a folder with spaces, runs from an unrelated folder, and leaves no temp files", async () => {
@@ -143,12 +143,61 @@ describe.skipIf(process.platform === "win32")("a new install", () => {
     expect(other.stderr).toContain("riscv64");
   });
 
-  test("macOS gets a clear message, and no download", async () => {
-    await stub("uname", 'case "$1" in -s) echo Darwin ;; -m) echo arm64 ;; esac');
+  test("macOS installs a native Apple silicon binary and configures a fresh zsh profile", async () => {
+    await machine("arm64", "Darwin");
+    await stub("ldd", "echo 'musl libc'");
+    release("1.2.3", "arm64", undefined, "darwin");
+    const result = await install(["--version", "1.2.3"]);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("for macOS arm64");
+    expect((await Bun.$`${join(dir, "doi")} --version`.text()).trim()).toBe("doi 1.2.3");
+    for (const rc of [".profile", ".zprofile"]) expect(await Bun.file(join(home, rc)).text()).toContain(dir);
+    const data = join(home, ".local/share/doi/workspace/kept.txt");
+    await Bun.write(data, "my design");
+    expect((await install(["--uninstall"])).code).toBe(0);
+    expect(await installed().exists()).toBe(false);
+    expect(await Bun.file(data).text()).toBe("my design");
+    for (const rc of [".profile", ".zprofile"]) expect(await Bun.file(join(home, rc)).text()).not.toContain("doi installer");
+  });
+
+  test("Intel Macs are refused before an install even if the release has an x64 artifact", async () => {
+    await machine("x86_64", "Darwin");
+    await stub("sysctl", "echo 0");
+    release("1.2.3", "x64", undefined, "darwin");
     const result = await install(["--version", "1.2.3"]);
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain("not for macOS");
-    expect(result.stderr).toContain("source");
+    expect(result.stderr).toContain("Intel Macs are not supported");
+    expect(result.stdout).not.toContain("Downloading");
+    expect(await installed().exists()).toBe(false);
+    expect(await Bun.file(join(home, ".zprofile")).exists()).toBe(false);
+  });
+
+  test("a Rosetta shell selects the native Apple silicon binary", async () => {
+    await machine("x86_64", "Darwin");
+    await stub("sysctl", '[ "$2" = sysctl.proc_translated ] || exit 1; echo 1');
+    release("1.2.3", "arm64", undefined, "darwin");
+    const result = await install(["--version", "1.2.3"]);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("for macOS arm64");
+  });
+
+  test("a release without a macOS binary gives a clear message and preserves the old install", async () => {
+    await machine("arm64", "Darwin");
+    release("1.2.3", "arm64", undefined, "darwin");
+    expect((await install(["--version", "1.2.3"])).code).toBe(0);
+    release("2.0.0");
+    const result = await install(["--version", "2.0.0"]);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("version 2.0.0 has no macOS arm64 binary");
+    expect((await Bun.$`${join(dir, "doi")} --version`.text()).trim()).toBe("doi 1.2.3");
+    expect(await leftovers()).toEqual([]);
+  });
+
+  test("an unsupported system gets no binary", async () => {
+    await machine("x86_64", "FreeBSD");
+    const result = await install(["--version", "1.2.3"]);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("no binary for FreeBSD");
     expect(await installed().exists()).toBe(false);
   });
 

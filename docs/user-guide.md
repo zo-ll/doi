@@ -44,9 +44,11 @@ The script installs the `doi` command for your user, with no administrator acces
 | --- | --- | --- |
 | Linux (glibc) | Yes | Yes |
 | Windows | Yes | Yes |
-| macOS | No | No |
+| macOS | No | Candidate |
 
-doi publishes no macOS binary and has no automated macOS check. On a Mac, build doi from the source. Linux with musl libc, for example Alpine, also needs a source build. None of these runs through emulation.
+The macOS candidate remains on `feature/macos-installation` until the owner tests it on a Mac and merges it. Intel Macs are not supported. Release v0.1.0 contains no macOS binary. Follow [the Mac test guide](macos-testing.md) for an install without Bun or a source checkout. A later release will add the public macOS files after all platform checks pass.
+
+Linux with musl libc, for example Alpine, needs a source build. On Apple silicon, the macOS shell installer selects native ARM64 even from a Rosetta shell.
 
 **Linux:**
 
@@ -70,7 +72,7 @@ sh install.sh --version 0.1.0 --dir "$HOME/bin" --no-modify-path
 powershell -File install.ps1 -Version 0.1.0 -InstallDir "$HOME\bin" -NoModifyPath
 ```
 
-The default folder is `~/.local/bin` on Linux and `%LOCALAPPDATA%\Programs\doi` on Windows. The script adds it to your PATH, so open a new terminal after the install. Then run `doi doctor`, `doi install-browser` and `doi --open`. The install starts no model request, and you choose a provider in Settings.
+The default folder is `~/.local/bin` on Linux and macOS, and `%LOCALAPPDATA%\Programs\doi` on Windows. The script adds it to your PATH, so open a new terminal after the install. Then run `doi doctor`, `doi install-browser` and `doi --open`. The install starts no model request, and you choose a provider in Settings.
 
 **Upgrade.** Run the script again. Your designs, config, history and credentials stay. A doi that runs keeps the old version until `doi stop`.
 
@@ -88,13 +90,13 @@ powershell -File install.ps1 -Uninstall
 
 ### Build the binary
 
-The binary contains the server, the UI and the Bun runtime. It runs without Bun on Linux and Windows (x64, arm64). doi has no automated check for a macOS build; you can build one by name on a Mac.
+The binary contains the server, the UI and the Bun runtime. It runs without Bun on Linux and Windows (x64, ARM64) and on Apple silicon Macs (ARM64 only). This branch checks the macOS candidate on a native ARM64 runner. The published v0.1.0 files still cover Linux and Windows only.
 
 1. Build the binaries on a computer with Bun. The binaries go to `dist/`, for example `dist/doi-0.1.0-linux-x64`:
 
    ```bash
    bun install
-   bun run build                    # the release targets: Linux and Windows, x64 and arm64
+   bun run build                    # Linux/Windows: x64 and arm64; macOS: arm64
    bun run build bun-darwin-arm64   # one target
    ```
 
@@ -115,12 +117,12 @@ The binary works from any folder. The first start makes `config.toml` and the wo
 
 | System | Config and credentials | Workspace |
 | --- | --- | --- |
-| Linux | `$XDG_CONFIG_HOME/doi`, else `~/.config/doi` | `$XDG_DATA_HOME/doi/workspace`, else `~/.local/share/doi/workspace` |
+| Linux and macOS | `$XDG_CONFIG_HOME/doi`, else `~/.config/doi` | `$XDG_DATA_HOME/doi/workspace`, else `~/.local/share/doi/workspace` |
 | Windows | `%APPDATA%\doi` | `%LOCALAPPDATA%\doi\workspace` |
 
 On Windows, a credentials file from an older doi stays in use at its old path until a new file exists. From a source checkout, doi keeps using `./config.toml` and `./workspace`.
 
-The binary has no developer signature. If you download a macOS binary and Gatekeeper stops it, run `xattr -d com.apple.quarantine ./doi` one time. On Windows, SmartScreen can warn about the unsigned file: select More info, then Run anyway, only if you trust this source.
+The macOS candidate has no Developer ID signature or notarization. If Gatekeeper blocks it, record the exact error for the Mac test. Do not disable Gatekeeper. On Windows, SmartScreen can warn about the unsigned file: select More info, then Run anyway, only if you trust this source.
 
 ### From the source
 
@@ -189,7 +191,7 @@ doi doctor --json    # git, the model CLIs, gh and the renderer; no model reques
 - `renderer.ready` is false until `doi install-browser` ran. Without it, the agent gets no rendered images.
 - A second `doi start` for the same workspace returns the same server with `"reused":true`.
 - doi never attaches to another workspace. A port in use gives exit code 5. Use `--port` with a free port, or `--port 0` for any free port.
-- `doi stop` stops only the server of this workspace, after that server confirms its identity. On Linux the server ends cleanly. On Windows the stop ends the process at once, so stop a running turn first.
+- `doi stop` stops only the server of this workspace, after that server confirms its identity. On Linux and macOS the server ends cleanly. On Windows the stop ends the process at once, so stop a running turn first.
 - doi knows a workspace by its path text. A symbolic link, or on Windows a junction or an 8.3 short name, counts as another workspace, so keep to one spelling. The per-user config holds one path.
 - `doi start --open` opens the URL in your browser, also when the server already runs.
 - Server logs go to the `log` file. Without `--json`, the commands print words for a person.
