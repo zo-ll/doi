@@ -86,12 +86,7 @@ jobs:
 
   check-macos:
     needs: build
-    strategy:
-      matrix:
-        include:
-          - { runner: macos-15-intel, arch: x64, machine: x86_64 }
-          - { runner: macos-15, arch: arm64, machine: arm64 }
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -99,11 +94,11 @@ jobs:
           name: dist
           path: dist
       - name: Require the native CPU
-        run: test "$(uname -m)" = "${{ matrix.machine }}"
+        run: test "$(uname -m)" = arm64
       - run: |
-          chmod +x dist/doi-*-darwin-${{ matrix.arch }}
-          scripts/smoke-binary.sh dist/doi-*-darwin-${{ matrix.arch }}
-          scripts/e2e-install.sh dist/doi-*-darwin-${{ matrix.arch }}
+          chmod +x dist/doi-*-darwin-arm64
+          scripts/smoke-binary.sh dist/doi-*-darwin-arm64
+          scripts/e2e-install.sh dist/doi-*-darwin-arm64
 
   publish:
     needs: [check-linux, check-windows, check-macos]

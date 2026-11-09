@@ -92,7 +92,8 @@ esac
 if [ "$platform" = darwin ] && [ "$arch" = x64 ]; then
   # Rosetta reports x86_64. Select the native ARM64 artifact for the computer instead.
   translated=$(PATH="${PATH:-}:/usr/sbin" sysctl -in sysctl.proc_translated 2>/dev/null || true)
-  [ "$translated" != 1 ] || arch=arm64
+  [ "$translated" = 1 ] || fail "Intel Macs are not supported. doi requires Apple silicon on macOS."
+  arch=arm64
 fi
 if [ "$platform" = linux ] && { [ -e /etc/alpine-release ] || { command -v ldd >/dev/null 2>&1 && ldd --version 2>&1 | grep -qi musl; }; }; then
   fail "this system uses musl libc, and the doi binaries need glibc. Build doi from the source: see the user guide."

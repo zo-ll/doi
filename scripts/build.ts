@@ -1,8 +1,8 @@
 // Builds doi as one binary for each target (#63): bun run build [target…]
-// Without targets: Linux, macOS and Windows on x64 and arm64. The binaries go to dist/.
+// Without targets: Linux and Windows on x64 and arm64, plus macOS on arm64. The binaries go to dist/.
 import { version } from "../package.json";
 
-const RELEASE = ["bun-linux-x64", "bun-linux-arm64", "bun-windows-x64", "bun-windows-arm64", "bun-darwin-x64", "bun-darwin-arm64"] as const;
+const RELEASE = ["bun-linux-x64", "bun-linux-arm64", "bun-windows-x64", "bun-windows-arm64", "bun-darwin-arm64"] as const;
 type Target = (typeof RELEASE)[number];
 
 const asked = process.argv.slice(2);

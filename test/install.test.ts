@@ -143,24 +143,33 @@ describe.skipIf(process.platform === "win32")("a new install", () => {
     expect(other.stderr).toContain("riscv64");
   });
 
-  test("macOS installs native Intel and Apple silicon binaries and configures a fresh zsh profile", async () => {
-    await stub("sysctl", "exit 1");
+  test("macOS installs a native Apple silicon binary and configures a fresh zsh profile", async () => {
+    await machine("arm64", "Darwin");
     await stub("ldd", "echo 'musl libc'");
-    for (const arch of ["x64", "arm64"]) {
-      await machine(arch === "x64" ? "x86_64" : "arm64", "Darwin");
-      release("1.2.3", arch, undefined, "darwin");
-      const result = await install(["--version", "1.2.3"]);
-      expect(result.code).toBe(0);
-      expect(result.stdout).toContain(`for macOS ${arch}`);
-      expect((await Bun.$`${join(dir, "doi")} --version`.text()).trim()).toBe("doi 1.2.3");
-      for (const rc of [".profile", ".zprofile"]) expect(await Bun.file(join(home, rc)).text()).toContain(dir);
-      const data = join(home, ".local/share/doi/workspace/kept.txt");
-      await Bun.write(data, "my design");
-      expect((await install(["--uninstall"])).code).toBe(0);
-      expect(await installed().exists()).toBe(false);
-      expect(await Bun.file(data).text()).toBe("my design");
-      for (const rc of [".profile", ".zprofile"]) expect(await Bun.file(join(home, rc)).text()).not.toContain("doi installer");
-    }
+    release("1.2.3", "arm64", undefined, "darwin");
+    const result = await install(["--version", "1.2.3"]);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("for macOS arm64");
+    expect((await Bun.$`${join(dir, "doi")} --version`.text()).trim()).toBe("doi 1.2.3");
+    for (const rc of [".profile", ".zprofile"]) expect(await Bun.file(join(home, rc)).text()).toContain(dir);
+    const data = join(home, ".local/share/doi/workspace/kept.txt");
+    await Bun.write(data, "my design");
+    expect((await install(["--uninstall"])).code).toBe(0);
+    expect(await installed().exists()).toBe(false);
+    expect(await Bun.file(data).text()).toBe("my design");
+    for (const rc of [".profile", ".zprofile"]) expect(await Bun.file(join(home, rc)).text()).not.toContain("doi installer");
+  });
+
+  test("Intel Macs are refused before an install even if the release has an x64 artifact", async () => {
+    await machine("x86_64", "Darwin");
+    await stub("sysctl", "echo 0");
+    release("1.2.3", "x64", undefined, "darwin");
+    const result = await install(["--version", "1.2.3"]);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("Intel Macs are not supported");
+    expect(result.stdout).not.toContain("Downloading");
+    expect(await installed().exists()).toBe(false);
+    expect(await Bun.file(join(home, ".zprofile")).exists()).toBe(false);
   });
 
   test("a Rosetta shell selects the native Apple silicon binary", async () => {

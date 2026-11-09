@@ -44,9 +44,9 @@ The script installs the `doi` command for your user, with no administrator acces
 | --- | --- | --- |
 | Linux (glibc) | Yes | Yes |
 | Windows | Yes | Yes |
-| macOS | Candidate | Candidate |
+| macOS | No | Candidate |
 
-The macOS candidate remains on `feature/macos-installation` until the owner tests it on a Mac and merges it. Release v0.1.0 contains no macOS binary. Follow [the Mac test guide](macos-testing.md) for an install without Bun or a source checkout. A later release will add the public macOS files after all platform checks pass.
+The macOS candidate remains on `feature/macos-installation` until the owner tests it on a Mac and merges it. Intel Macs are not supported. Release v0.1.0 contains no macOS binary. Follow [the Mac test guide](macos-testing.md) for an install without Bun or a source checkout. A later release will add the public macOS files after all platform checks pass.
 
 Linux with musl libc, for example Alpine, needs a source build. On Apple silicon, the macOS shell installer selects native ARM64 even from a Rosetta shell.
 
@@ -90,13 +90,13 @@ powershell -File install.ps1 -Uninstall
 
 ### Build the binary
 
-The binary contains the server, the UI and the Bun runtime. It runs without Bun on Linux, macOS and Windows (x64, arm64). This branch checks macOS candidates on native Intel and Apple silicon runners. The published v0.1.0 files still cover Linux and Windows only.
+The binary contains the server, the UI and the Bun runtime. It runs without Bun on Linux and Windows (x64, ARM64) and on Apple silicon Macs (ARM64 only). This branch checks the macOS candidate on a native ARM64 runner. The published v0.1.0 files still cover Linux and Windows only.
 
 1. Build the binaries on a computer with Bun. The binaries go to `dist/`, for example `dist/doi-0.1.0-linux-x64`:
 
    ```bash
    bun install
-   bun run build                    # Linux, macOS and Windows, x64 and arm64
+   bun run build                    # Linux/Windows: x64 and arm64; macOS: arm64
    bun run build bun-darwin-arm64   # one target
    ```
 

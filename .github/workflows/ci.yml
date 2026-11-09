@@ -37,7 +37,7 @@ jobs:
       - run: bun test
       - run: bun check
       # The single binary (#63): it builds and runs without Bun on PATH.
-      - run: bun run build bun-linux-x64 bun-darwin-x64 bun-darwin-arm64
+      - run: bun run build bun-linux-x64 bun-darwin-arm64
       - run: scripts/smoke-binary.sh dist/doi-*-linux-x64
         env:
           DOI_SMOKE_RENDER: "1"
@@ -45,19 +45,13 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: macos-binaries
-          path: dist/doi-*-darwin-*
+          path: dist/doi-*-darwin-arm64
           if-no-files-found: error
           retention-days: 3
 
   macos:
     needs: test
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { runner: macos-15-intel, arch: x64, machine: x86_64 }
-          - { runner: macos-15, arch: arm64, machine: arm64 }
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-15
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -66,18 +60,18 @@ jobs:
           name: macos-binaries
           path: dist
       - name: Require the native CPU
-        run: test "$(uname -m)" = "${{ matrix.machine }}"
+        run: test "$(uname -m)" = arm64
       - name: Check the compiled binary without Bun
         env:
           DOI_SMOKE_RENDER: "1"
         run: |
-          chmod +x dist/doi-*-darwin-${{ matrix.arch }}
-          scripts/smoke-binary.sh dist/doi-*-darwin-${{ matrix.arch }}
-      - run: scripts/e2e-install.sh dist/doi-*-darwin-${{ matrix.arch }}
+          chmod +x dist/doi-*-darwin-arm64
+          scripts/smoke-binary.sh dist/doi-*-darwin-arm64
+      - run: scripts/e2e-install.sh dist/doi-*-darwin-arm64
       - name: Prepare the manual install
         shell: bash
         run: |
-          bin=(dist/doi-*-darwin-${{ matrix.arch }})
+          bin=(dist/doi-*-darwin-arm64)
           version=$("${bin[0]}" --version | cut -d' ' -f2)
           mkdir -p "macos-test/release/v$version"
           cp "${bin[0]}" "macos-test/release/v$version/"
@@ -86,7 +80,7 @@ jobs:
           (cd macos-test && shasum -a 256 install.sh release/v"$version"/doi-* release/v"$version"/SHA256SUMS > SHA256SUMS)
       - uses: actions/upload-artifact@v4
         with:
-          name: macos-installation-${{ matrix.arch }}
+          name: macos-installation-arm64
           path: macos-test/
           if-no-files-found: error
           retention-days: 30

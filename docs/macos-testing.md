@@ -1,17 +1,16 @@
 # Test the macOS installer before merge
 
-This branch adds native macOS binaries for Intel and Apple silicon. The owner will merge it after a test on a Mac. The published v0.1.0 release contains no macOS binary. The candidate also reports `0.1.0`, but it is not that published release.
+This branch adds a native macOS binary for Apple silicon only. Intel Macs are not supported. The owner will merge it after a test on a Mac. The published v0.1.0 release contains no macOS binary. The candidate also reports `0.1.0`, but it is not that published release.
 
 ## Download the candidate
 
 1. Open the CI run for `feature/macos-installation` on GitHub.
-2. Make sure the macOS job for your CPU passed.
-3. For Apple silicon, download `macos-installation-arm64`.
-4. For Intel, download `macos-installation-x64`.
-5. Extract the ZIP into a new folder whose path has no spaces.
-6. Open Terminal in that folder.
+2. Make sure the macOS job passed.
+3. Download `macos-installation-arm64`.
+4. Extract the ZIP into a new folder whose path has no spaces.
+5. Open Terminal in that folder.
 
-The artifact contains `install.sh`, this document, checksums and a local release folder. You do not need Bun or a source checkout. If the artifact expired, repeat the macOS job. Standard `macos-15` and `macos-15-intel` runners are free for this public repository.
+The artifact contains `install.sh`, this document, checksums and a local release folder. You do not need Bun or a source checkout. If the artifact expired, repeat the macOS job. The standard `macos-15` runner is free for this public repository.
 
 ## Install
 
@@ -40,7 +39,7 @@ The artifact contains `install.sh`, this document, checksums and a local release
    doi doctor
    ```
 
-The default install folder is `~/.local/bin`. The installer adds it to `.profile` and `.zprofile`. It also updates existing Bash and Zsh startup files. An Apple silicon Mac gets the ARM64 binary, even when Rosetta runs the shell. An Intel Mac gets the x64 binary.
+The default install folder is `~/.local/bin`. The installer adds it to `.profile` and `.zprofile`. It also updates existing Bash and Zsh startup files. An Apple silicon Mac gets the ARM64 binary, even when Rosetta runs the shell. The installer refuses Intel Macs before download.
 
 If git is absent, install the Command Line Tools before you start doi. macOS may offer that install after `git --version`.
 
