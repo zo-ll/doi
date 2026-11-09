@@ -132,6 +132,12 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 
 ## 6. State and next steps
 
+**2026-11-07: third review of PR #165.** `review.PxBPrZWz/REPORT-3.md` and `DONE-3` approve `0de3edd`. They match the PR head, base and model. N1–N5 have corrections. The report records two low-severity items: absent exact-head CI (P1) and an incorrect no-release message (P2).
+
+Both installers now require a tag URL from this repository before they extract the latest version. A redirect to `/releases` gives `cannot find the latest release of zo-ll/doi.` before any download. Tests cover a valid tag, the no-release redirect, an empty tag and another host. The PowerShell test executes the actual `Get-ReleaseVersion` function without a network request. All 766 tests and `bun check` passed locally. Windows CI and the same critic must approve the new head before merge.
+
+The repository is public now, but no release or tag exists. The owner controls the first release. Issue #146 stays open for that release and the ARM64 checks.
+
 **2026-11-07: PR #165 review corrections.** The pending report was `~/.local/state/spawn-critic/review.PxBPrZWz/REPORT-2.md`. It approved `d5ac6ff` but reported five new low-severity defects. All five have corrections.
 
 The shell installer reports each successful PATH edit separately. Without HOME, the uninstall message gives no assumed data paths. The read-only test skips root. The complete install test now accepts `shasum` when `sha256sum` is absent.

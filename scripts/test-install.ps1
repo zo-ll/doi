@@ -15,6 +15,25 @@ $arch = if ($bin -match "arm64") { "arm64" } else { "x64" }
 $name = "doi-$version-windows-$arch.exe"
 
 function Fail($message) { throw "FAIL: $message" }
+
+# Read the actual URL parser without a network request or an install.
+$ast = [Management.Automation.Language.Parser]::ParseFile($script, [ref]$null, [ref]$null)
+foreach ($functionName in @("Stop-Install", "Get-ReleaseVersion")) {
+  $definition = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $functionName }, $true)
+  if (-not $definition) { Fail "missing installer function $functionName" }
+  Invoke-Expression $definition.Extent.Text
+}
+$Repo = "zo-ll/doi"
+if ((Get-ReleaseVersion "https://github.com/$Repo/releases/tag/v1.2.3") -ne "v1.2.3") { Fail "latest release tag" }
+foreach ($url in @("https://github.com/$Repo/releases", "https://github.com/$Repo/releases/tag/", "https://example.com/releases/tag/v1.2.3", "")) {
+  $rejected = $false
+  try { $null = Get-ReleaseVersion $url } catch {
+    if ($_.Exception.Message -notlike "*cannot find the latest release of $Repo.*") { throw }
+    $rejected = $true
+  }
+  if (-not $rejected) { Fail "accepted a non-release URL: $url" }
+}
+
 function Base($case) { ([Uri](Join-Path $dir "release $case")).AbsoluteUri }
 function New-Release($case, [string]$Hash = $null, [string]$File = $bin) {
   $folder = Join-Path $dir "release $case\v$version"

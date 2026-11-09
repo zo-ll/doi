@@ -110,7 +110,10 @@ fi
 
 if [ -z "$VERSION" ]; then
   tag=$(latest) || fail "cannot find the latest release of $REPO."
-  VERSION=${tag##*/}
+  case "$tag" in
+    "https://github.com/$REPO/releases/tag/"?*) VERSION=${tag#"https://github.com/$REPO/releases/tag/"} ;;
+    *) fail "cannot find the latest release of $REPO." ;;
+  esac
 fi
 VERSION=${VERSION#v}
 case "$VERSION" in

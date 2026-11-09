@@ -24,6 +24,14 @@ function Stop-Install([string]$Message) {
   throw "doi install: $Message"
 }
 
+function Get-ReleaseVersion([string]$Location) {
+  $prefix = "https://github.com/$Repo/releases/tag/"
+  if ($Location -and $Location.StartsWith($prefix, [StringComparison]::Ordinal) -and $Location.Length -gt $prefix.Length) {
+    return $Location.Substring($prefix.Length)
+  }
+  Stop-Install "cannot find the latest release of $Repo."
+}
+
 # The raw registry value: [Environment] expands %USERPROFILE%, and writing that back would damage it.
 function Get-UserPathEntries {
   $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("Environment")
@@ -81,11 +89,10 @@ if (-not $Version) {
     $response = $request.GetResponse()
     $location = $response.Headers["Location"]
     $response.Close()
-    $Version = ($location -split "/")[-1]
   } catch {
     Stop-Install "cannot find the latest release of $Repo. $($_.Exception.Message)"
   }
-  if (-not $Version) { Stop-Install "cannot find the latest release of $Repo." }
+  $Version = Get-ReleaseVersion $location
 }
 $Version = $Version -replace "^v", ""
 if ($Version -notmatch "^[0-9A-Za-z.-]+$") { Stop-Install "'$Version' is not a version." }

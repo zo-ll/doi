@@ -88,6 +88,30 @@ describe.skipIf(process.platform === "win32")("a new install", () => {
     expect((await install([], { DOI_VERSION: "1.2.3" })).code).toBe(0);
   });
 
+  test("latest uses only a release tag URL", async () => {
+    await machine("x86_64");
+    release("1.2.3");
+    const curl = Bun.which("curl");
+    if (!curl) throw new Error("curl is necessary for the latest release test");
+    const redirects = [
+      "https://github.com/zo-ll/doi/releases",
+      "https://github.com/zo-ll/doi/releases/tag/",
+      "https://example.com/releases/tag/v1.2.3",
+    ];
+    for (const url of redirects) {
+      await stub("curl", `case "$*" in *releases/latest*) printf '%s' '${url}' ;; *) exec '${curl}' "$@" ;; esac`);
+      const result = await install();
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("cannot find the latest release of zo-ll/doi");
+      expect(result.stdout).not.toContain("Downloading");
+      expect(await installed().exists()).toBe(false);
+    }
+    await stub("curl", `case "$*" in *releases/latest*) printf '%s' 'https://github.com/zo-ll/doi/releases/tag/v1.2.3' ;; *) exec '${curl}' "$@" ;; esac`);
+    const result = await install();
+    expect(result.code).toBe(0);
+    expect((await Bun.$`${join(dir, "doi")} --version`.text()).trim()).toBe("doi 1.2.3");
+  });
+
   test("the CPU picks the artifact", async () => {
     await machine("aarch64");
     release("1.2.3", "arm64");
