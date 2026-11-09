@@ -34,9 +34,59 @@ doi runs on your computer only. The server listens on `127.0.0.1`. Your designs,
 | Chromium for Playwright | No | PNG and PDF export, and the screenshots in a handoff bundle |
 | `gh` (GitHub CLI) | No | A link from a project to the GitHub repo of your app |
 
-You can run doi as one binary, or from the source.
+You can install doi with a script, or run it from the source.
 
-### The binary
+### Install with a script
+
+The script installs the `doi` command for your user, with no administrator access and no Bun. It finds the file for your system and CPU, verifies its checksum, and then replaces the old binary. A failed or interrupted install changes nothing.
+
+| System | x64 | arm64 |
+| --- | --- | --- |
+| Linux (glibc) | Yes | Yes |
+| Windows | Yes | Yes |
+| macOS | No | No |
+
+doi publishes no macOS binary and has no automated macOS check. On a Mac, build doi from the source. Linux with musl libc, for example Alpine, also needs a source build. None of these runs through emulation.
+
+**Linux:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zo-ll/doi/main/scripts/install.sh | sh
+```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/zo-ll/doi/main/scripts/install.ps1 | iex
+```
+
+To read the script before it runs, or to give options, download it first. The options work with `DOI_VERSION` and `DOI_INSTALL_DIR` too.
+
+```bash
+sh install.sh --version 0.1.0 --dir "$HOME/bin" --no-modify-path
+```
+
+```powershell
+powershell -File install.ps1 -Version 0.1.0 -InstallDir "$HOME\bin" -NoModifyPath
+```
+
+The default folder is `~/.local/bin` on Linux and `%LOCALAPPDATA%\Programs\doi` on Windows. The script adds it to your PATH, so open a new terminal after the install. Then run `doi doctor`, `doi install-browser` and `doi --open`. The install starts no model request, and you choose a provider in Settings.
+
+**Upgrade.** Run the script again. Your designs, config, history and credentials stay. A doi that runs keeps the old version until `doi stop`.
+
+**Uninstall.** Your data stays, and the script says where it is.
+
+```bash
+sh install.sh --uninstall
+```
+
+```powershell
+powershell -File install.ps1 -Uninstall
+```
+
+**Verification and signing.** The script compares the download with `SHA256SUMS` from the same GitHub release. This finds a damaged or incomplete file, and it trusts GitHub and its TLS connection. It does not prove who built the file, because doi has no code signature. Windows SmartScreen can warn about an unsigned file: select More info, then Run anyway, only if you trust this source.
+
+### Build the binary
 
 The binary contains the server, the UI and the Bun runtime. It runs without Bun on Linux and Windows (x64, arm64). doi has no automated check for a macOS build; you can build one by name on a Mac.
 

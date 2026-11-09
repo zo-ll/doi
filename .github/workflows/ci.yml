@@ -18,9 +18,12 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run build bun-windows-x64
       - shell: powershell
+        env:
+          DOI_SMOKE_RENDER: "1"
         run: |
           $bin = (Get-ChildItem dist\doi-*-windows-x64.exe).FullName
           .\scripts\smoke-binary.ps1 $bin
+          .\scripts\test-install.ps1 $bin -ModifyPath
   test:
     runs-on: ubuntu-latest
     steps:
@@ -36,3 +39,6 @@ jobs:
       # The single binary (#63): it builds and runs without Bun on PATH.
       - run: bun run build bun-linux-x64
       - run: scripts/smoke-binary.sh dist/doi-*-linux-x64
+        env:
+          DOI_SMOKE_RENDER: "1"
+      - run: scripts/e2e-install.sh dist/doi-*-linux-x64
