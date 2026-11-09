@@ -94,9 +94,13 @@ describe.skipIf(process.platform === "win32")("a new install", () => {
     const curl = Bun.which("curl");
     if (!curl) throw new Error("curl is necessary for the latest release test");
     const redirects = [
+      "",
       "https://github.com/zo-ll/doi/releases",
       "https://github.com/zo-ll/doi/releases/tag/",
       "https://example.com/releases/tag/v1.2.3",
+      "/releases/tag/v1.2.3",
+      "/another/doi/releases/tag/v1.2.3",
+      "//example.com/zo-ll/doi/releases/tag/v1.2.3",
     ];
     for (const url of redirects) {
       await stub("curl", `case "$*" in *releases/latest*) printf '%s' '${url}' ;; *) exec '${curl}' "$@" ;; esac`);
@@ -106,8 +110,25 @@ describe.skipIf(process.platform === "win32")("a new install", () => {
       expect(result.stdout).not.toContain("Downloading");
       expect(await installed().exists()).toBe(false);
     }
-    await stub("curl", `case "$*" in *releases/latest*) printf '%s' 'https://github.com/zo-ll/doi/releases/tag/v1.2.3' ;; *) exec '${curl}' "$@" ;; esac`);
-    const result = await install();
+    for (const url of ["https://github.com/zo-ll/doi/releases/tag/v1.2.3", "/zo-ll/doi/releases/tag/v1.2.3"]) {
+      await stub("curl", `case "$*" in *releases/latest*) printf '%s' '${url}' ;; *) exec '${curl}' "$@" ;; esac`);
+      const result = await install();
+      expect(result.code).toBe(0);
+      expect((await Bun.$`${join(dir, "doi")} --version`.text()).trim()).toBe("doi 1.2.3");
+    }
+  });
+
+  test("wget accepts a repository-relative latest redirect without curl", async () => {
+    await machine("x86_64");
+    release("1.2.3");
+    const wget = Bun.which("wget");
+    if (!wget) throw new Error("wget is necessary for the relative redirect test");
+    for (const name of ["sh", "sed", "tail", "tr", "sha256sum", "shasum", "cut", "mkdir", "mktemp", "rm", "awk", "chmod", "mv"]) {
+      const path = Bun.which(name);
+      if (path) await Bun.$`ln -s ${path} ${join(bin, name)}`;
+    }
+    await stub("wget", `case "$*" in *releases/latest*) printf '  Location: /zo-ll/doi/releases/tag/v1.2.3\\r\\n' >&2 ;; *) exec '${wget}' "$@" ;; esac`);
+    const result = await install([], { PATH: bin });
     expect(result.code).toBe(0);
     expect((await Bun.$`${join(dir, "doi")} --version`.text()).trim()).toBe("doi 1.2.3");
   });

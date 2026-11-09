@@ -110,6 +110,8 @@ fi
 
 if [ -z "$VERSION" ]; then
   tag=$(latest) || fail "cannot find the latest release of $REPO."
+  # A root-relative Location keeps the GitHub host. The repository check still applies.
+  case "$tag" in /*) tag="https://github.com$tag" ;; esac
   case "$tag" in
     "https://github.com/$REPO/releases/tag/"?*) VERSION=${tag#"https://github.com/$REPO/releases/tag/"} ;;
     *) fail "cannot find the latest release of $REPO." ;;

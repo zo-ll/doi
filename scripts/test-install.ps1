@@ -24,8 +24,10 @@ foreach ($functionName in @("Stop-Install", "Get-ReleaseVersion")) {
   Invoke-Expression $definition.Extent.Text
 }
 $Repo = "zo-ll/doi"
-if ((Get-ReleaseVersion "https://github.com/$Repo/releases/tag/v1.2.3") -ne "v1.2.3") { Fail "latest release tag" }
-foreach ($url in @("https://github.com/$Repo/releases", "https://github.com/$Repo/releases/tag/", "https://example.com/releases/tag/v1.2.3", "")) {
+foreach ($url in @("https://github.com/$Repo/releases/tag/v1.2.3", "/$Repo/releases/tag/v1.2.3")) {
+  if ((Get-ReleaseVersion $url) -ne "v1.2.3") { Fail "latest release tag: $url" }
+}
+foreach ($url in @("https://github.com/$Repo/releases", "https://github.com/$Repo/releases/tag/", "https://example.com/releases/tag/v1.2.3", "", "/releases/tag/v1.2.3", "/another/doi/releases/tag/v1.2.3", "//example.com/$Repo/releases/tag/v1.2.3")) {
   $rejected = $false
   try { $null = Get-ReleaseVersion $url } catch {
     if ($_.Exception.Message -notlike "*cannot find the latest release of $Repo.*") { throw }

@@ -132,6 +132,12 @@ bun scripts/try-provider.ts <provider:model> ["prompt"] [--abort-after <ms>]
 
 ## 6. State and next steps
 
+**2026-11-07: fourth review of PR #165.** The report and completion marker approve `f62d4f5`. Exact-head CI run `42596216560` passed on Windows and Linux. P1 and P2 have corrections. Two new low-severity items concern an absent empty-response test and a proxy's relative redirect.
+
+The shell test now covers an empty latest response. Both installers accept `/zo-ll/doi/releases/tag/<tag>` relative to the GitHub host. They still require the correct repository path. They reject another host, another repository and `/releases/tag/<tag>`, which names no repository. The shell test also exercises the actual wget path without curl. All 23 installer tests, the PowerShell parser tests and `bun check` passed locally.
+
+The complete Linux install test reached the shared design. Before merge, CI and the same critic must approve the new head. The first release and ARM64 checks remain open under #146.
+
 **2026-11-07: third review of PR #165.** `review.PxBPrZWz/REPORT-3.md` and `DONE-3` approve `0de3edd`. They match the PR head, base and model. N1–N5 have corrections. The report records two low-severity items: absent exact-head CI (P1) and an incorrect no-release message (P2).
 
 Both installers now require a tag URL from this repository before they extract the latest version. A redirect to `/releases` gives `cannot find the latest release of zo-ll/doi.` before any download. Tests cover a valid tag, the no-release redirect, an empty tag and another host. The PowerShell test executes the actual `Get-ReleaseVersion` function without a network request. All 766 tests and `bun check` passed locally. Windows CI and the same critic must approve the new head before merge.

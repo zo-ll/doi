@@ -25,6 +25,7 @@ function Stop-Install([string]$Message) {
 }
 
 function Get-ReleaseVersion([string]$Location) {
+  if ($Location -and $Location.StartsWith("/", [StringComparison]::Ordinal)) { $Location = "https://github.com$Location" }
   $prefix = "https://github.com/$Repo/releases/tag/"
   if ($Location -and $Location.StartsWith($prefix, [StringComparison]::Ordinal) -and $Location.Length -gt $prefix.Length) {
     return $Location.Substring($prefix.Length)
