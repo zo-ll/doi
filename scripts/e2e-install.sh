@@ -12,7 +12,9 @@ version=$("$bin" --version | cut -d' ' -f2)
 name=$(basename "$bin")
 mkdir -p "$dir/release/v$version" "$dir/home with space"
 cp "$bin" "$dir/release/v$version/$name"
-(cd "$dir/release/v$version" && sha256sum "$name" > SHA256SUMS)
+(cd "$dir/release/v$version" && {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$name"; else shasum -a 256 "$name"; fi
+} > SHA256SUMS)
 
 env -i HOME="$dir/home with space" PATH=/usr/bin:/bin DOI_INSTALL_BASE_URL="file://$dir/release" sh "$here/install.sh" --version "$version"
 installed="$dir/home with space/.local/bin/doi"
